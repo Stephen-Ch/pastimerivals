@@ -122,3 +122,15 @@ public class DrawTests
             Assert.InRange(counts[(int)o] / (double)n, p[o] - 0.004, p[o] + 0.004);
     }
 }
+
+public class ExplanationTests
+{
+    [Fact]
+    public void Steps_never_contain_non_numbers_even_for_an_empty_sample()
+    {
+        var lg = Rates.From(0.2, 0.08, 0.01, 0.14, 0.045, 0.005, 0.03);
+        var m = Matchup.Compute(new PlayerInput(SeasonCounts.Empty, lg, null), new PlayerInput(SeasonCounts.Empty, lg, null),
+            lg, Platoon.None, EngineOptions.Default);
+        Assert.All(m.Steps, s => { Assert.Null(s.BatterObserved); Assert.True(double.IsFinite(s.Final)); });
+    }
+}

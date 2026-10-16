@@ -4,8 +4,8 @@ namespace PastimeRivals.Engine;
 public sealed record PlayerInput(SeasonCounts Counts, Rates League, Exposure? Exposure, Platoon? OwnEraPlatoon = null);
 
 /// <summary>Intermediate numbers for one outcome, kept so the app can explain the result.</summary>
-public sealed record OutcomeStep(Outcome Outcome, double BatterObserved, double BatterShrunk, double BatterLeague, double BatterRatio,
-    double PitcherObserved, double PitcherShrunk, double PitcherLeague, double PitcherRatio, double Neutral, double PlatoonFactor, double Final);
+public sealed record OutcomeStep(Outcome Outcome, double? BatterObserved, double BatterShrunk, double BatterLeague, double BatterRatio,
+    double? PitcherObserved, double PitcherShrunk, double PitcherLeague, double PitcherRatio, double Neutral, double PlatoonFactor, double Final);
 
 public sealed record MatchupResult(Rates Probabilities, IReadOnlyList<OutcomeStep> Steps, string EngineVersion);
 
@@ -34,12 +34,14 @@ public static class Matchup
                 null => 1.0,
             };
             raw[(int)o] = neutral[o] * bRatio * pRatio * platoon;
-            steps.Add(new OutcomeStep(o, batter.Counts.Rate(o), b[o], batter.League[o], bRatio,
-                pitcher.Counts.Rate(o), p[o], pitcher.League[o], pRatio, neutral[o], platoon, 0));
+            steps.Add(new OutcomeStep(o, Finite(batter.Counts.Rate(o)), b[o], batter.League[o], bRatio,
+                Finite(pitcher.Counts.Rate(o)), p[o], pitcher.League[o], pRatio, neutral[o], platoon, 0));
         }
         var final = Rates.Normalize(raw);
         return new MatchupResult(final, steps.Select(s => s with { Final = final[s.Outcome] }).ToList(), EngineInfo.Version);
     }
+
+    private static double? Finite(double x) => double.IsFinite(x) ? x : null;
 
     // Removes the platoon effect already baked into a player's season (his real mix of same- and opposite-hand opponents).
     private static double OwnPlatoon(PlayerInput x, Outcome o)

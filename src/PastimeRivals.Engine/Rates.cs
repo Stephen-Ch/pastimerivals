@@ -57,7 +57,7 @@ public sealed record SeasonCounts(int Pa, int KKnownPa, int K, int Bb, int Hbp, 
         Outcome.Double => Double / (double)Pa,
         Outcome.Triple => Triple / (double)Pa,
         Outcome.Hr => Hr / (double)Pa,
-        _ => double.NaN, // out in play is derived as the remainder
+        _ => 1 - KRate - (Bb + Hbp + Single + Double + Triple + Hr) / (double)Pa, // out in play is the remainder
     };
 
     /// <summary>Sample size behind one outcome's rate.</summary>
