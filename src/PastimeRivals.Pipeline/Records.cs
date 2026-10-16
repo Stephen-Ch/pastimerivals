@@ -5,7 +5,7 @@ public sealed record BattingLine(string Gid, string Id, string Team, int Year, i
     int H, int D, int T, int Hr, int Bb, int Ibb, int Hbp, int? K, string Pbp);
 
 /// <summary>One pitcher's line in one game (Retrosheet pitching.csv).</summary>
-public sealed record PitchingLine(string Gid, string Id, string Team, int Year, int Bfp,
+public sealed record PitchingLine(string Gid, string Id, string Team, int Year, int? Bfp,
     int H, int D, int T, int Hr, int Bb, int Ibb, int Hbp, int? K, int IpOuts, string Pbp);
 
 /// <summary>Counts for the eight plate-appearance outcomes. Oip (out in play) is everything else.</summary>
@@ -42,9 +42,11 @@ public sealed class PlayerSeason
     public int Games { get; set; }
     public int PbpGames { get; set; }
     public int IpOuts { get; set; }
+    /// <summary>Games where batters faced was not recorded and was estimated (outs + H + BB + HBP).</summary>
+    public int EstimatedGames { get; set; }
 
-    /// <summary>A: play-by-play for at least 90% of games. B: box scores only. C: some strikeouts unknown.</summary>
-    public char Grade => Counts.KKnownPa < Counts.Pa ? 'C' : Games > 0 && PbpGames >= 0.9 * Games ? 'A' : 'B';
+    /// <summary>A: play-by-play for at least 90% of games. B: box scores only. C: some strikeouts unknown or batters faced estimated.</summary>
+    public char Grade => Counts.KKnownPa < Counts.Pa || EstimatedGames > 0 ? 'C' : Games > 0 && PbpGames >= 0.9 * Games ? 'A' : 'B';
 }
 
 public sealed class LeagueSeason

@@ -1,0 +1,156 @@
+# Data validation report
+
+Red (build fails): 0. Amber (documented gaps): 16.
+
+## Red
+
+None.
+
+
+## Amber
+
+- 1901: batter strikeouts unknown for 16.7 % of plate appearances (rates use known games only)
+- 1902: batter PA 84,299 vs batters faced 84,521 (gap 0.26 %); batters faced partly estimated this year
+- 1902: batter strikeouts unknown for 16.0 % of plate appearances (rates use known games only)
+- 1903: batter PA 83,685 vs batters faced 82,774 (gap 1.09 %); batters faced partly estimated this year
+- 1903: batter strikeouts unknown for 17.2 % of plate appearances (rates use known games only)
+- 1904: batter strikeouts unknown for 23.3 % of plate appearances (rates use known games only)
+- 1905: batter PA 91,516 vs batters faced 91,390 (gap 0.14 %); batters faced partly estimated this year
+- 1905: batter strikeouts unknown for 22.3 % of plate appearances (rates use known games only)
+- 1906: batter strikeouts unknown for 22.6 % of plate appearances (rates use known games only)
+- 1907: batter strikeouts unknown for 14.7 % of plate appearances (rates use known games only)
+- 1908: batter strikeouts unknown for 5.1 % of plate appearances (rates use known games only)
+- 1909: batter strikeouts unknown for 9.6 % of plate appearances (rates use known games only)
+- 1910: batter strikeouts unknown for 6.2 % of plate appearances (rates use known games only)
+- 1911: batter strikeouts unknown for 6.7 % of plate appearances (rates use known games only)
+- 1914: batter strikeouts unknown for 5.9 % of plate appearances (rates use known games only)
+- 1915: batter strikeouts unknown for 4.6 % of plate appearances (rates use known games only)
+
+## Info
+
+- 1901: 371 batter-seasons, 139 pitcher-seasons, grades B:69 C:302
+- 1902: 390 batter-seasons, 160 pitcher-seasons, grades B:96 C:294
+- 1903: 368 batter-seasons, 141 pitcher-seasons, grades B:63 C:305
+- 1904: 364 batter-seasons, 129 pitcher-seasons, grades B:58 C:306
+- 1905: 390 batter-seasons, 144 pitcher-seasons, grades B:58 C:332
+- 1906: 412 batter-seasons, 155 pitcher-seasons, grades B:63 C:349
+- 1907: 419 batter-seasons, 161 pitcher-seasons, grades B:93 C:326
+- 1908: 439 batter-seasons, 172 pitcher-seasons, grades A:173 B:5 C:261
+- 1909: 504 batter-seasons, 203 pitcher-seasons, grades A:157 B:10 C:337
+- 1910: 508 batter-seasons, 202 pitcher-seasons, grades A:223 B:10 C:275
+- 1911: 535 batter-seasons, 213 pitcher-seasons, grades A:338 B:10 C:187
+- 1912: 603 batter-seasons, 237 pitcher-seasons, grades A:595 C:8
+- 1913: 582 batter-seasons, 229 pitcher-seasons, grades A:564 B:18
+- 1914: 740 batter-seasons, 264 pitcher-seasons, grades A:564 B:15 C:161
+- 1915: 733 batter-seasons, 285 pitcher-seasons, grades A:551 B:24 C:158
+- 1916: 527 batter-seasons, 187 pitcher-seasons, grades A:491 B:36
+- 1917: 490 batter-seasons, 175 pitcher-seasons, grades A:483 B:7
+- 1918: 489 batter-seasons, 203 pitcher-seasons, grades A:460 B:29
+- 1919: 479 batter-seasons, 197 pitcher-seasons, grades A:469 B:10
+- 1920: 495 batter-seasons, 208 pitcher-seasons, grades A:452 B:43
+- 1921: 492 batter-seasons, 202 pitcher-seasons, grades A:468 B:24
+- 1922: 497 batter-seasons, 207 pitcher-seasons, grades A:476 B:21
+- 1923: 513 batter-seasons, 206 pitcher-seasons, grades A:435 B:78
+- 1924: 529 batter-seasons, 218 pitcher-seasons, grades A:398 B:123 C:8
+- 1925: 526 batter-seasons, 207 pitcher-seasons, grades A:361 B:165
+- 1926: 502 batter-seasons, 198 pitcher-seasons, grades A:410 B:92
+- 1927: 512 batter-seasons, 210 pitcher-seasons, grades A:409 B:103
+- 1928: 505 batter-seasons, 210 pitcher-seasons, grades A:344 B:161
+- 1929: 510 batter-seasons, 206 pitcher-seasons, grades A:480 B:30
+- 1930: 493 batter-seasons, 199 pitcher-seasons, grades A:450 B:43
+- 1931: 492 batter-seasons, 189 pitcher-seasons, grades A:414 B:78
+- 1932: 491 batter-seasons, 196 pitcher-seasons, grades A:368 B:123
+- 1933: 460 batter-seasons, 184 pitcher-seasons, grades A:366 B:94
+- 1934: 487 batter-seasons, 202 pitcher-seasons, grades A:381 B:106
+- 1935: 484 batter-seasons, 201 pitcher-seasons, grades A:359 B:125
+- 1936: 481 batter-seasons, 207 pitcher-seasons, grades A:439 B:42
+- 1937: 498 batter-seasons, 208 pitcher-seasons, grades A:465 B:33
+- 1938: 502 batter-seasons, 214 pitcher-seasons, grades A:328 B:174
+- 1939: 533 batter-seasons, 229 pitcher-seasons, grades A:401 B:132
+- 1940: 514 batter-seasons, 224 pitcher-seasons, grades A:357 B:157
+- 1941: 546 batter-seasons, 228 pitcher-seasons, grades A:293 B:253
+- 1942: 512 batter-seasons, 215 pitcher-seasons, grades A:289 B:223
+- 1943: 519 batter-seasons, 219 pitcher-seasons, grades A:218 B:301
+- 1944: 548 batter-seasons, 226 pitcher-seasons, grades A:172 B:376
+- 1945: 547 batter-seasons, 236 pitcher-seasons, grades A:190 B:357
+- 1946: 633 batter-seasons, 275 pitcher-seasons, grades A:303 B:330
+- 1947: 544 batter-seasons, 231 pitcher-seasons, grades A:364 B:180
+- 1948: 542 batter-seasons, 235 pitcher-seasons, grades A:296 B:246
+- 1949: 532 batter-seasons, 214 pitcher-seasons, grades A:315 B:217
+- 1950: 530 batter-seasons, 231 pitcher-seasons, grades A:341 B:189
+- 1951: 543 batter-seasons, 220 pitcher-seasons, grades A:389 B:154
+- 1952: 556 batter-seasons, 236 pitcher-seasons, grades A:432 B:124
+- 1953: 534 batter-seasons, 218 pitcher-seasons, grades A:460 B:74
+- 1954: 536 batter-seasons, 225 pitcher-seasons, grades A:479 B:57
+- 1955: 599 batter-seasons, 258 pitcher-seasons, grades A:553 B:46
+- 1956: 552 batter-seasons, 241 pitcher-seasons, grades A:500 B:52
+- 1957: 563 batter-seasons, 249 pitcher-seasons, grades A:562 B:1
+- 1958: 580 batter-seasons, 250 pitcher-seasons, grades A:575 B:5
+- 1959: 571 batter-seasons, 243 pitcher-seasons, grades A:571
+- 1960: 575 batter-seasons, 238 pitcher-seasons, grades A:575
+- 1961: 620 batter-seasons, 254 pitcher-seasons, grades A:620
+- 1962: 702 batter-seasons, 304 pitcher-seasons, grades A:701 B:1
+- 1963: 695 batter-seasons, 299 pitcher-seasons, grades A:694 B:1
+- 1964: 700 batter-seasons, 311 pitcher-seasons, grades A:700
+- 1965: 702 batter-seasons, 299 pitcher-seasons, grades A:700 B:2
+- 1966: 714 batter-seasons, 310 pitcher-seasons, grades A:711 B:3
+- 1967: 718 batter-seasons, 315 pitcher-seasons, grades A:714 B:4
+- 1968: 676 batter-seasons, 287 pitcher-seasons, grades A:661 B:15
+- 1969: 849 batter-seasons, 360 pitcher-seasons, grades A:849
+- 1970: 849 batter-seasons, 363 pitcher-seasons, grades A:849
+- 1971: 828 batter-seasons, 343 pitcher-seasons, grades A:828
+- 1972: 824 batter-seasons, 339 pitcher-seasons, grades A:824
+- 1973: 821 batter-seasons, 330 pitcher-seasons, grades A:821
+- 1974: 861 batter-seasons, 344 pitcher-seasons, grades A:861
+- 1975: 844 batter-seasons, 339 pitcher-seasons, grades A:844
+- 1976: 818 batter-seasons, 325 pitcher-seasons, grades A:818
+- 1977: 900 batter-seasons, 371 pitcher-seasons, grades A:900
+- 1978: 904 batter-seasons, 369 pitcher-seasons, grades A:904
+- 1979: 899 batter-seasons, 390 pitcher-seasons, grades A:899
+- 1980: 916 batter-seasons, 379 pitcher-seasons, grades A:916
+- 1981: 907 batter-seasons, 360 pitcher-seasons, grades A:907
+- 1982: 932 batter-seasons, 376 pitcher-seasons, grades A:932
+- 1983: 953 batter-seasons, 390 pitcher-seasons, grades A:953
+- 1984: 935 batter-seasons, 393 pitcher-seasons, grades A:935
+- 1985: 943 batter-seasons, 413 pitcher-seasons, grades A:943
+- 1986: 953 batter-seasons, 416 pitcher-seasons, grades A:953
+- 1987: 975 batter-seasons, 426 pitcher-seasons, grades A:975
+- 1988: 973 batter-seasons, 438 pitcher-seasons, grades A:973
+- 1989: 988 batter-seasons, 449 pitcher-seasons, grades A:988
+- 1990: 1030 batter-seasons, 483 pitcher-seasons, grades A:1030
+- 1991: 1034 batter-seasons, 475 pitcher-seasons, grades A:1034
+- 1992: 1007 batter-seasons, 441 pitcher-seasons, grades A:1007
+- 1993: 1104 batter-seasons, 507 pitcher-seasons, grades A:1104
+- 1994: 991 batter-seasons, 470 pitcher-seasons, grades A:991
+- 1995: 1133 batter-seasons, 552 pitcher-seasons, grades A:1133
+- 1996: 1141 batter-seasons, 538 pitcher-seasons, grades A:1141
+- 1997: 1123 batter-seasons, 534 pitcher-seasons, grades A:1123
+- 1998: 1186 batter-seasons, 557 pitcher-seasons, grades A:1186
+- 1999: 1209 batter-seasons, 585 pitcher-seasons, grades A:1209
+- 2000: 1230 batter-seasons, 606 pitcher-seasons, grades A:1230
+- 2001: 1220 batter-seasons, 591 pitcher-seasons, grades A:1220
+- 2002: 1218 batter-seasons, 609 pitcher-seasons, grades A:1218
+- 2003: 1230 batter-seasons, 612 pitcher-seasons, grades A:1230
+- 2004: 1247 batter-seasons, 632 pitcher-seasons, grades A:1247
+- 2005: 1237 batter-seasons, 606 pitcher-seasons, grades A:1237
+- 2006: 1242 batter-seasons, 635 pitcher-seasons, grades A:1242
+- 2007: 1278 batter-seasons, 666 pitcher-seasons, grades A:1278
+- 2008: 1291 batter-seasons, 651 pitcher-seasons, grades A:1291
+- 2009: 1266 batter-seasons, 664 pitcher-seasons, grades A:1266
+- 2010: 1249 batter-seasons, 635 pitcher-seasons, grades A:1249
+- 2011: 1295 batter-seasons, 662 pitcher-seasons, grades A:1295
+- 2012: 1284 batter-seasons, 662 pitcher-seasons, grades A:1284
+- 2013: 1303 batter-seasons, 679 pitcher-seasons, grades A:1303
+- 2014: 1320 batter-seasons, 692 pitcher-seasons, grades A:1320
+- 2015: 1348 batter-seasons, 735 pitcher-seasons, grades A:1348
+- 2016: 1353 batter-seasons, 742 pitcher-seasons, grades A:1353
+- 2017: 1358 batter-seasons, 755 pitcher-seasons, grades A:1358
+- 2018: 1379 batter-seasons, 799 pitcher-seasons, grades A:1379
+- 2019: 1410 batter-seasons, 831 pitcher-seasons, grades A:1410
+- 2020: 1289 batter-seasons, 735 pitcher-seasons, grades A:1289
+- 2021: 1508 batter-seasons, 909 pitcher-seasons, grades A:1508
+- 2022: 1495 batter-seasons, 871 pitcher-seasons, grades A:1495
+- 2023: 1457 batter-seasons, 863 pitcher-seasons, grades A:1457
+- 2024: 1454 batter-seasons, 855 pitcher-seasons, grades A:1454
+- 2025: 1423 batter-seasons, 844 pitcher-seasons, grades A:1423
+

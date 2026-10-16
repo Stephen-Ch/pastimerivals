@@ -129,4 +129,16 @@ public class AggregatorTests
         var r = Aggregator.Build(Array.Empty<BattingLine>(), new[] { Pit("g1", "p", "BBB", 30), Pit("g2", "p", "BBB", 30) }, Map);
         Assert.Equal('A', r.Pitchers.Single().Grade);
     }
+
+    [Fact]
+    public void Missing_batters_faced_is_estimated_from_outs_hits_walks_and_hit_batters_and_graded_C()
+    {
+        var line = new PitchingLine("g1", "old", "BBB", 1902, Bfp: null, H: 8, D: 1, T: 0, Hr: 0, Bb: 3, Ibb: 0, Hbp: 1, K: 4, IpOuts: 27, Pbp: "");
+        var r = Aggregator.Build(Array.Empty<BattingLine>(), new[] { line }, Map);
+        var p = r.Pitchers.Single();
+        Assert.Equal(27 + 8 + 3 + 1, p.Counts.Pa);
+        Assert.Equal(1, p.EstimatedGames);
+        Assert.Equal('C', p.Grade);
+        Assert.Equal(39, r.Leagues.Single().Pitching.Pa);
+    }
 }

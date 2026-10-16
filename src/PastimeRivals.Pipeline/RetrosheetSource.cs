@@ -14,7 +14,7 @@ public sealed class RetrosheetSource(string rawDir)
 
     public IEnumerable<PitchingLine> Pitching(int year) =>
         Rows(year, "pitching").Select(r => new PitchingLine(r["gid"], r["id"], r["team"], year,
-            I(r["p_bfp"]), I(r["p_h"]), I(r["p_d"]), I(r["p_t"]), I(r["p_hr"]), I(r["p_w"]), I(r["p_iw"]),
+            N(r["p_bfp"]), I(r["p_h"]), I(r["p_d"]), I(r["p_t"]), I(r["p_hr"]), I(r["p_w"]), I(r["p_iw"]),
             I(r["p_hbp"]), N(r["p_k"]), I(r["p_ipouts"]), r["pbp"]));
 
     private IEnumerable<Dictionary<string, string>> Rows(int year, string kind)

@@ -11,11 +11,11 @@ public static class OutputWriter
 
     public static void WritePlayers(string path, IEnumerable<PlayerSeason> seasons)
     {
-        var sb = new StringBuilder($"id,year,teams,pa_al,pa_nl,pa_fl,{CountHeader},games,pbp_games,ip_outs,grade\n");
+        var sb = new StringBuilder($"id,year,teams,pa_al,pa_nl,pa_fl,{CountHeader},games,pbp_games,est_games,ip_outs,grade\n");
         foreach (var s in seasons)
             sb.Append(string.Join(",", s.Id, s.Year, s.Teams, s.PaByLeague.GetValueOrDefault("AL"),
                 s.PaByLeague.GetValueOrDefault("NL"), s.PaByLeague.GetValueOrDefault("FL"), C(s.Counts),
-                s.Games, s.PbpGames, s.IpOuts, s.Grade)).Append('\n');
+                s.Games, s.PbpGames, s.EstimatedGames, s.IpOuts, s.Grade)).Append('\n');
         File.WriteAllText(path, sb.ToString());
     }
 

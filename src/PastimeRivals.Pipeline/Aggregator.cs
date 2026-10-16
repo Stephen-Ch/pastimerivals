@@ -33,13 +33,16 @@ public static class Aggregator
             var lg = map.LeagueOf(p.Team, p.Year);
             if (!LeagueMap.IsIncluded(lg)) continue;
             var s = Get(pitchers, p.Id, p.Year);
-            s.Counts.Add(p.Bfp, p.K, p.Bb, p.Ibb, p.Hbp, p.H, p.D, p.T, p.Hr);
-            s.PaByLeague[lg!] = s.PaByLeague.GetValueOrDefault(lg!) + p.Bfp;
+            // Early box scores often omit batters faced; estimate it (ignores errors, double plays and caught stealing).
+            var bf = p.Bfp ?? p.IpOuts + p.H + p.Bb + p.Hbp;
+            if (p.Bfp is null) s.EstimatedGames++;
+            s.Counts.Add(bf, p.K, p.Bb, p.Ibb, p.Hbp, p.H, p.D, p.T, p.Hr);
+            s.PaByLeague[lg!] = s.PaByLeague.GetValueOrDefault(lg!) + bf;
             s.TeamSet.Add(p.Team);
             s.Games++;
             s.IpOuts += p.IpOuts;
             if (p.Pbp is "y") s.PbpGames++;
-            League(p.Year, lg!).Pitching.Add(p.Bfp, p.K, p.Bb, p.Ibb, p.Hbp, p.H, p.D, p.T, p.Hr);
+            League(p.Year, lg!).Pitching.Add(bf, p.K, p.Bb, p.Ibb, p.Hbp, p.H, p.D, p.T, p.Hr);
         }
 
         return new BuildResult(
