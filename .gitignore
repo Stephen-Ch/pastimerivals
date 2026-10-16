@@ -1,0 +1,11 @@
+bin/
+obj/
+*.user
+.vs/
+node_modules/
+dist/
+publish/
+TestResults/
+*.local.json
+secrets/
+data/raw/

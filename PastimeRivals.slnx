@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PastimeRivals.Api/PastimeRivals.Api.csproj" />
+    <Project Path="src/PastimeRivals.Engine/PastimeRivals.Engine.csproj" />
+    <Project Path="src/PastimeRivals.Pipeline/PastimeRivals.Pipeline.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PastimeRivals.Api.Tests/PastimeRivals.Api.Tests.csproj" />
+    <Project Path="tests/PastimeRivals.Engine.Tests/PastimeRivals.Engine.Tests.csproj" />
+  </Folder>
+</Solution>
