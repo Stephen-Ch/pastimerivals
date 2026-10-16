@@ -7,5 +7,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/PastimeRivals.Api.Tests/PastimeRivals.Api.Tests.csproj" />
     <Project Path="tests/PastimeRivals.Engine.Tests/PastimeRivals.Engine.Tests.csproj" />
+    <Project Path="tests/PastimeRivals.Pipeline.Tests/PastimeRivals.Pipeline.Tests.csproj" />
   </Folder>
 </Solution>

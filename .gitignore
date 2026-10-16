@@ -9,3 +9,5 @@ TestResults/
 *.local.json
 secrets/
 data/raw/
+data/out/
+data/tmp/
