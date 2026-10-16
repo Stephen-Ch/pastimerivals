@@ -1,0 +1,125 @@
+<header class="top">
+  <h1>Pastime Rivals</h1>
+  <p class="tag">Any pitcher. Any batter. Any era.</p>
+</header>
+
+<main>
+  <section class="slots">
+    @for (role of ['pit', 'bat']; track role) {
+      @let c = role === 'pit' ? pitcher() : batter();
+      <button class="slot" type="button" (click)="openPicker($any(role))">
+        <span class="slot-role">{{ role === 'pit' ? 'Pitcher' : 'Batter' }}</span>
+        @if (c) {
+          <span class="slot-name">{{ c.name }} <span class="slot-year">{{ c.year }}</span></span>
+          @if (c.line) { <span class="slot-line">{{ c.line }}</span> }
+        } @else {
+          <span class="slot-name muted">Choose a {{ role === 'pit' ? 'pitcher' : 'batter' }}</span>
+        }
+        <span class="slot-change">Change</span>
+      </button>
+    }
+  </section>
+
+  @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+
+  @if (matchup(); as m) {
+    <section class="odds" aria-label="Odds for this plate appearance">
+      <h2>The odds</h2>
+      <div class="bar" role="img" [attr.aria-label]="'Outcome probabilities'">
+        @for (o of outcomes; track o) {
+          <span class="seg" [class]="'seg c-' + o" [style.width]="barWidth(o)" [title]="label(o) + ' ' + percent(m.probabilities[o])"></span>
+        }
+      </div>
+      <ul class="legend">
+        @for (o of outcomes; track o) {
+          <li><span class="swatch" [class]="'swatch c-' + o"></span>{{ label(o) }} <strong>{{ percent(m.probabilities[o]) }}</strong>
+            @if (sims()) { <span class="sim">sim {{ simShare(o) }}</span> }</li>
+        }
+      </ul>
+      <p class="note">Era-adjusted to a neutral {{ m.neutral }} league.
+        @if (m.sameHand !== null) { {{ m.sameHand ? 'Same-handed matchup.' : 'Opposite-handed matchup.' }} }</p>
+    </section>
+
+    <section class="actions">
+      <button class="primary" type="button" (click)="throwPitch()" [disabled]="busy()">{{ result() ? 'Pitch again' : 'Pitch' }}</button>
+      <button type="button" (click)="runSims()" [disabled]="busy()">Sim 1,000</button>
+    </section>
+
+    @if (busy() && !result()) { <div class="windup" aria-hidden="true"><span class="ball"></span></div> }
+
+    @if (result(); as r) {
+      <section class="result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
+        <p class="outcome">{{ label(r.outcome) }}</p>
+        <p class="why">{{ resultText() }}</p>
+        <div class="row">
+          <button type="button" (click)="share()">Share</button>
+          <button type="button" (click)="openPicker('pit')">New pitcher</button>
+          <button type="button" (click)="openPicker('bat')">New batter</button>
+        </div>
+        @if (shareNote()) { <p class="note">{{ shareNote() }}</p> }
+      </section>
+    }
+
+    <section class="how">
+      <button type="button" class="link" (click)="showHow.set(!showHow())" [attr.aria-expanded]="showHow()">
+        {{ showHow() ? 'Hide' : 'How this works' }}
+      </button>
+      @if (showHow()) {
+        <p>Each player is compared with his own league that season, then both are placed in a neutral
+          1990-2019 league. Small samples are pulled toward average. "x league" is how far above or below
+          his league the player was.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Outcome</th><th>{{ m.batter.name }}</th><th>{{ m.pitcher.name }}</th><th>Neutral</th><th>This matchup</th></tr></thead>
+            <tbody>
+              @for (o of outcomes; track o) {
+                @let s = stepFor(o);
+                @if (s) {
+                  <tr><td>{{ label(o) }}</td><td>{{ timesLeague(s.batterObserved, s.batterLeague) }}</td>
+                    <td>{{ timesLeague(s.pitcherObserved, s.pitcherLeague) }}</td><td>{{ percent(s.neutral) }}</td>
+                    <td><strong>{{ percent(s.final) }}</strong></td></tr>
+                }
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
+</main>
+
+@if (picking(); as role) {
+  <div class="sheet" role="dialog" aria-modal="true" [attr.aria-label]="role === 'pit' ? 'Choose a pitcher' : 'Choose a batter'">
+    <div class="sheet-head">
+      <h2>{{ seasonsFor() ? seasonsFor()!.name : (role === 'pit' ? 'Choose a pitcher' : 'Choose a batter') }}</h2>
+      <button type="button" class="link" (click)="closePicker()">Close</button>
+    </div>
+    @if (!seasonsFor()) {
+      <input class="search" type="search" placeholder="Type a first or last name" autocomplete="off"
+             [value]="query()" (input)="onQuery($any($event.target).value)" autofocus>
+      <ul class="list">
+        @for (h of hits(); track h.id) {
+          <li><button type="button" (click)="choosePlayer(h)">{{ h.name }} <span class="muted">{{ h.years }}@if (h.hof) { · Hall of Fame }</span></button></li>
+        }
+        @if (query() && hits().length === 0) { <li class="muted pad">No players found yet.</li> }
+      </ul>
+    } @else {
+      <button type="button" class="link" (click)="seasonsFor.set(null)">Back to search</button>
+      <ul class="list">
+        @for (s of seasons(); track s.year) {
+          <li><button type="button" [class.best]="s.isDefault" (click)="chooseSeason(s)">
+            <strong>{{ s.year }}</strong> {{ s.teams }} <span class="muted">{{ s.line }}</span>
+            @if (s.isDefault) { <span class="badge">Most played</span> }
+            @if (s.pa < 100) { <span class="badge">Small sample</span> }
+          </button></li>
+        }
+      </ul>
+    }
+  </div>
+}
+
+<footer>
+  <p>The information used here was obtained free of charge from and is copyrighted by Retrosheet.
+    Interested parties may contact Retrosheet at <a href="https://www.retrosheet.org">www.retrosheet.org</a>.</p>
+  <p>Not affiliated with Major League Baseball or its clubs.</p>
+</footer>

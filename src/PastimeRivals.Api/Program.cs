@@ -6,7 +6,10 @@ using PastimeRivals.Engine;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSingleton<IStatsSource, SqlStatsSource>();
+if (!string.IsNullOrEmpty(builder.Configuration["Stats:CsvDir"]))
+    builder.Services.AddSingleton<IStatsSource, CsvStatsSource>();   // local development
+else
+    builder.Services.AddSingleton<IStatsSource, SqlStatsSource>();
 builder.Services.AddSingleton<IEventSink, SqlEventSink>();
 builder.Services.AddSingleton<PlayService>();
 
