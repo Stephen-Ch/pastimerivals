@@ -19,7 +19,7 @@ public class StatsCatalogTests
             new PlatoonRow(1950, true, C(400, 60, 20, 8, 60)),
             new PlatoonRow(1950, false, C(600, 60, 50, 18, 90)),
         },
-        batters: new[] { new PlayerRow("mover", 1950, 100, 300, 0, C(400, 60, 40, 10, 60), 'A') },
+        batters: new[] { new PlayerRow("mover", 1950, 100, 300, 0, C(400, 60, 40, 10, 60), 'A'), new PlayerRow("nopa", 1950, 0, 0, 0, SeasonCounts.Empty, 'A') },
         pitchers: Array.Empty<PlayerRow>(),
         exposure: new[] { new ExposureRow("bat", "mover", 1950, 100, 400) });
 
@@ -58,4 +58,7 @@ public class StatsCatalogTests
 
     [Fact]
     public void Unknown_player_returns_null() => Assert.Null(Catalog().Batter("nobody", 1950));
+
+    [Fact]
+    public void A_season_with_no_plate_appearances_is_not_selectable() => Assert.Null(Catalog().Batter("nopa", 1950));
 }

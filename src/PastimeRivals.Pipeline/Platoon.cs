@@ -5,7 +5,7 @@ namespace PastimeRivals.Pipeline;
 
 public enum PlayOutcome { K, Bb, Hbp, Single, Double, Triple, Hr, Oip }
 
-public sealed record PlayRecord(int Year, string Batter, string Pitcher, string BatHand, string PitHand, PlayOutcome PlayOutcome);
+public sealed record PlayRecord(int Year, string Batter, string Pitcher, string BatHand, string PitHand, PlayOutcome PlayOutcome, string BatTeam = "");
 
 public static class PlayByPlay
 {
@@ -26,14 +26,14 @@ public static class PlayByPlay
         var h = Csv.ParseLine(reader.ReadLine() ?? "");
         int Ix(string n) => Array.IndexOf(h, n);
         int pa = Ix("pa"), gt = Ix("gametype"), bat = Ix("batter"), pit = Ix("pitcher"), bh = Ix("bathand"), ph = Ix("pithand"),
-            s = Ix("single"), d = Ix("double"), team = Ix("pitteam"), t = Ix("triple"), hr = Ix("hr"), w = Ix("walk"), hbp = Ix("hbp"), k = Ix("k");
+            s = Ix("single"), d = Ix("double"), team = Ix("pitteam"), bteam = Ix("batteam"), t = Ix("triple"), hr = Ix("hr"), w = Ix("walk"), hbp = Ix("hbp"), k = Ix("k");
         string? line;
         while ((line = reader.ReadLine()) != null)
         {
             var f = line.Split(','); // plays.csv has no quoted fields in the columns used here
             if (f.Length <= gt || f[pa] != "1" || f[gt] != "regular") continue;
             if (!LeagueMap.IsIncluded(map.LeagueOf(f[team], year))) continue;
-            yield return new PlayRecord(year, f[bat], f[pit], f[bh], f[ph], Classify(f[s], f[d], f[t], f[hr], f[w], f[hbp], f[k]));
+            yield return new PlayRecord(year, f[bat], f[pit], f[bh], f[ph], Classify(f[s], f[d], f[t], f[hr], f[w], f[hbp], f[k]), f[bteam]);
         }
     }
 }

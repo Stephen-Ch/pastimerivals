@@ -1,7 +1,7 @@
 using PastimeRivals.Pipeline;
 
 // Usage: dotnet run --project src/PastimeRivals.Pipeline -- build|platoon <rawDir> <outDir> [firstYear] [lastYear]
-if (args.Length < 3 || args[0] is not ("build" or "platoon"))
+if (args.Length < 3 || args[0] is not ("build" or "platoon" or "backtest"))
 {
     Console.WriteLine("Usage: build|platoon <rawDir> <outDir> [firstYear=1901] [lastYear=2025]");
     return 1;
@@ -12,6 +12,17 @@ var outDir = args[2];
 var first = args.Length > 3 ? int.Parse(args[3]) : 1901;
 var last = args.Length > 4 ? int.Parse(args[4]) : 2025;
 Directory.CreateDirectory(outDir);
+
+if (args[0] == "backtest")
+{
+    // backtest <raw> <outDir> first last gap
+    var gap = args.Length > 5 ? int.Parse(args[5]) : 1;
+    var bmap = LeagueMap.FromTeamAbr(File.ReadLines(Path.Combine(raw, "TEAMABR.TXT")));
+    var report = Backtest.Run(CatalogCsv.Load(outDir), raw, bmap, first, last, gap);
+    Console.WriteLine(report);
+    File.WriteAllText(Path.Combine(outDir, $"backtest_{first}_{last}_gap{gap}.md"), report);
+    return 0;
+}
 
 if (args[0] == "platoon")
 {

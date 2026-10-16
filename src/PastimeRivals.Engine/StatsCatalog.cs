@@ -102,7 +102,7 @@ public sealed class StatsCatalog
 
     private PlayerSeasonRef? Ref(Dictionary<(string, int), PlayerRow> d, string side, string id, int year)
     {
-        if (!d.TryGetValue((id, year), out var row)) return null;
+        if (!d.TryGetValue((id, year), out var row) || row.Counts.Pa == 0) return null;
         var ex = _exposure.TryGetValue((side, id, year), out var e) ? new Exposure(e.SameHandPa, e.KnownPa) : null;
         return new PlayerSeasonRef(row, new PlayerInput(row.Counts, PlayerLeague(row, side), ex, PlatoonFor(year)));
     }
