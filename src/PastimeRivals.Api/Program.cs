@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using PastimeRivals.Api;
 using PastimeRivals.Api.Import;
@@ -11,6 +12,7 @@ if (!string.IsNullOrEmpty(builder.Configuration["Stats:CsvDir"]))
 else
     builder.Services.AddSingleton<IStatsSource, SqlStatsSource>();
 builder.Services.AddSingleton<IEventSink, SqlEventSink>();
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddSingleton<PlayService>();
 
 // Per-address limit on the game API. In memory, so it resets when the server restarts (accepted on shared hosting).

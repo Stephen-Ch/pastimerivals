@@ -30,7 +30,8 @@ describe('logic', () => {
   it('explains a result in one sentence using both players', () => {
     const step = { outcome: 'Hr', batterObserved: 0.087, batterLeague: 0.0094, pitcherObserved: 0.011, pitcherLeague: 0.027, neutral: 0.028, final: 0.061 };
     const s = explain('hr', step, 'Babe Ruth', 'Pedro Martinez');
-    expect(s).toContain('Babe Ruth');
+    expect(s).toContain('Babe Ruth homered at 9.3x');
+    expect(s).toContain('Pedro Martinez allowed home runs at 0.4x');
     expect(s).toContain('9.3x');
     expect(s).toContain('Pedro Martinez');
     expect(s).toContain('0.4x');

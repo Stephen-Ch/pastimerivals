@@ -9,10 +9,19 @@ const matchup = {
   steps: Object.entries(probs).map(([k, v]) => ({ outcome: k, batterObserved: v, batterLeague: v, pitcherObserved: v, pitcherLeague: v, neutral: v, final: v })),
 };
 
+const report = (role: 'bat' | 'pit', name: string, year: number) => ({
+  id: name, name, role, year, age: 30, height: "6' 2\"", weight: '200 lb', bats: 'L', throws: 'R', position: role === 'pit' ? 'P' : 'RF',
+  places: ['New York, AL'], line: 'a line', grade: 'A', era: year < 1946 ? '1920-1945' : '1990-2025', hof: true,
+  ratios: [{ label: 'Home runs', timesLeague: 9.3 }],
+});
+
 describe('App', () => {
   beforeEach(async () => {
     globalThis.fetch = (async (url: string) =>
-      new Response(JSON.stringify(String(url).includes('/api/matchup') ? matchup : []), { status: 200 })) as typeof fetch;
+      new Response(JSON.stringify(
+        String(url).includes('/api/matchup') ? matchup
+        : String(url).includes('role=pit') && String(url).includes('/api/card') ? report('pit', 'Pedro Martinez', 1999)
+        : String(url).includes('/api/card') ? report('bat', 'Babe Ruth', 1927) : []), { status: 200 })) as typeof fetch;
     await TestBed.configureTestingModule({ imports: [App] }).compileComponents();
   });
 
@@ -26,5 +35,7 @@ describe('App', () => {
     expect(el.textContent).toContain('Home run');
     expect(el.textContent).toContain('4.5%');
     expect(el.textContent).toContain('Retrosheet');
+    expect(el.textContent).toContain('Tale of the tape');
+    expect(el.querySelectorAll('pr-report svg').length).toBe(2);
   });
 });

@@ -7,9 +7,11 @@ const LABELS: Record<OutcomeKey, string> = {
   k: 'Strikeout', bb: 'Walk', hbp: 'Hit by pitch', single: 'Single',
   double: 'Double', triple: 'Triple', hr: 'Home run', oip: 'Out in play',
 };
-const PLURAL: Record<OutcomeKey, string> = {
-  k: 'strikeouts', bb: 'walks', hbp: 'hit-by-pitches', single: 'singles',
-  double: 'doubles', triple: 'triples', hr: 'home runs', oip: 'outs in play',
+// What each side did, in plain words: [batter verb, pitcher verb]
+const VERBS: Record<OutcomeKey, [string, string]> = {
+  k: ['struck out', 'struck batters out'], bb: ['walked', 'issued walks'], hbp: ['was hit by pitches', 'hit batters'],
+  single: ['singled', 'allowed singles'], double: ['doubled', 'allowed doubles'], triple: ['tripled', 'allowed triples'],
+  hr: ['homered', 'allowed home runs'], oip: ['made outs in play', 'got outs in play'],
 };
 
 export const label = (o: OutcomeKey) => LABELS[o];
@@ -45,8 +47,8 @@ export interface StepLike {
 
 /** One plain-English sentence on why this outcome had the odds it did. */
 export function explain(o: OutcomeKey, step: StepLike, batter: string, pitcher: string): string {
-  const what = PLURAL[o];
-  return `${batter} produced ${what} at ${timesLeague(step.batterObserved, step.batterLeague)} his league's rate; ` +
-    `${pitcher} allowed them at ${timesLeague(step.pitcherObserved, step.pitcherLeague)} his. ` +
+  const [bv, pv] = VERBS[o];
+  return `${batter} ${bv} at ${timesLeague(step.batterObserved, step.batterLeague)} his league's rate; ` +
+    `${pitcher} ${pv} at ${timesLeague(step.pitcherObserved, step.pitcherLeague)} his. ` +
     `In a neutral 1990-2019 league that works out to ${percent(step.final)} per plate appearance.`;
 }

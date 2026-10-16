@@ -110,6 +110,7 @@ public class PlayApiTests
         var sum = m.GetProperty("probabilities").EnumerateObject().Sum(p => p.Value.GetDouble());
         Assert.Equal(1.0, sum, 6);
         Assert.Equal(8, m.GetProperty("steps").GetArrayLength());
+        Assert.Equal("Hr", m.GetProperty("steps")[6].GetProperty("outcome").GetString()); // names, not numbers: the app matches on them
         Assert.False(m.GetProperty("sameHand").GetBoolean()); // lefty batter vs righty pitcher
         Assert.Equal(EngineInfo.Version, m.GetProperty("engineVersion").GetString());
     }

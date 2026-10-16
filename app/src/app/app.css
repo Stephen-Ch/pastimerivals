@@ -52,3 +52,17 @@ th { color: var(--text-secondary); font-weight: 500; }
 .pad { padding: 10px 4px; }
 footer { margin-top: 36px; font-size: .75rem; color: var(--text-secondary); line-height: 1.4; }
 footer a { color: inherit; }
+
+.tape { margin-top: 18px; }
+.tape-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
+.tape-card { padding: 0; border: none; background: none; text-align: left; min-height: 0; }
+.tape-vs { font-weight: 700; color: var(--text-secondary); }
+.tape-rows { display: grid; grid-template-columns: 1fr auto 1fr; gap: 4px 10px; margin: 10px 0 0; font-size: .85rem; }
+.tape-rows dt { color: var(--text-secondary); text-align: center; }
+.tape-rows dd { margin: 0; }
+.tape-rows dd:nth-of-type(odd) { text-align: right; }
+.report-dialog { border: none; border-radius: 14px; padding: 0; max-width: min(420px, calc(100vw - 32px)); width: 100%; background: var(--surface-0); color: var(--text-primary); }
+.report-dialog::backdrop { background: rgb(0 0 0 / .5); }
+.dialog-body { padding: 14px; display: grid; gap: 10px; }
+.close { justify-self: end; }
+@media (prefers-reduced-motion: reduce) { .ball, .result { animation: none; } }

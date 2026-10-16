@@ -23,6 +23,27 @@
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
 
   @if (matchup(); as m) {
+    @if (pitcherReport() && batterReport()) {
+      <section class="tape" aria-label="Tale of the tape">
+        <h2>Tale of the tape</h2>
+        <div class="tape-grid">
+          <button type="button" class="tape-card" (click)="openReport(pitcherReport(), $event)" [attr.aria-label]="'Open scouting report for ' + pitcherReport()!.name">
+            <pr-report [report]="pitcherReport()!" [compact]="true" />
+          </button>
+          <div class="tape-vs" aria-hidden="true">vs</div>
+          <button type="button" class="tape-card" (click)="openReport(batterReport(), $event)" [attr.aria-label]="'Open scouting report for ' + batterReport()!.name">
+            <pr-report [report]="batterReport()!" [compact]="true" />
+          </button>
+        </div>
+        <dl class="tape-rows">
+          <dd>{{ pitcherReport()!.age ?? '?' }}</dd><dt>Age</dt><dd>{{ batterReport()!.age ?? '?' }}</dd>
+          <dd>{{ pitcherReport()!.height ?? '?' }}</dd><dt>Height</dt><dd>{{ batterReport()!.height ?? '?' }}</dd>
+          <dd>{{ pitcherReport()!.weight ?? '?' }}</dd><dt>Weight</dt><dd>{{ batterReport()!.weight ?? '?' }}</dd>
+          <dd>{{ pitcherReport()!.throws }}</dd><dt>Throws / bats</dt><dd>{{ batterReport()!.bats }}</dd>
+        </dl>
+      </section>
+    }
+
     <section class="odds" aria-label="Odds for this plate appearance">
       <h2>The odds</h2>
       <div class="bar" role="img" [attr.aria-label]="'Outcome probabilities'">
@@ -41,11 +62,13 @@
     </section>
 
     <section class="actions">
-      <button class="primary" type="button" (click)="throwPitch()" [disabled]="busy()">{{ result() ? 'Pitch again' : 'Pitch' }}</button>
+      <button class="primary" type="button" (click)="throwPitch()" [disabled]="busy() || !!pending()">{{ result() ? 'Pitch again' : 'Pitch' }}</button>
       <button type="button" (click)="runSims()" [disabled]="busy()">Sim 1,000</button>
     </section>
 
-    @if (busy() && !result()) { <div class="windup" aria-hidden="true"><span class="ball"></span></div> }
+    @if (pending(); as pr) {
+      <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="batterReport()?.bats ?? 'R'" [outcome]="pr.outcome" (done)="sceneDone()" />
+    }
 
     @if (result(); as r) {
       <section class="result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
@@ -117,6 +140,15 @@
     }
   </div>
 }
+
+<dialog #reportDialog class="report-dialog" (close)="onDialogClosed()" (click)="onDialogClick($event)" aria-label="Scouting report">
+  @if (popup(); as r) {
+    <div class="dialog-body">
+      <pr-report [report]="r" />
+      <button type="button" class="close" (click)="closeReport()">Close</button>
+    </div>
+  }
+</dialog>
 
 <footer>
   <p>The information used here was obtained free of charge from and is copyrighted by Retrosheet.

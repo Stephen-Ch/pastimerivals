@@ -1,5 +1,8 @@
-import { Component, computed, signal } from '@angular/core';
-import { api, MatchupView, PitchResult, PlayerHit, SeasonItem, SimsResult } from './api';
+import { Component, computed, ElementRef, signal, viewChild } from '@angular/core';
+import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResult } from './api';
+import { ReportView } from './report';
+import { PitchScene } from './pitch-scene';
+import { Era, eraOf } from './art';
 import { explain, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
@@ -15,6 +18,7 @@ function sessionId(): string {
 
 @Component({
   selector: 'app-root',
+  imports: [ReportView, PitchScene],
   styleUrl: './app.css',
   templateUrl: './app.html',
 })
@@ -40,6 +44,12 @@ export class App {
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly shareNote = signal<string | null>(null);
+  protected readonly batterReport = signal<Report | null>(null);
+  protected readonly pitcherReport = signal<Report | null>(null);
+  protected readonly popup = signal<Report | null>(null);
+  protected readonly pending = signal<PitchResult | null>(null);  // result known, animation playing
+  private readonly dialog = viewChild<ElementRef<HTMLDialogElement>>('reportDialog');
+  private returnFocus: HTMLElement | null = null;
 
   private readonly session = sessionId();
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -81,6 +91,8 @@ export class App {
       this.batter.update(b => b && { ...b, name: m.batter.name });
       this.pitcher.update(x => x && { ...x, name: m.pitcher.name });
       api.event('matchup_view', this.session);
+      const [br, pr] = await Promise.all([api.card(p.b, p.by, 'bat'), api.card(p.p, p.py, 'pit')]);
+      this.batterReport.set(br); this.pitcherReport.set(pr);
     } catch (e) { this.error.set((e as Error).message); }
     finally { this.busy.set(false); }
   }
@@ -122,12 +134,21 @@ export class App {
     if (!p) return;
     try {
       this.busy.set(true); this.result.set(null); this.shareNote.set(null);
-      await new Promise(r => setTimeout(r, 450)); // short wind-up so the result lands as a moment
-      this.result.set(await api.pitch(p, seed));
+      const r = await api.pitch(p, seed);
       if (!seed) api.event('pitch', this.session);
+      this.pending.set(r);   // the scene plays, then sceneDone() reveals the result
     } catch (e) { this.error.set((e as Error).message); }
     finally { this.busy.set(false); }
   }
+
+  protected sceneDone() {
+    const r = this.pending();
+    if (!r) return;
+    this.pending.set(null);
+    this.result.set(r);
+  }
+
+  protected pitcherEra(): Era { return eraOf(this.pitcher()?.year ?? 2000); }
 
   protected async runSims() {
     const p = this.pick();
@@ -162,6 +183,27 @@ export class App {
 
   protected stepFor(o: OutcomeKey) {
     return this.matchup()?.steps.find(s => s.outcome.toLowerCase() === o);
+  }
+
+  protected openReport(r: Report | null, ev: Event) {
+    if (!r) return;
+    this.returnFocus = ev.currentTarget as HTMLElement;
+    this.popup.set(r);
+    queueMicrotask(() => this.dialog()?.nativeElement.showModal());
+  }
+
+  protected closeReport() {
+    this.dialog()?.nativeElement.close();
+  }
+
+  protected onDialogClosed() {
+    this.popup.set(null);
+    this.returnFocus?.focus();
+  }
+
+  protected onDialogClick(ev: MouseEvent) {
+    // A click on the backdrop (the dialog element itself, outside its content) closes it.
+    if (ev.target === this.dialog()?.nativeElement) this.closeReport();
   }
 
   protected isHit(o: OutcomeKey) { return o === 'single' || o === 'double' || o === 'triple' || o === 'hr'; }
