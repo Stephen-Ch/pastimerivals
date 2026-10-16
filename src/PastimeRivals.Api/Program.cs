@@ -1,3 +1,4 @@
+using PastimeRivals.Api.Import;
 using PastimeRivals.Engine;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,6 +8,8 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", engineVersion = EngineInfo.Version }));
+
+app.MapImport();
 
 app.Run();
 
