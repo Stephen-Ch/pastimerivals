@@ -42,6 +42,8 @@ public sealed class PlayerSeason
     public int Games { get; set; }
     public int PbpGames { get; set; }
     public int IpOuts { get; set; }
+    /// <summary>Primary position (plan 10): from allplayers.csv for batters, "P" for pitchers.</summary>
+    public string Position { get; set; } = "";
     /// <summary>Games where batters faced was not recorded and was estimated (outs + H + BB + HBP).</summary>
     public int EstimatedGames { get; set; }
 

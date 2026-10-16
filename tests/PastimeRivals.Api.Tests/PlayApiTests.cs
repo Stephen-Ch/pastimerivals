@@ -25,19 +25,24 @@ public sealed class FakeStats : IStatsSource
         var cat = new StatsCatalog(leagues, Array.Empty<PlatoonRow>(),
             new[]
             {
-                new PlayerRow("ruthb101", 1927, 691, 0, 0, C(691, 89, 137, 60, 95), 'A'),
+                new PlayerRow("ruthb101", 1927, 691, 0, 0, C(691, 89, 137, 60, 95), 'A', "NYA", "RF"),
                 new PlayerRow("ruthb101", 1999, 10, 0, 0, C(10, 2, 1, 0, 2), 'A'),
-                new PlayerRow("rodra001", 2000, 0, 300, 0, C(300, 60, 30, 10, 50), 'A'),
+                new PlayerRow("rodra001", 2000, 0, 300, 0, C(300, 60, 30, 10, 50), 'A', "SEA/TEX", "SS"),
             },
-            new[] { new PlayerRow("martp001", 1999, 835, 0, 0, C(835, 313, 37, 9, 113), 'A') },
+            new[] { new PlayerRow("martp001", 1999, 835, 0, 0, C(835, 313, 37, 9, 113), 'A', "BOS", "P") },
             Array.Empty<ExposureRow>());
         var people = new List<PersonRow>
         {
-            new("ruthb101", "Babe", "Ruth", "L", "L", 1895, "HOF"),
+            new("ruthb101", "Babe", "Ruth", "L", "L", 1895, "HOF", 18950206, 74, 215),
             new("rodra001", "Alex", "Rodriguez", "R", "R", 1975, ""),
-            new("martp001", "Pedro", "Martinez", "R", "R", 1971, "HOF"),
+            new("martp001", "Pedro", "Martinez", "R", "R", 1971, "HOF", 19711025, 71, 170),
         };
-        return Task.FromResult(new StatsBundle(cat, people));
+        var teams = new List<TeamRow>
+        {
+            new("NYA", "AL", "New York", 1903, 9999), new("BOS", "AL", "Boston", 1901, 9999),
+            new("SEA", "AL", "Seattle", 1977, 9999), new("TEX", "AL", "Texas", 1972, 9999),
+        };
+        return Task.FromResult(new StatsBundle(cat, people, teams));
     }
 }
 
@@ -156,5 +161,47 @@ public class PlayApiTests
         await c.GetAsync("/api/players/search?q=ru&role=bat");
         var third = await c.GetAsync("/api/players/search?q=ru&role=bat");
         Assert.Equal(HttpStatusCode.TooManyRequests, third.StatusCode);
+    }
+
+    [Fact]
+    public async Task Scouting_report_for_a_batter_has_bio_place_and_league_ratios()
+    {
+        var (c, _) = Make();
+        var r = await c.GetFromJsonAsync<JsonElement>("/api/card?id=ruthb101&year=1927&role=bat");
+        Assert.Equal("Babe Ruth", r.GetProperty("name").GetString());
+        Assert.Equal(32, r.GetProperty("age").GetInt32());                 // born 1895-02-06, as of June 30, 1927
+        Assert.Equal("6' 2\"", r.GetProperty("height").GetString());
+        Assert.Equal("215 lb", r.GetProperty("weight").GetString());
+        Assert.Equal("RF", r.GetProperty("position").GetString());
+        Assert.Equal("New York, AL", r.GetProperty("places")[0].GetString());
+        Assert.Equal("1920-1945", r.GetProperty("era").GetString());
+        var hr = r.GetProperty("ratios").EnumerateArray().Single(x => x.GetProperty("label").GetString() == "Home runs");
+        Assert.Equal(60.0 / 691 / (1000.0 / 40000), hr.GetProperty("timesLeague").GetDouble(), 3);
+    }
+
+    [Fact]
+    public async Task Missing_bio_data_is_null_not_guessed()
+    {
+        var (c, _) = Make();
+        var r = await c.GetFromJsonAsync<JsonElement>("/api/card?id=rodra001&year=2000&role=bat");
+        Assert.Equal(JsonValueKind.Null, r.GetProperty("age").ValueKind);
+        Assert.Equal(JsonValueKind.Null, r.GetProperty("height").ValueKind);
+        Assert.Equal(2, r.GetProperty("places").GetArrayLength());     // traded mid-season
+    }
+
+    [Fact]
+    public async Task Pitcher_report_shows_P_and_allowed_ratios()
+    {
+        var (c, _) = Make();
+        var r = await c.GetFromJsonAsync<JsonElement>("/api/card?id=martp001&year=1999&role=pit");
+        Assert.Equal("P", r.GetProperty("position").GetString());
+        Assert.Contains(r.GetProperty("ratios").EnumerateArray(), x => x.GetProperty("label").GetString() == "Home runs allowed");
+    }
+
+    [Fact]
+    public async Task Unknown_report_is_404()
+    {
+        var (c, _) = Make();
+        Assert.Equal(HttpStatusCode.NotFound, (await c.GetAsync("/api/card?id=nobody&year=1927&role=bat")).StatusCode);
     }
 }

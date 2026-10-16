@@ -13,7 +13,7 @@ namespace PastimeRivals.Api.Import;
 public static class ImportEndpoints
 {
     private static readonly HashSet<string> Tables = new(StringComparer.Ordinal)
-        { "batters", "pitchers", "leagues", "people", "platoon", "exposure" };
+        { "batters", "pitchers", "leagues", "people", "platoon", "exposure", "teams" };
 
     public static void MapImport(this WebApplication app)
     {

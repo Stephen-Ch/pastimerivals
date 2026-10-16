@@ -3,12 +3,15 @@ using PastimeRivals.Engine;
 
 namespace PastimeRivals.Api.Stats;
 
-public sealed record PersonRow(string Id, string First, string Last, string Bats, string Throws, int? BirthYear, string Hof)
+public sealed record TeamRow(string Code, string League, string City, int FirstYear, int LastYear);
+
+public sealed record PersonRow(string Id, string First, string Last, string Bats, string Throws, int? BirthYear, string Hof,
+    int? BirthDate = null, int? Height = null, int? Weight = null)
 {
     public string Name => $"{First} {Last}".Trim();
 }
 
-public sealed record StatsBundle(StatsCatalog Catalog, IReadOnlyList<PersonRow> People);
+public sealed record StatsBundle(StatsCatalog Catalog, IReadOnlyList<PersonRow> People, IReadOnlyList<TeamRow>? Teams = null);
 
 public interface IStatsSource
 {
@@ -38,7 +41,9 @@ public sealed class SqlStatsSource(IConfiguration cfg) : IStatsSource
         static SeasonCounts Counts(SqlDataReader r) => new(I(r, "pa"), I(r, "k_known_pa"), I(r, "k"), I(r, "bb"), I(r, "hbp"),
             I(r, "single"), I(r, "double"), I(r, "triple"), I(r, "hr"));
         static PlayerRow Player(SqlDataReader r) => new(S(r, "id"), I(r, "year"), I(r, "pa_al"), I(r, "pa_nl"), I(r, "pa_fl"),
-            Counts(r), S(r, "grade") is { Length: > 0 } g ? g[0] : 'B');
+            Counts(r), S(r, "grade") is { Length: > 0 } g ? g[0] : 'B', S(r, "teams"), Has(r, "pos") ? S(r, "pos") : "");
+        static bool Has(SqlDataReader r, string c) { for (var i = 0; i < r.FieldCount; i++) if (r.GetName(i) == c) return true; return false; }
+        static int? N(SqlDataReader r, string c) => Has(r, c) && r[c] is not DBNull ? Convert.ToInt32(r[c]) : null;
 
         var leagues = await Read("SELECT * FROM dbo.stat_leagues", r => new LeagueRow(I(r, "year"), S(r, "league"), S(r, "side"), Counts(r)));
         var platoon = await Read("SELECT year, matchup, pa, pa AS k_known_pa, k, bb, hbp, single, [double], triple, hr FROM dbo.stat_platoon",
@@ -48,8 +53,10 @@ public sealed class SqlStatsSource(IConfiguration cfg) : IStatsSource
         var exposure = await Read("SELECT * FROM dbo.stat_exposure", r =>
             new ExposureRow(S(r, "role"), S(r, "id"), I(r, "year"), I(r, "pa_same_hand"), I(r, "pa_with_hand_known")));
         var people = await Read("SELECT * FROM dbo.stat_people", r => new PersonRow(S(r, "id"), S(r, "first"), S(r, "last"),
-            S(r, "bats"), S(r, "throws"), r["birth_year"] is DBNull ? null : Convert.ToInt32(r["birth_year"]), S(r, "hof")));
-        return new StatsBundle(new StatsCatalog(leagues, platoon, batters, pitchers, exposure), people);
+            S(r, "bats"), S(r, "throws"), N(r, "birth_year"), S(r, "hof"), N(r, "birth_date"), N(r, "height"), N(r, "weight")));
+        var teams = await Read("IF OBJECT_ID('dbo.stat_teams') IS NOT NULL SELECT * FROM dbo.stat_teams ELSE SELECT CAST(NULL AS NVARCHAR(10)) code, CAST(NULL AS NVARCHAR(10)) league, CAST(NULL AS NVARCHAR(50)) city, 0 first_year, 0 last_year WHERE 1=0",
+            r => new TeamRow(S(r, "code"), S(r, "league"), S(r, "city"), I(r, "first_year"), I(r, "last_year")));
+        return new StatsBundle(new StatsCatalog(leagues, platoon, batters, pitchers, exposure), people, teams);
     }
 }
 

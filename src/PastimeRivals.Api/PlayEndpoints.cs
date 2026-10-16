@@ -23,6 +23,9 @@ public static class PlayEndpoints
         api.MapGet("/matchup", async (string b, int by, string p, int py, PlayService s) =>
             await s.MatchupAsync(b, by, p, py) is { } m ? Results.Ok(m.View) : Results.NotFound());
 
+        api.MapGet("/card", async (string id, int year, string? role, PlayService s) =>
+            await s.ReportAsync(id, year, role == "pit" ? "pit" : "bat") is { } r ? Results.Ok(r) : Results.NotFound());
+
         api.MapPost("/pitch", async (PitchRequest r, PlayService s) =>
         {
             if (await s.MatchupAsync(r.B, r.By, r.P, r.Py) is not { } m) return Results.NotFound();

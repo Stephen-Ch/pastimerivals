@@ -48,6 +48,9 @@ var leagues = new List<LeagueSeason>();
 for (var year = first; year <= last; year++)
 {
     var r = Aggregator.Build(source.Batting(year), source.Pitching(year), map);
+    var positions = Positions.Read(source.ZipPath(year), year);
+    foreach (var b in r.Batters) b.Position = positions.TryGetValue(b.Id, out var rows) ? Positions.Primary(rows) : "PH";
+    foreach (var p in r.Pitchers) p.Position = "P";
     batters.AddRange(r.Batters);
     pitchers.AddRange(r.Pitchers);
     leagues.AddRange(r.Leagues);
@@ -57,6 +60,7 @@ for (var year = first; year <= last; year++)
 OutputWriter.WritePlayers(Path.Combine(outDir, "batters.csv"), batters);
 OutputWriter.WritePlayers(Path.Combine(outDir, "pitchers.csv"), pitchers);
 OutputWriter.WriteLeagues(Path.Combine(outDir, "leagues.csv"), leagues);
+OutputWriter.WriteTeams(Path.Combine(outDir, "teams.csv"), File.ReadLines(Path.Combine(raw, "TEAMABR.TXT")));
 var ids = new HashSet<string>(batters.Select(b => b.Id).Concat(pitchers.Select(p => p.Id)));
 OutputWriter.WritePeople(Path.Combine(outDir, "people.csv"), Path.Combine(raw, "bio", "biofile0.csv"), ids);
 var peopleIds = new HashSet<string>(File.ReadLines(Path.Combine(outDir, "people.csv")).Skip(1).Select(l => l.Split(',')[0]));

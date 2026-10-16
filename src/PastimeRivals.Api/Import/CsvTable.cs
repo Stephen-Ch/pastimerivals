@@ -9,7 +9,7 @@ public static partial class CsvTable
 {
     private static readonly HashSet<string> TextColumns = new(StringComparer.OrdinalIgnoreCase)
     {
-        "id", "teams", "grade", "league", "side", "matchup", "role", "first", "last", "bats", "throws", "hof"
+        "id", "teams", "grade", "league", "side", "matchup", "role", "first", "last", "bats", "throws", "hof", "pos", "code", "city"
     };
 
     [GeneratedRegex("^[a-z_][a-z0-9_]*$")]

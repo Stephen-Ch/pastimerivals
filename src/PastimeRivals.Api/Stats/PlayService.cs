@@ -21,11 +21,13 @@ public sealed class PlayService(IStatsSource source)
         public Dictionary<string, List<PlayerRow>> Bat { get; }
         public Dictionary<string, List<PlayerRow>> Pit { get; }
         public Rates Neutral { get; }
+        public IReadOnlyList<TeamRow> Teams { get; }
         public Platoon NeutralPlatoon { get; }
 
         public Loaded(StatsBundle b)
         {
             Cat = b.Catalog;
+            Teams = b.Teams ?? Array.Empty<TeamRow>();
             People = b.People.GroupBy(p => p.Id).ToDictionary(g => g.Key, g => g.First());
             Bat = b.Catalog.Batters.Where(r => r.Counts.Pa > 0).GroupBy(r => r.Id).ToDictionary(g => g.Key, g => g.OrderBy(r => r.Year).ToList());
             Pit = b.Catalog.Pitchers.Where(r => r.Counts.Pa > 0).GroupBy(r => r.Id).ToDictionary(g => g.Key, g => g.OrderBy(r => r.Year).ToList());
@@ -99,6 +101,22 @@ public sealed class PlayService(IStatsSource source)
             new Side(p, pp?.Name ?? p, py, pp?.Throws ?? "?"),
             same, probs, m.Steps, "1990-2019 MLB average", m.EngineVersion);
         return (view, m.Probabilities);
+    }
+
+    public async Task<ScoutingReport?> ReportAsync(string id, int year, string role)
+    {
+        var d = await _loaded.Value;
+        var player = role == "pit" ? d.Cat.Pitcher(id, year) : d.Cat.Batter(id, year);
+        if (player == null) return null;
+        var p = d.People.GetValueOrDefault(id);
+        var row = player.Row;
+        var places = row.Teams.Split('/', StringSplitOptions.RemoveEmptyEntries)
+            .Select(code => d.Teams.FirstOrDefault(t => t.Code == code && year >= t.FirstYear && year <= (t.LastYear >= 2021 ? 9999 : t.LastYear)))
+            .Where(t => t != null).Select(t => $"{t!.City}, {t.League}").Distinct().ToList();
+        return new ScoutingReport(id, p?.Name ?? id, role, year, Reports.AgeOn(p?.BirthDate, year), Reports.Height(p?.Height),
+            Reports.Weight(p?.Weight), p?.Bats ?? "?", p?.Throws ?? "?", role == "pit" ? "P" : (row.Position is { Length: > 0 } pos ? pos : "?"),
+            places, Line(row, role), row.Grade, Reports.EraOf(year), p?.Hof == "HOF",
+            Reports.Ratios(row.Counts, player.Input.League, role));
     }
 
     public static ulong NewSeed()

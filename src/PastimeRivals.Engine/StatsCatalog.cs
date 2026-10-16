@@ -1,7 +1,7 @@
 namespace PastimeRivals.Engine;
 
 public sealed record LeagueRow(int Year, string League, string Side, SeasonCounts Counts);
-public sealed record PlayerRow(string Id, int Year, int PaAl, int PaNl, int PaFl, SeasonCounts Counts, char Grade);
+public sealed record PlayerRow(string Id, int Year, int PaAl, int PaNl, int PaFl, SeasonCounts Counts, char Grade, string Teams = "", string Position = "");
 public sealed record PlatoonRow(int Year, bool SameHand, SeasonCounts Counts);
 public sealed record ExposureRow(string Role, string Id, int Year, int SameHandPa, int KnownPa);
 public sealed record PlayerSeasonRef(PlayerRow Row, PlayerInput Input);
