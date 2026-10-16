@@ -20,7 +20,7 @@ if (args[0] == "platoon")
     for (var y = first; y <= last; y++)
     {
         var n = 0;
-        foreach (var play in Platoon.ReadPlays(Path.Combine(raw, "zips", $"{y}csvs.zip"), y, pmap)) { builder.Add(play); n++; }
+        foreach (var play in PlayByPlay.ReadPlays(Path.Combine(raw, "zips", $"{y}csvs.zip"), y, pmap)) { builder.Add(play); n++; }
         Console.WriteLine($"{y}: {n} plate appearances with play-by-play");
     }
     builder.WriteYears(Path.Combine(outDir, $"platoon_{first}_{last}.csv"));

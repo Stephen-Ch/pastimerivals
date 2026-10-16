@@ -3,18 +3,18 @@ using System.Text;
 
 namespace PastimeRivals.Pipeline;
 
-public enum Outcome { K, Bb, Hbp, Single, Double, Triple, Hr, Oip }
+public enum PlayOutcome { K, Bb, Hbp, Single, Double, Triple, Hr, Oip }
 
-public sealed record PlayRecord(int Year, string Batter, string Pitcher, string BatHand, string PitHand, Outcome Outcome);
+public sealed record PlayRecord(int Year, string Batter, string Pitcher, string BatHand, string PitHand, PlayOutcome PlayOutcome);
 
-public static class Platoon
+public static class PlayByPlay
 {
     /// <summary>True when batter and pitcher throw/bat from the same side. Switch hitters ("B") always take the opposite side.</summary>
     public static bool IsSameHand(string batHand, string pitHand) => batHand != "B" && batHand == pitHand;
 
-    public static Outcome Classify(string single, string dbl, string triple, string hr, string walk, string hbp, string k) =>
-        k == "1" ? Outcome.K : walk == "1" ? Outcome.Bb : hbp == "1" ? Outcome.Hbp : hr == "1" ? Outcome.Hr :
-        triple == "1" ? Outcome.Triple : dbl == "1" ? Outcome.Double : single == "1" ? Outcome.Single : Outcome.Oip;
+    public static PlayOutcome Classify(string single, string dbl, string triple, string hr, string walk, string hbp, string k) =>
+        k == "1" ? PlayOutcome.K : walk == "1" ? PlayOutcome.Bb : hbp == "1" ? PlayOutcome.Hbp : hr == "1" ? PlayOutcome.Hr :
+        triple == "1" ? PlayOutcome.Triple : dbl == "1" ? PlayOutcome.Double : single == "1" ? PlayOutcome.Single : PlayOutcome.Oip;
 
     /// <summary>Streams plate appearances from {year}plays.csv (regular season, pa=1).</summary>
     public static IEnumerable<PlayRecord> ReadPlays(string zipPath, int year, LeagueMap map)
@@ -38,7 +38,7 @@ public static class Platoon
     }
 }
 
-/// <summary>Outcome counts by platoon matchup per season, plus each player's same-hand exposure.</summary>
+/// <summary>PlayOutcome counts by platoon matchup per season, plus each player's same-hand exposure.</summary>
 public sealed class PlatoonBuilder
 {
     private readonly Dictionary<int, (Counts Same, Counts Opp)> _years = new();
@@ -49,11 +49,11 @@ public sealed class PlatoonBuilder
     {
         if (p.BatHand is not ("L" or "R" or "B") || p.PitHand is not ("L" or "R")) return;
         if (!_years.TryGetValue(p.Year, out var y)) _years[p.Year] = y = (new Counts(), new Counts());
-        var same = Platoon.IsSameHand(p.BatHand, p.PitHand);
+        var same = PlayByPlay.IsSameHand(p.BatHand, p.PitHand);
         var c = same ? y.Same : y.Opp;
-        c.Add(1, p.Outcome == Outcome.K ? 1 : 0, p.Outcome == Outcome.Bb ? 1 : 0, 0, p.Outcome == Outcome.Hbp ? 1 : 0,
-            p.Outcome is Outcome.Single or Outcome.Double or Outcome.Triple or Outcome.Hr ? 1 : 0,
-            p.Outcome == Outcome.Double ? 1 : 0, p.Outcome == Outcome.Triple ? 1 : 0, p.Outcome == Outcome.Hr ? 1 : 0);
+        c.Add(1, p.PlayOutcome == PlayOutcome.K ? 1 : 0, p.PlayOutcome == PlayOutcome.Bb ? 1 : 0, 0, p.PlayOutcome == PlayOutcome.Hbp ? 1 : 0,
+            p.PlayOutcome is PlayOutcome.Single or PlayOutcome.Double or PlayOutcome.Triple or PlayOutcome.Hr ? 1 : 0,
+            p.PlayOutcome == PlayOutcome.Double ? 1 : 0, p.PlayOutcome == PlayOutcome.Triple ? 1 : 0, p.PlayOutcome == PlayOutcome.Hr ? 1 : 0);
         Bump(_bat, p.Batter, p.Year, same);
         Bump(_pit, p.Pitcher, p.Year, same);
     }

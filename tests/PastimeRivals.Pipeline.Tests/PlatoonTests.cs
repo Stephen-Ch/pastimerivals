@@ -11,13 +11,13 @@ public class PlatoonTests
     [InlineData("B", "R", false)] // switch hitters bat from the opposite side
     [InlineData("B", "L", false)]
     public void Same_hand_means_batter_and_pitcher_match(string bat, string pit, bool same) =>
-        Assert.Equal(same, Platoon.IsSameHand(bat, pit));
+        Assert.Equal(same, PlayByPlay.IsSameHand(bat, pit));
 
     [Fact]
     public void Unknown_hand_is_skipped()
     {
         var b = new PlatoonBuilder();
-        b.Add(new PlayRecord(1950, "x", "y", "?", "R", Outcome.Single));
+        b.Add(new PlayRecord(1950, "x", "y", "?", "R", PlayOutcome.Single));
         Assert.Equal(0, b.Same(1950).Pa + b.Opposite(1950).Pa);
     }
 
@@ -25,9 +25,9 @@ public class PlatoonTests
     public void Counts_outcomes_by_matchup_and_tracks_each_players_exposure()
     {
         var b = new PlatoonBuilder();
-        b.Add(new PlayRecord(1950, "bat1", "pit1", "R", "R", Outcome.K));
-        b.Add(new PlayRecord(1950, "bat1", "pit2", "R", "L", Outcome.Hr));
-        b.Add(new PlayRecord(1950, "bat1", "pit2", "R", "L", Outcome.Oip));
+        b.Add(new PlayRecord(1950, "bat1", "pit1", "R", "R", PlayOutcome.K));
+        b.Add(new PlayRecord(1950, "bat1", "pit2", "R", "L", PlayOutcome.Hr));
+        b.Add(new PlayRecord(1950, "bat1", "pit2", "R", "L", PlayOutcome.Oip));
 
         Assert.Equal(1, b.Same(1950).Pa);
         Assert.Equal(1, b.Same(1950).K);
@@ -39,13 +39,13 @@ public class PlatoonTests
     }
 
     [Theory]
-    [InlineData("1", "0", "0", "0", "0", "0", "0", Outcome.Single)]
-    [InlineData("0", "1", "0", "0", "0", "0", "0", Outcome.Double)]
-    [InlineData("0", "0", "0", "1", "0", "0", "0", Outcome.Hr)]
-    [InlineData("0", "0", "0", "0", "1", "0", "0", Outcome.Bb)]
-    [InlineData("0", "0", "0", "0", "0", "1", "0", Outcome.Hbp)]
-    [InlineData("0", "0", "0", "0", "0", "0", "1", Outcome.K)]
-    [InlineData("0", "0", "0", "0", "0", "0", "0", Outcome.Oip)]
-    public void Classifies_a_plate_appearance(string single, string dbl, string triple, string hr, string walk, string hbp, string k, Outcome expected) =>
-        Assert.Equal(expected, Platoon.Classify(single, dbl, triple, hr, walk, hbp, k));
+    [InlineData("1", "0", "0", "0", "0", "0", "0", PlayOutcome.Single)]
+    [InlineData("0", "1", "0", "0", "0", "0", "0", PlayOutcome.Double)]
+    [InlineData("0", "0", "0", "1", "0", "0", "0", PlayOutcome.Hr)]
+    [InlineData("0", "0", "0", "0", "1", "0", "0", PlayOutcome.Bb)]
+    [InlineData("0", "0", "0", "0", "0", "1", "0", PlayOutcome.Hbp)]
+    [InlineData("0", "0", "0", "0", "0", "0", "1", PlayOutcome.K)]
+    [InlineData("0", "0", "0", "0", "0", "0", "0", PlayOutcome.Oip)]
+    public void Classifies_a_plate_appearance(string single, string dbl, string triple, string hr, string walk, string hbp, string k, PlayOutcome expected) =>
+        Assert.Equal(expected, PlayByPlay.Classify(single, dbl, triple, hr, walk, hbp, k));
 }
