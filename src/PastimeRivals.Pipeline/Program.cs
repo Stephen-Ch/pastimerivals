@@ -1,9 +1,9 @@
 using PastimeRivals.Pipeline;
 
-// Usage: dotnet run --project src/PastimeRivals.Pipeline -- build <rawDir> <outDir> [firstYear] [lastYear]
-if (args.Length < 3 || args[0] != "build")
+// Usage: dotnet run --project src/PastimeRivals.Pipeline -- build|platoon <rawDir> <outDir> [firstYear] [lastYear]
+if (args.Length < 3 || args[0] is not ("build" or "platoon"))
 {
-    Console.WriteLine("Usage: build <rawDir> <outDir> [firstYear=1901] [lastYear=2025]");
+    Console.WriteLine("Usage: build|platoon <rawDir> <outDir> [firstYear=1901] [lastYear=2025]");
     return 1;
 }
 
@@ -12,6 +12,21 @@ var outDir = args[2];
 var first = args.Length > 3 ? int.Parse(args[3]) : 1901;
 var last = args.Length > 4 ? int.Parse(args[4]) : 2025;
 Directory.CreateDirectory(outDir);
+
+if (args[0] == "platoon")
+{
+    var pmap = LeagueMap.FromTeamAbr(File.ReadLines(Path.Combine(raw, "TEAMABR.TXT")));
+    var builder = new PlatoonBuilder();
+    for (var y = first; y <= last; y++)
+    {
+        var n = 0;
+        foreach (var play in Platoon.ReadPlays(Path.Combine(raw, "zips", $"{y}csvs.zip"), y, pmap)) { builder.Add(play); n++; }
+        Console.WriteLine($"{y}: {n} plate appearances with play-by-play");
+    }
+    builder.WriteYears(Path.Combine(outDir, $"platoon_{first}_{last}.csv"));
+    builder.WriteExposure(Path.Combine(outDir, $"exposure_{first}_{last}.csv"));
+    return 0;
+}
 
 var map = LeagueMap.FromTeamAbr(File.ReadLines(Path.Combine(raw, "TEAMABR.TXT")));
 var source = new RetrosheetSource(raw);
