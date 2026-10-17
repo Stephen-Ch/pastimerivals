@@ -12,3 +12,7 @@ data/raw/
 data/out/
 data/tmp/
 appsettings.Production.json
+art/source/
+art/sprites/*.gif
+art/sprites/**/*.gif
+art/sprites/_check*.png
