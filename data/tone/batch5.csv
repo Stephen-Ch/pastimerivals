@@ -113,7 +113,7 @@ buckb001,Bill Buckner,White,rule,no non-white background mentioned in bios,https
 appik001,Kevin Appier,White,rule,no non-white background mentioned in bios,https://www.baseball-reference.com/bullpen/Kevin_Appier
 bellb001,Buddy Bell,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Buddy_Bell
 colej102,Joe Coleman,White,rule,no non-white background mentioned in bios,https://sabr.org/bioproj/person/joe-coleman-the-younger/
-davic001,Chili Davis,African American,low,"Born in Kingston, Jamaica; bios do not state race",https://sabr.org/bioproj/person/chili-davis/
+davic001,Chili Davis,African American,high,"Wikipedia categories: ""African-American baseball players""; ""Major League Baseball players from Jamaica""",https://en.wikipedia.org/wiki/Chili_Davis
 romme101,Eddie Rommel,White,medium,pre-1947 segregated MLB,https://sabr.org/bioproj/person/eddie-rommel
 whitl001,Lou Whitaker,African American,medium,Received Tigers' African-American Legacy Award,https://www.mlb.com/news/whitaker-honored-by-detroit-tigers-during-negro-leagues-tribute-weekend/c-120294806
 may-r101,Rudy May,African American,high,Said he was the only black player from the West Coast,https://sabr.org/bioproj/person/Rudy-May
@@ -167,7 +167,7 @@ gracm001,Mark Grace,White,rule,no non-white background mentioned in bios,https:/
 sante001,Ervin Santana,Latino,high,"Born in La Romana, Dominican Republic; not called Afro-Latino",https://sabr.org/?p=23543
 santc002,Carlos Santana,Latino,high,Born in Santo Domingo; Dominican-American; not called Afro-Latino,https://en.wikipedia.org/wiki/Carlos_Santana_(baseball)
 belct001,Tim Belcher,White,rule,no non-white background mentioned in bios,https://sabr.org/bioproj/person/d4e8a38d
-loftk001,Kenny Lofton,Unknown,low,Bios and targeted search give no explicit racial statement,https://sabr.org/bioproj/person/kenny-lofton/
+loftk001,Kenny Lofton,African American,high,"Wikipedia category: ""African-American baseball players""",https://en.wikipedia.org/wiki/Kenny_Lofton
 sabeb001,Bret Saberhagen,White,rule,no non-white background mentioned in bios,https://sabr.org/bioproj/person/bret-saberhagen/
 tejam001,Miguel Tejada,Latino,high,"Born in Bani, Dominican Republic; not called Afro-Latino",https://sabr.org/bioproj/person/miguel-tejada/
 dempr002,Ryan Dempster,White,rule,no non-white background mentioned in bios; born in Canada,https://sabr.org/bioproj/person/ryan-dempster/
@@ -175,13 +175,13 @@ judgj101,Joe Judge,White,medium,pre-1947 segregated MLB; SABR calls him an Irish
 candj001,John Candelaria,Latino,high,Born in Brooklyn to Puerto Rican parents,https://sabr.org/bioproj/person/2af67ca5
 yoste101,Eddie Yost,White,high,SABR says he was of German descent,https://sabr.org/bioproj/person/eddie-yost/
 ringj101,Jimmy Ring,White,medium,pre-1947 segregated MLB; mother born in Ireland,https://sabr.org/bioproj/person/jimmy-ring/
-andeg001,Garret Anderson,Unknown,low,Bios and targeted search give no explicit racial statement,https://sabr.org/bioproj/person/garret-anderson/
+andeg001,Garret Anderson,African American,high,"Wikipedia category: ""African-American baseball players""; OC Weekly lists him as black player",https://en.wikipedia.org/wiki/Garret_Anderson
 arrob001,Bronson Arroyo,Latino,medium,Father originally from Cuba (Havana); race not stated,https://en.wikipedia.org/wiki/Bronson_Arroyo
 cartj001,Joe Carter,African American,medium,Father's gas station was city's first owned by a Black person,https://sabr.org/bioproj/person/joe-carter/
 reedr001,Ron Reed,White,high,Father half Polish; in Polish sports hall of fame,https://www.polishsportshof.com/portfolio_page/ron-reed/
 bowal001,Larry Bowa,White,rule,no non-white background mentioned in bios,https://sabr.org/bioproj/person/Larry-Bowa
 leita001,Al Leiter,White,rule,no non-white background mentioned in bios,https://sabr.org/bioproj/person/al-leiter
-philt001,Tony Phillips,White,low,no race in SABR/Wikipedia; two targeted searches found nothing explicit,https://sabr.org/?p=21320
+philt001,Tony Phillips,African American,high,"Wikipedia category: ""African-American baseball players""",https://en.wikipedia.org/wiki/Tony_Phillips
 granj101,Mudcat Grant,African American,high,first Black pitcher to win 20 games in AL,https://en.wikipedia.org/wiki/Mudcat_Grant
 surhb001,B.J. Surhoff,White,rule,no non-white background mentioned in bios,https://sabr.org/bioproj/person/b-j-surhoff/
 frymw101,Woodie Fryman,White,rule,no non-white background mentioned in bios,https://sabr.org/bioproj/person/woodie-fryman
@@ -202,60 +202,60 @@ caldm001,Mike Caldwell,White,rule,no non-white background mentioned in bios,http
 cruzj001,Jose Cruz,Latino,high,"Born in Arroyo, Puerto Rico; called a Puerto Rican legend",https://sabr.org/bioproj/person/Jose-Cruz/
 crowg102,General Crowder,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/General_Crowder
 galaa001,Andres Galarraga,Latino,high,"Born in Caracas, Venezuela; father an Italian immigrant",https://sabr.org/bioproj/person/Andres-Galarraga/
-mccom103,Mike McCormick,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Mike_McCormick_(pitcher)
-wallt001,Tim Wallach,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Tim_Wallach
+mccom103,Mike McCormick,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Mike_McCormick_(pitcher)
+wallt001,Tim Wallach,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Tim_Wallach
 ramop101,Pedro Ramos,Latino,high,"Born in Corojo, Pinar del Rio, Cuba",https://sabr.org/bioproj/person/pedro-ramos/
-giamj001,Jason Giambi,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Jason_Giambi
+giamj001,Jason Giambi,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Jason_Giambi
 darlr001,Ron Darling,Mixed,medium,"Hawaiian-Chinese mother, French Canadian father (citation needed)",https://en.wikipedia.org/wiki/Ron_Darling
 goldp001,Paul Goldschmidt,White,medium,Jewish great-grandparents fled Nazi Germany; Catholic mother,https://en.wikipedia.org/wiki/Paul_Goldschmidt
 hared001,Dan Haren,Mixed,high,Of Irish and Mexican descent,https://en.wikipedia.org/wiki/Dan_Haren
 fernt001,Tony Fernandez,Latino,high,"Born in San Pedro de Macoris, DR; father of Haitian descent",https://sabr.org/bioproj/person/tony-fernandez/
 lee-t101,Thornton Lee,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/Thornton_Lee
 lee-c001,Carlos Lee,Latino,high,"Born in Aguadulce, Panama",https://sabr.org/bioproj/person/carlos-lee/
-wolfr001,Randy Wolf,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Randy_Wolf
+wolfr001,Randy Wolf,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Randy_Wolf
 sierr001,Ruben Sierra,Latino,high,Born in Puerto Rico; referred to himself as dark-skinned Latin,https://sabr.org/bioproj/person/ruben-sierra/
-haraa001,Aaron Harang,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Aaron_Harang
+haraa001,Aaron Harang,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Aaron_Harang
 bushd102,Donie Bush,White,high,Son of Irish-American parents,https://en.wikipedia.org/wiki/Donie_Bush
 pfefj101,Jeff Pfeffer,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/Jeff_Pfeffer
-harrt001,Toby Harrah,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Toby_Harrah
+harrt001,Toby Harrah,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Toby_Harrah
 hamie101,Earl Hamilton,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/Earl_Hamilton
 grimc101,Charlie Grimm,White,high,Born St. Louis to parents of German extraction,https://en.wikipedia.org/wiki/Charlie_Grimm
 johns103,Si Johnson,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/Si_Johnson
 daubj101,Jake Daubert,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/Jake_Daubert
 bentl101,Larry Benton,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/Larry_Benton
 vottj001,Joey Votto,White,high,"Of Italian and English descent, born Toronto",https://en.wikipedia.org/wiki/Joey_Votto
-hampm001,Mike Hampton,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Mike_Hampton
+hampm001,Mike Hampton,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Mike_Hampton
 bartd101,Dick Bartell,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/Dick_Bartell
-nuxhj101,Joe Nuxhall,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Joe_Nuxhall
-kendj001,Jason Kendall,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Jason_Kendall
-peavj001,Jake Peavy,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Jake_Peavy
+nuxhj101,Joe Nuxhall,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Joe_Nuxhall
+kendj001,Jason Kendall,White,rule,no non-white background found after targeted search,https://sabr.org/bioproj/person/Jason-Kendall/
+peavj001,Jake Peavy,White,rule,no non-white background found after targeted search,https://sabr.org/bioproj/person/jake-peavy/
 altuj001,Jose Altuve,Latino,high,"Born and raised in Maracay, Venezuela",https://en.wikipedia.org/wiki/Jose_Altuve
-shorc102,Chris Short,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Chris_Short
+shorc102,Chris Short,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Chris_Short
 jonea002,Andruw Jones,Latino,medium,"Born Willemstad, Curaçao; race not stated",https://en.wikipedia.org/wiki/Andruw_Jones
-matlj101,Jon Matlack,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Jon_Matlack
+matlj101,Jon Matlack,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Jon_Matlack
 konee101,Ed Konetchy,White,high,Son of immigrants from Austria and Poland; Bohemian,https://en.wikipedia.org/wiki/Ed_Konetchy
-leibc001,Charlie Leibrandt,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Charlie_Leibrandt
+leibc001,Charlie Leibrandt,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Charlie_Leibrandt
 delgc001,Carlos Delgado,Latino,high,"Born Aguadilla, Puerto Rico; race not stated",https://sabr.org/bioproj/person/carlos-delgado/
 guidr001,Ron Guidry,White,high,Cajun family from Lafayette; spoke Cajun French,https://sabr.org/bioproj/person/ron-guidry
 zeilt001,Todd Zeile,White,high,Direct descendant of Presidents John and John Quincy Adams,https://en.wikipedia.org/wiki/Todd_Zeile
-mortc002,Charlie Morton,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Charlie_Morton_(baseball)
+mortc002,Charlie Morton,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Charlie_Morton_(pitcher)
 mcins101,Stuffy McInnis,White,medium,pre-1947 segregated MLB,
 davic103,Curt Davis,White,medium,pre-1947 segregated MLB,
 younm003,Michael Young,Latino,medium,Mother of Mexican descent; eligible for Mexico WBC team,https://www.nbcdfw.com/news/sports/young-could-play-for-mexico/2091800/
 brane101,Ed Brandt,White,medium,pre-1947 segregated MLB,
 andre001,Elvis Andrus,Latino,high,"Born in Maracay, Aragua, Venezuela",https://sabr.org/bioproj/person/c80ba0d3
 hendc101,Claude Hendrix,White,medium,pre-1947 segregated MLB,
-singk001,Ken Singleton,African American,medium,SABR: rooming with Tim Foli was first integrated rooming in Mets history,https://sabr.org/bioproj/person/ken-singleton/
+singk001,Ken Singleton,African American,high,"""one of the few Black play-by-play announcers""",https://afro.com/former-baltimore-oriole-star-why-blacks-are-fading-away-from-baseball/
 groob101,Bob Groom,White,medium,pre-1947 segregated MLB,
 mages101,Sherry Magee,White,medium,pre-1947 segregated MLB,
 mitcc102,Clarence Mitchell,White,medium,pre-1947 segregated MLB,
 moliy001,Yadier Molina,Latino,high,"Born in Bayamon, Puerto Rico",https://en.wikipedia.org/wiki/Yadier_Molina
 coomj101,Jack Coombs,White,medium,pre-1947 segregated MLB,
 hernk001,Keith Hernandez,White,high,"Father Castilian Spanish ancestry, mother Scots-Irish",https://en.wikipedia.org/wiki/Keith_Hernandez
-dierl101,Larry Dierker,White,low,Not verified; search budget ran out before bios checked,
-kessd101,Don Kessinger,White,low,Not verified; search budget ran out before bios checked,
+dierl101,Larry Dierker,White,rule,no non-white background found after targeted search,https://www.wikipedia.com/wiki/Larry_Dierker
+kessd101,Don Kessinger,White,rule,no non-white background found after targeted search,https://sabr.org/bioproj/person/don-kessinger/
 smitb110,Bob Smith,White,medium,pre-1947 segregated MLB,
-bellj001,Jay Bell,White,low,Not verified; search budget ran out before bios checked,
+bellj001,Jay Bell,White,rule,no non-white background found after targeted search,
 ruckn101,Nap Rucker,White,medium,pre-1947 segregated MLB,
 hacks101,Stan Hack,White,medium,pre-1947 segregated MLB,
 hudss101,Sid Hudson,White,medium,pre-1947 segregated MLB (debut 1940),
@@ -263,39 +263,39 @@ taylt101,Tony Taylor,Latino,medium,Born in Cuba; Bowa called him black; mother p
 garcf002,Freddy Garcia,Latino,high,"Born in Caracas, Venezuela; race not stated",https://en.wikipedia.org/wiki/Freddy_Garc%C3%ADa
 whitf001,Frank White,African American,high,Only African-American player at Jacksonville; spoke of being black,https://sabr.org/bioproj/person/frank-white/
 tapak001,Kevin Tapani,White,medium,Great-grandparents emigrated from Finland,https://en.wikipedia.org/wiki/Kevin_Tapani
-fairr101,Ron Fairly,White,rule,no non-white background mentioned in bios; targeted search not run,https://en.wikipedia.org/wiki/Ron_Fairly
+fairr101,Ron Fairly,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Ron_Fairly
 downa101,Al Downing,African American,high,First African American pitcher in Yankees history,https://www.mlb.com/news/al-downing-path-to-the-yankees
-durhr001,Ray Durham,Unknown,low,Bios silent on race; targeted search could not be run,https://en.wikipedia.org/wiki/Ray_Durham
+durhr001,Ray Durham,African American,high,"Wikipedia category: ""African-American baseball players""",https://en.wikipedia.org/wiki/Ray_Durham
 podrj101,Johnny Podres,White,high,Of Lithuanian-Polish descent,https://en.wikipedia.org/wiki/Johnny_Podres
 leact101,Tommy Leach,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/Tommy_Leach
-selea001,Aaron Sele,White,rule,no non-white background mentioned in bios; targeted search not run,https://en.wikipedia.org/wiki/Aaron_Sele
+selea001,Aaron Sele,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Aaron_Sele
 soria001,Alfonso Soriano,Latino,high,Born in Dominican Republic; paternal family of Haitian descent,https://en.wikipedia.org/wiki/Alfonso_Soriano
 mogrg101,George Mogridge,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/George_Mogridge
 cruzn002,Nelson Cruz,Latino,high,"Born in Las Matas de Santa Cruz, Dominican Republic",https://en.wikipedia.org/wiki/Nelson_Cruz
-billj101,Jack Billingham,White,rule,no non-white background mentioned in bios; targeted search not run,https://en.wikipedia.org/wiki/Jack_Billingham
+billj101,Jack Billingham,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Jack_Billingham
 peckr101,Roger Peckinpaugh,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/Roger_Peckinpaugh
 gubim001,Mark Gubicza,White,high,Of Hungarian and Polish ancestry,https://en.wikipedia.org/wiki/Mark_Gubicza
-cey-r001,Ron Cey,White,rule,no non-white background mentioned in bios; targeted search not run,https://en.wikipedia.org/wiki/Ron_Cey
-white001,Ed Whitson,White,rule,no non-white background mentioned in bios; targeted search not run,https://en.wikipedia.org/wiki/Ed_Whitson
+cey-r001,Ron Cey,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Ron_Cey
+white001,Ed Whitson,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Ed_Whitson
 milac101,Clyde Milan,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/Clyde_Milan
-willw001,Woody Williams,White,rule,no non-white background mentioned in bios; targeted search not run,https://en.wikipedia.org/wiki/Woody_Williams_(baseball)
-oneip001,Paul O'Neill,White,rule,no non-white background mentioned in bios,https://sabr.org/bioproj/person/paul-oneill/
+willw001,Woody Williams,White,rule,no non-white background found after targeted search,https://www.mlb.com/player/woody-williams-124315
+oneip001,Paul O'Neill,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Paul_O%27Neill_(baseball)
 astap001,Pedro Astacio,Latino,high,"Born in Hato Mayor, Dominican Republic; no Afro-Latino mention",https://sabr.org/bioproj/person/pedro-astacio/
-dunna001,Adam Dunn,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Adam_Dunn
+dunna001,Adam Dunn,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Adam_Dunn
 thomt103,Tommy Thomas,White,medium,pre-1947 segregated MLB,https://sabr.org/bioproj/person/tommy-thomas/
-wilsw001,Willie Wilson,Unknown,low,Bio notes segregated Montgomery school; race not stated outright,https://sabr.org/bioproj/person/willie-wilson/
+wilsw001,Willie Wilson,African American,high,"Wikipedia category ""African-American baseball players""; MiLB ""Highlighting Omaha's Black Stars""",https://en.wikipedia.org/wiki/Willie_Wilson_(baseball)
 rowes101,Schoolboy Rowe,White,medium,pre-1947 segregated MLB,https://sabr.org/bioproj/person/schoolboy-rowe/
-chamc001,Chris Chambliss,Unknown,low,SABR and Wikipedia silent on race; targeted search not run,https://sabr.org/bioproj/person/chris-chambliss/
+chamc001,Chris Chambliss,African American,high,"Wikipedia category: ""African-American baseball players""",https://en.wikipedia.org/wiki/Chris_Chambliss
 burrr001,Ray Burris,African American,high,Faced racial slurs; needed African American host family on trips,https://sabr.org/bioproj/person/ray-burris/
-granc001,Curtis Granderson,Unknown,low,Bios silent on own race; promotes African-American players,https://en.wikipedia.org/wiki/Curtis_Granderson
-stott001,Todd Stottlemyre,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Todd_Stottlemyre
+granc001,Curtis Granderson,African American,high,"""One of the Yankees few African-American players.""",https://newsone.com/1402025/curtis-granderson-black-fans/
+stott001,Todd Stottlemyre,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Todd_Stottlemyre
 gillj102,Jim Gilliam,African American,high,Negro leagues player; one of first African American coaches,https://en.wikipedia.org/wiki/Jim_Gilliam
 falkc101,Cy Falkenberg,White,high,Both parents emigrated from Norway,https://sabr.org/bioproj/person/cy-falkenberg/
 kinsi001,Ian Kinsler,White,medium,"Jewish father, German-born great-grandparents, Catholic mother",https://en.wikipedia.org/wiki/Ian_Kinsler
-kiled001,Darryl Kile,White,rule,no non-white background mentioned in bios,https://sabr.org/bioproj/person/darryl-kile/
-bands101,Sal Bando,White,rule,no non-white background mentioned in bios,https://sabr.org/bioproj/person/sal-bando/
-krukm001,Mike Krukow,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Mike_Krukow
+kiled001,Darryl Kile,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Darryl_Kile
+bands101,Sal Bando,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Sal_Bando
+krukm001,Mike Krukow,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Mike_Krukow
 willm102,Maury Wills,African American,high,Bio states Wills being black mattered re Doris Day,https://sabr.org/bioproj/person/maury-wills/
 ewinb102,Bob Ewing,White,medium,pre-1947 segregated MLB,https://sabr.org/bioproj/person/bob-ewing/
-clarw001,Will Clark,White,rule,no non-white background mentioned in bios,https://sabr.org/bioproj/person/will-clark/
+clarw001,Will Clark,White,rule,no non-white background found after targeted search,https://en.wikipedia.org/wiki/Will_Clark
 cuetj001,Johnny Cueto,Latino,high,"Born in San Pedro de Macoris, Dominican Republic",https://en.wikipedia.org/wiki/Johnny_Cueto

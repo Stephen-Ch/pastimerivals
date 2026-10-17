@@ -1,5 +1,5 @@
 id,name,category,confidence,evidence,source_url
-pierj002,Juan Pierre,Unknown,low,Family of Louisiana Creole heritage; race not explicitly stated,https://en.wikipedia.org/wiki/Juan_Pierre
+pierj002,Juan Pierre,African American,high,"Wikipedia category: ""African-American baseball players""; family ""of Creole heritage""",https://en.wikipedia.org/wiki/Juan_Pierre
 smitf106,Frank Smith,White,medium,pre-1947 segregated MLB,
 ibanr001,Raul Ibanez,Latino,high,Parents emigrated from Cuba to New York; Spanish descent,https://en.wikipedia.org/wiki/Raul_Ibanez
 caldr101,Ray Caldwell,White,medium,pre-1947 segregated MLB,
@@ -39,7 +39,7 @@ myerb103,Buddy Myer,White,medium,pre-1947 segregated MLB,
 singb101,Bill Singer,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Bill_Singer
 mattg001,Gary Matthews,African American,high,Andscape lists him among 1970s-80s black superstars,https://andscape.com/features/baseballs-black-knights-this-family-wants-to-save-black-baseball
 honer001,Rick Honeycutt,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Rick_Honeycutt
-mcgew001,Willie McGee,Unknown,low,"Bios and targeted search state no race; possibly Black, unconfirmed",https://sabr.org/?p=28505
+mcgew001,Willie McGee,African American,medium,"Listed among ""Cardinals African-American starters""",https://www.stlamerican.com/?p=108407
 johns101,Syl Johnson,White,medium,pre-1947 segregated MLB,https://en.wikipedia.org/wiki/Syl_Johnson_(baseball)
 groat101,Dick Groat,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Dick_Groat
 messa101,Andy Messersmith,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Andy_Messersmith
@@ -62,8 +62,8 @@ dennj001,John Denny,White,rule,no non-white background mentioned in bios,https:/
 joynw001,Wally Joyner,White,rule,no non-white background mentioned in bios,https://en.wikipedia.org/wiki/Wally_Joyner
 vandj101,Johnny Vander Meer,White,medium,pre-1947 segregated MLB,
 bondb101,Bobby Bonds,African American,high,Was the only black player on his 1964 minor league team,https://baseballhall.org/discover/card-corner/the-original-bonds
-gordt001,Tom Gordon,Unknown,low,Bios and targeted search state no racial background,https://en.wikipedia.org/wiki/Tom_Gordon
-whitd001,Devon White,Unknown,low,"Born in Kingston, Jamaica; race not stated",https://sabr.org/bioproj/person/devon-white/
+gordt001,Tom Gordon,African American,high,"Wikipedia category: ""African-American baseball players""",https://en.wikipedia.org/wiki/Tom_Gordon
+whitd001,Devon White,African American,low,"""born on December 29, 1962, in Kingston, Jamaica""; ""Jamaican-American centrefielder""",https://sabr.org/bioproj/person/Devon-White/
 donop102,Pete Donohue,White,medium,pre-1947 segregated MLB,
 mcrah001,Hal McRae,African American,high,First African-American manager of the Royals,https://sabr.org/bioproj/person/hal-mcrae/
 kennv101,Vern Kennedy,White,medium,pre-1947 segregated MLB,
