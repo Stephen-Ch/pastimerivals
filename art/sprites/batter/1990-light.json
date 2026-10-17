@@ -1,0 +1,19 @@
+{
+ "cell": [
+  360,
+  480
+ ],
+ "frames": 8,
+ "names": [
+  "stance",
+  "load",
+  "stride",
+  "swing",
+  "contact",
+  "follow",
+  "take",
+  "bail"
+ ],
+ "baseline": 468,
+ "scale": 0.7355
+}

@@ -1,8 +1,8 @@
-import { Component, computed, ElementRef, signal, viewChild } from '@angular/core';
+import { Component, computed, effect, ElementRef, signal, viewChild } from '@angular/core';
 import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResult } from './api';
 import { ReportView } from './report';
 import { PitchScene } from './pitch-scene';
-import { Era, eraOf } from './art';
+import { ArtManifest, Era, eraOf, PairArt, pairArt, PlayerArt, preloadImages } from './art';
 import { callFor, countFor, explain, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
@@ -87,7 +87,40 @@ export class App {
     return step ? explain(r.outcome, step, m.batter.name, m.pitcher.name) : '';
   });
 
+  // ---- Plan 18: comic art ----
+  private readonly manifest = signal<ArtManifest | null>(null);
+  /** Art for both players of the current matchup, or null (then both use drawn figures). */
+  protected readonly pair = computed<PairArt | null>(() => {
+    const p = this.pitcherReport(), b = this.batterReport();
+    if (!p || !b) return null;
+    return pairArt(this.manifest(), { id: p.id, era: eraOf(p.year), hand: p.throws }, { id: b.id, era: eraOf(b.year), hand: b.bats === 'L' ? 'L' : 'R' });
+  });
+  private readonly artOk = signal(false);
+  private artReady: Promise<boolean> = Promise.resolve(false);
+  protected readonly artWaiting = signal(false);
+  protected readonly sceneArt = signal<PairArt | null>(null);
+
+  protected cardFor(r: { id: string; role: string }): PlayerArt | null {
+    const a = this.pair();
+    if (!a) return null;
+    if (r.role === 'pit' && r.id === this.pitcherReport()?.id) return a.pit;
+    if (r.role === 'bat' && r.id === this.batterReport()?.id) return a.bat;
+    return null;
+  }
+
+  protected wrongLook() { api.event('art_wrong_look', this.session); }
+
   constructor() {
+    fetch('/art-manifest.json').then(r => (r.ok ? r.json() : null)).then(m => this.manifest.set(m && m.tones && m.sheets && m.cards ? (m as ArtManifest) : null)).catch(() => undefined);
+    effect(() => {
+      const a = this.pair();
+      this.artOk.set(false);
+      if (!a) { this.artReady = Promise.resolve(false); return; }
+      this.artReady = preloadImages([a.pit.sheet, a.bat.sheet, a.pit.card, a.bat.card]).then(ok => {
+        if (this.pair() === a) this.artOk.set(ok);
+        return ok;
+      });
+    });
     api.event('open', this.session);
     const shared = typeof location !== 'undefined' ? parseShare(location.search) : null;
     if (shared) {
@@ -114,6 +147,7 @@ export class App {
       api.event('matchup_view', this.session);
       const [br, pr] = await Promise.all([api.card(p.b, p.by, 'bat'), api.card(p.p, p.py, 'pit')]);
       this.batterReport.set(br); this.pitcherReport.set(pr);
+      if (this.manifest() && !this.pair()) api.event('art_fallback', this.session);
     } catch (e) { this.error.set((e as Error).message); }
     finally { this.busy.set(false); }
   }
@@ -184,6 +218,13 @@ export class App {
       this.busy.set(true); this.result.set(null); this.shareNote.set(null);
       const r = await api.pitch(p, seed);
       if (!seed) api.event('pitch', this.session);
+      if (this.pair() && !this.artOk()) {
+        // Wait up to 3 s for the art; otherwise this pitch uses the drawn figures (never swap mid-pitch).
+        this.artWaiting.set(true);
+        await Promise.race([this.artReady, new Promise(res => setTimeout(res, 3000))]);
+        this.artWaiting.set(false);
+      }
+      this.sceneArt.set(this.artOk() ? this.pair() : null);
       this.pending.set(r);   // the scene plays, then sceneDone() reveals the result
     } catch (e) { this.error.set((e as Error).message); }
     finally { this.busy.set(false); }

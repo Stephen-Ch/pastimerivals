@@ -28,11 +28,11 @@
         <h2>Tale of the tape</h2>
         <div class="tape-grid">
           <button type="button" class="tape-card" (click)="openReport(pitcherReport(), $event)" [attr.aria-label]="'Open scouting report for ' + pitcherReport()!.name">
-            <pr-report [report]="pitcherReport()!" [compact]="true" />
+            <pr-report [report]="pitcherReport()!" [compact]="true" [card]="pair()?.pit?.card ?? null" [cardMirror]="pair()?.pit?.mirror ?? false" />
           </button>
           <div class="tape-vs" aria-hidden="true">vs</div>
           <button type="button" class="tape-card" (click)="openReport(batterReport(), $event)" [attr.aria-label]="'Open scouting report for ' + batterReport()!.name">
-            <pr-report [report]="batterReport()!" [compact]="true" />
+            <pr-report [report]="batterReport()!" [compact]="true" [card]="pair()?.bat?.card ?? null" [cardMirror]="pair()?.bat?.mirror ?? false" />
           </button>
         </div>
         <dl class="tape-rows">
@@ -62,12 +62,12 @@
     </section>
 
     <section class="actions">
-      <button class="primary" type="button" (click)="throwPitch()" [disabled]="busy() || !!pending()">{{ result() ? 'Pitch again' : 'Pitch' }}</button>
+      <button class="primary" type="button" (click)="throwPitch()" [disabled]="busy() || !!pending()">{{ artWaiting() ? 'Loading art' : result() ? 'Pitch again' : 'Pitch' }}</button>
       <button type="button" (click)="runSims()" [disabled]="busy()">Sim 1,000</button>
     </section>
 
     @if (pending(); as pr) {
-      <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="batterReport()?.bats ?? 'R'" [outcome]="pr.outcome" [seed]="pr.seed" (done)="sceneDone()" />
+      <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="batterReport()?.bats ?? 'R'" [outcome]="pr.outcome" [seed]="pr.seed" [art]="sceneArt()" (done)="sceneDone()" />
     }
 
     @if (result(); as r) {
@@ -154,7 +154,7 @@
 <dialog #reportDialog class="report-dialog" (close)="onDialogClosed()" (click)="onDialogClick($event)" aria-label="Scouting report">
   @if (popup(); as r) {
     <div class="dialog-body">
-      <pr-report [report]="r" />
+      <pr-report [report]="r" [card]="cardFor(r)?.card ?? null" [cardMirror]="cardFor(r)?.mirror ?? false" (wrongLook)="wrongLook()" />
       <button type="button" class="close" (click)="closeReport()">Close</button>
     </div>
   }

@@ -1,0 +1,19 @@
+{
+ "cell": [
+  360,
+  480
+ ],
+ "frames": 8,
+ "names": [
+  "set",
+  "hands-up",
+  "kick",
+  "peak",
+  "stride",
+  "cock",
+  "release",
+  "follow"
+ ],
+ "baseline": 468,
+ "scale": 0.645
+}

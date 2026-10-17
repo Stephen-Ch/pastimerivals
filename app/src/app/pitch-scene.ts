@@ -1,6 +1,6 @@
 import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
-import { Era, figure } from './art';
+import { Era, figure, PairArt } from './art';
 import { countFor, OutcomeKey, PITCH_CAPTION, PitchKind } from './logic';
 
 export type Motion = 'hit' | 'miss' | 'take' | 'hbp' | 'out' | 'look' | 'foul';
@@ -25,6 +25,21 @@ export const SCENE_MS = 1600;
 export const LEAD_SPEED = 0.6;   // lead-up pitches play at 60% of the full length
 export const LEAD_MS = Math.round(SCENE_MS * LEAD_SPEED) + 150;
 
+/** Plan 18: pitcher frames (seconds at full speed). Set, hands up, kick, peak, stride, cock, release, follow. */
+export const PITCHER_FRAMES: [number, number][] = [[0, 0], [0.07, 1], [0.14, 2], [0.22, 3], [0.3, 4], [0.38, 5], [0.45, 6], [0.5, 7]];
+/** Cut from the batter's-eye shot to the pitcher's-eye shot at release. */
+export const CUT_S = 0.55;
+
+/** Plan 18: batter frames by motion. Stance, load, stride, swing, contact, follow, take, bail. Contact lands on ball arrival (1.05 s). */
+export function batterFrames(m: Motion): [number, number][] {
+  switch (m) {
+    case 'hit': case 'out': case 'foul': return [[CUT_S, 0], [0.7, 1], [0.8, 2], [0.9, 3], [1.05, 4], [1.2, 5]];
+    case 'miss': return [[CUT_S, 0], [0.7, 1], [0.8, 2], [0.9, 3], [1.1, 5]];
+    case 'take': case 'look': return [[CUT_S, 0], [0.9, 6]];
+    case 'hbp': return [[CUT_S, 0], [1.0, 7]];
+  }
+}
+
 export function prefersReducedMotion(): boolean {
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
@@ -34,6 +49,32 @@ export function prefersReducedMotion(): boolean {
   selector: 'pr-pitch-scene',
   template: `
     @for (k of [step()]; track k) {
+      @if (art(); as a) {
+        <div [class]="'scene sprite m-' + motion() + ' shot-' + shot()" [style.--k]="speed()">
+          <div class="pshot">
+            <svg viewBox="0 0 300 190" width="100%" height="100%" aria-hidden="true">
+              <defs><linearGradient id="sky2" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#cfd9e3"/><stop offset="1" stop-color="#e9e3d2"/></linearGradient></defs>
+              <rect width="300" height="190" fill="url(#sky2)"/>
+              <path d="M0 110 Q150 90 300 110 L300 190 L0 190 Z" fill="#7d9a5f"/>
+              <ellipse cx="150" cy="112" rx="34" ry="7" fill="#b48a5a"/>
+            </svg>
+            <div class="spr spit" [class.mirror]="a.pit.mirror" [style.background-image]="'url(' + a.pit.sheet + ')'" [style.--f]="pFrame()" aria-hidden="true"></div>
+          </div>
+          <div class="bshot" [class.mirror]="a.bat.mirror">
+            <svg viewBox="0 0 300 190" width="100%" height="100%" aria-hidden="true">
+              <rect width="300" height="190" fill="#c9d3c0"/>
+              <path d="M0 120 L300 120 L300 190 L0 190 Z" fill="#7d9a5f"/>
+              <ellipse cx="160" cy="176" rx="150" ry="22" fill="#b48a5a"/>
+              <path d="M178 172 L194 172 L194 176 L186 180 L178 176 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width="1"/>
+            </svg>
+            <div class="spr sbat" [style.background-image]="'url(' + a.bat.sheet + ')'" [style.--f]="bFrame()" aria-hidden="true"></div>
+            <svg class="ballsvg" viewBox="0 0 300 190" width="100%" height="100%" aria-hidden="true">
+              <circle class="ball2" cx="186" cy="118" r="2.6" fill="#fbf8f1" stroke="#2b2a28" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+            </svg>
+          </div>
+          <div class="board"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span></div>
+        </div>
+      } @else {
       <div class="scene" [class]="'scene m-' + motion()" [style.--k]="speed()">
         <svg viewBox="0 0 300 190" width="100%" height="100%" aria-hidden="true">
           <defs>
@@ -48,6 +89,7 @@ export function prefersReducedMotion(): boolean {
         </svg>
         <div class="board"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span></div>
       </div>
+      }
     }
     <div class="under">
       <span class="caption" aria-live="polite">{{ board().caption }}</span>
@@ -61,6 +103,30 @@ export function prefersReducedMotion(): boolean {
     .under { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
     .caption { font-weight: 600; min-height: 1.2em; }
     .skip { font: inherit; font-size: .9rem; cursor: pointer; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); padding: 10px 16px; min-height: 44px; }
+    .sprite { background: #c9d3c0; }
+    .pshot, .bshot { position: absolute; inset: 0; }
+    .shot-pit .bshot, .shot-bat .pshot { display: none; }
+    .bshot.mirror { transform: scaleX(-1); }
+    .spr { position: absolute; aspect-ratio: 364 / 480; background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
+    .spr.mirror { transform: scaleX(-1); }
+    .spr.spit { height: 30%; left: 42.8%; bottom: 40%; }
+    .spr.sbat { height: 86%; left: 22%; bottom: 5%; }
+    .ballsvg { position: absolute; inset: 0; }
+    .ball2 { transform-box: fill-box; transform-origin: center; opacity: 0; }
+    .shot-bat .ball2 { animation: in2 calc(.5s * var(--k, 1)) ease-in forwards; }
+    .shot-bat.m-hit .ball2 { animation: in2 calc(.5s * var(--k, 1)) ease-in forwards, hit2 calc(.55s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-out forwards; }
+    .shot-bat.m-out .ball2 { animation: in2 calc(.5s * var(--k, 1)) ease-in forwards, out2 calc(.5s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-out forwards; }
+    .shot-bat.m-foul .ball2 { animation: in2 calc(.5s * var(--k, 1)) ease-in forwards, foul2 calc(.45s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-out forwards; }
+    .shot-bat.m-miss .ball2, .shot-bat.m-look .ball2 { animation: in2 calc(.5s * var(--k, 1)) ease-in forwards, past2 calc(.3s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-in forwards; }
+    .shot-bat.m-take .ball2 { animation: wide2 calc(.6s * var(--k, 1)) ease-in forwards; }
+    .shot-bat.m-hbp .ball2 { animation: inside2 calc(.5s * var(--k, 1)) ease-in forwards; }
+    @keyframes in2 { 0% { opacity: 1; transform: translate(-36px, 60px) scale(3.5) } 100% { opacity: 1; transform: none } }
+    @keyframes hit2 { 0% { opacity: 1; transform: none } 100% { opacity: 1; transform: translate(-90px, -100px) scale(4) } }
+    @keyframes out2 { 0% { opacity: 1; transform: none } 100% { opacity: 1; transform: translate(10px, -90px) scale(1.6) } }
+    @keyframes foul2 { 0% { opacity: 1; transform: none } 100% { opacity: 0; transform: translate(50px, -70px) scale(.5) } }
+    @keyframes past2 { 0% { opacity: 1; transform: none } 100% { opacity: 0; transform: translate(4px, 14px) scale(.6) } }
+    @keyframes wide2 { 0% { opacity: 1; transform: translate(-36px, 60px) scale(3.5) } 100% { opacity: 1; transform: translate(34px, 8px) scale(.9) } }
+    @keyframes inside2 { 0% { opacity: 1; transform: translate(-36px, 60px) scale(3.5) } 100% { opacity: 1; transform: translate(-58px, -6px) scale(1.2) } }
     .pitcher { animation: windup calc(.55s * var(--k, 1)) ease-in-out both; transform-origin: 150px 112px; }
     .ball-path { transform-box: view-box; }
     .ball { transform-box: fill-box; transform-origin: center; opacity: 0; }
@@ -92,6 +158,8 @@ export class PitchScene {
   readonly bats = input<string>('R');
   readonly outcome = input.required<OutcomeKey>();
   readonly seed = input<string>('');
+  /** Plan 18: comic art for both players, already preloaded; null keeps the drawn figures. */
+  readonly art = input<PairArt | null>(null);
   readonly done = output<void>();
   private readonly sanitizer = inject(DomSanitizer);
 
@@ -99,6 +167,11 @@ export class PitchScene {
   /** Index into the lead-up pitches; equal to their length means the final pitch. */
   protected readonly step = signal(0);
   protected readonly board = signal<{ balls: number; strikes: number; caption: string }>({ balls: 0, strikes: 0, caption: '' });
+
+  protected readonly shot = signal<'pit' | 'bat'>('pit');
+  protected readonly pFrame = signal(0);
+  protected readonly bFrame = signal(0);
+  private frameTimers: ReturnType<typeof setTimeout>[] = [];
 
   protected readonly isFinal = computed(() => this.step() >= this.count().leadUp.length);
   protected readonly motion = computed<Motion>(() => {
@@ -114,13 +187,28 @@ export class PitchScene {
   private finished = false;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => clearTimeout(this.timer));
+    inject(DestroyRef).onDestroy(() => { clearTimeout(this.timer); this.clearFrames(); });
     // Start after inputs are bound; reduced motion goes straight to the result (deferred, never during render).
     this.timer = setTimeout(() => (prefersReducedMotion() ? this.finish() : this.next()), 0);
   }
 
+  private clearFrames() { this.frameTimers.forEach(clearTimeout); this.frameTimers = []; }
+
+  /** Steps both sprites through their frames for the current pitch (sprite mode only). */
+  private runFrames() {
+    this.clearFrames();
+    this.shot.set('pit'); this.pFrame.set(0); this.bFrame.set(0);
+    if (!this.art()) return;
+    const k = this.speed();
+    const at = (sec: number, fn: () => void) => this.frameTimers.push(setTimeout(fn, sec * 1000 * k));
+    for (const [t, f] of PITCHER_FRAMES) at(t, () => this.pFrame.set(f));
+    at(CUT_S, () => this.shot.set('bat'));
+    for (const [t, f] of batterFrames(this.motion())) at(t, () => this.bFrame.set(f));
+  }
+
   private next() {
     if (this.finished) return;
+    this.runFrames();
     if (this.isFinal()) { this.timer = setTimeout(() => this.finish(), SCENE_MS); return; }
     this.timer = setTimeout(() => {
       const p = this.count().leadUp[this.step()];
@@ -135,6 +223,7 @@ export class PitchScene {
     if (this.finished) return;
     this.finished = true;
     clearTimeout(this.timer);
+    this.clearFrames();
     this.done.emit();
   }
 }

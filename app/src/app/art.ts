@@ -95,3 +95,59 @@ export function figure(era: Era, pose: Pose, hand: string): string {
   return `<svg viewBox="0 0 120 160" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Illustrated ${pose === 'bat' ? 'batter' : 'pitcher'} in a ${era} style uniform">` +
     `<g${mirror}>${ground}${legs}${torso}${collar}${arms}${head}${headwear}</g></svg>`;
 }
+
+// ---- Plan 18: comic art (sprite sheets and matchup cards) ----
+
+export type Tone = 'light' | 'olive' | 'mediumbrown' | 'darkbrown';
+export type SheetTone = 'light' | 'darkbrown';
+
+export interface ArtManifest {
+  cell: [number, number];
+  frames: number;
+  sheets: Record<string, string>;   // 'pitcher/<era>/<tone>' -> url
+  cards: Record<string, string>;    // 'pitcher/<era>/<tone>/<a|b>' -> url
+  tones: Record<string, Tone>;      // player id -> researched tone
+}
+
+export interface PlayerArt { sheet: string; card: string; mirror: boolean; }
+export interface PairArt { pit: PlayerArt; bat: PlayerArt; }
+
+/** Decision D-B: animation sheets exist in two tones; olive and medium brown use the nearest one everywhere. */
+export function sheetTone(t: Tone): SheetTone {
+  return t === 'light' || t === 'olive' ? 'light' : 'darkbrown';
+}
+
+/** Stable a/b choice so a player always gets the same card. */
+export function variantFor(id: string): 'a' | 'b' {
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return h % 2 ? 'b' : 'a';
+}
+
+export function artFor(m: ArtManifest, id: string, role: Pose, era: Era, hand: string): PlayerArt | null {
+  const tone = m.tones?.[id];
+  if (!tone) return null;
+  const r = role === 'pit' ? 'pitcher' : 'batter';
+  const t = sheetTone(tone);
+  const sheet = m.sheets[`${r}/${era}/${t}`];
+  const card = m.cards[`${r}/${era}/${t}/${variantFor(id)}`] ?? m.cards[`${r}/${era}/${t}/a`];
+  return sheet && card ? { sheet, card, mirror: hand === 'L' } : null;
+}
+
+/** Both players get comic art, or neither does (no mixed styles in one matchup). */
+export function pairArt(m: ArtManifest | null, pit: { id: string; era: Era; hand: string }, bat: { id: string; era: Era; hand: string }): PairArt | null {
+  if (!m) return null;
+  const p = artFor(m, pit.id, 'pit', pit.era, pit.hand);
+  const b = artFor(m, bat.id, 'bat', bat.era, bat.hand);
+  return p && b ? { pit: p, bat: b } : null;
+}
+
+/** Loads and decodes images before a pitch so frames never show blank. Resolves false on any failure. */
+export function preloadImages(urls: string[]): Promise<boolean> {
+  return Promise.all(urls.map(u => new Promise<boolean>(res => {
+    const img = new Image();
+    img.onload = () => (img.decode ? img.decode().then(() => res(true), () => res(true)) : res(true));
+    img.onerror = () => res(false);
+    img.src = u;
+  }))).then(r => r.every(Boolean));
+}

@@ -1,0 +1,848 @@
+{
+ "card": [
+  480,
+  720
+ ],
+ "items": [
+  {
+   "era": 1901,
+   "tone": "darkbrown",
+   "variant": "a",
+   "source": "1901-darkbrown-a.png",
+   "layout": "framed",
+   "splitX": null,
+   "pitcher": {
+    "file": "pitcher/1901-darkbrown-a.webp",
+    "crop": [
+     27,
+     28,
+     705,
+     1057
+    ],
+    "bytes": 51642
+   },
+   "batter": {
+    "file": "batter/1901-darkbrown-a.webp",
+    "crop": [
+     743,
+     28,
+     1421,
+     1057
+    ],
+    "bytes": 57440
+   }
+  },
+  {
+   "era": 1901,
+   "tone": "darkbrown",
+   "variant": "b",
+   "source": "1901-darkbrown-b.png",
+   "layout": "framed",
+   "splitX": null,
+   "pitcher": {
+    "file": "pitcher/1901-darkbrown-b.webp",
+    "crop": [
+     27,
+     28,
+     705,
+     1057
+    ],
+    "bytes": 47256
+   },
+   "batter": {
+    "file": "batter/1901-darkbrown-b.webp",
+    "crop": [
+     743,
+     28,
+     1421,
+     1057
+    ],
+    "bytes": 53024
+   }
+  },
+  {
+   "era": 1901,
+   "tone": "light",
+   "variant": "a",
+   "source": "1901-light-a.png",
+   "layout": "fullbleed",
+   "splitX": 724,
+   "pitcher": {
+    "file": "pitcher/1901-light-a.webp",
+    "crop": [
+     0,
+     0,
+     724,
+     1086
+    ],
+    "bytes": 50174
+   },
+   "batter": {
+    "file": "batter/1901-light-a.webp",
+    "crop": [
+     725,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 50856
+   }
+  },
+  {
+   "era": 1901,
+   "tone": "light",
+   "variant": "b",
+   "source": "1901-light-b.png",
+   "layout": "fullbleed",
+   "splitX": 724,
+   "pitcher": {
+    "file": "pitcher/1901-light-b.webp",
+    "crop": [
+     0,
+     0,
+     724,
+     1086
+    ],
+    "bytes": 54148
+   },
+   "batter": {
+    "file": "batter/1901-light-b.webp",
+    "crop": [
+     725,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 46378
+   }
+  },
+  {
+   "era": 1901,
+   "tone": "mediumbrown",
+   "variant": "a",
+   "source": "1901-mediumbrown-a.png",
+   "layout": "fullbleed",
+   "splitX": 723,
+   "pitcher": {
+    "file": "pitcher/1901-mediumbrown-a.webp",
+    "crop": [
+     0,
+     0,
+     723,
+     1086
+    ],
+    "bytes": 48164
+   },
+   "batter": {
+    "file": "batter/1901-mediumbrown-a.webp",
+    "crop": [
+     724,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 54098
+   }
+  },
+  {
+   "era": 1901,
+   "tone": "olive",
+   "variant": "a",
+   "source": "1901-olive-a.png",
+   "layout": "fullbleed",
+   "splitX": 711,
+   "pitcher": {
+    "file": "pitcher/1901-olive-a.webp",
+    "crop": [
+     0,
+     0,
+     711,
+     1086
+    ],
+    "bytes": 40640
+   },
+   "batter": {
+    "file": "batter/1901-olive-a.webp",
+    "crop": [
+     712,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 40042
+   }
+  },
+  {
+   "era": 1920,
+   "tone": "darkbrown",
+   "variant": "a",
+   "source": "1920-darkbrown-a.png",
+   "layout": "framed",
+   "splitX": null,
+   "pitcher": {
+    "file": "pitcher/1920-darkbrown-a.webp",
+    "crop": [
+     27,
+     28,
+     705,
+     1057
+    ],
+    "bytes": 47442
+   },
+   "batter": {
+    "file": "batter/1920-darkbrown-a.webp",
+    "crop": [
+     743,
+     28,
+     1421,
+     1057
+    ],
+    "bytes": 51978
+   }
+  },
+  {
+   "era": 1920,
+   "tone": "darkbrown",
+   "variant": "b",
+   "source": "1920-darkbrown-b.png",
+   "layout": "framed",
+   "splitX": null,
+   "pitcher": {
+    "file": "pitcher/1920-darkbrown-b.webp",
+    "crop": [
+     27,
+     28,
+     705,
+     1057
+    ],
+    "bytes": 46252
+   },
+   "batter": {
+    "file": "batter/1920-darkbrown-b.webp",
+    "crop": [
+     743,
+     28,
+     1421,
+     1057
+    ],
+    "bytes": 53520
+   }
+  },
+  {
+   "era": 1920,
+   "tone": "light",
+   "variant": "a",
+   "source": "1920-light-a.png",
+   "layout": "fullbleed",
+   "splitX": 705,
+   "pitcher": {
+    "file": "pitcher/1920-light-a.webp",
+    "crop": [
+     0,
+     0,
+     705,
+     1086
+    ],
+    "bytes": 40436
+   },
+   "batter": {
+    "file": "batter/1920-light-a.webp",
+    "crop": [
+     706,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 38186
+   }
+  },
+  {
+   "era": 1920,
+   "tone": "light",
+   "variant": "b",
+   "source": "1920-light-b.png",
+   "layout": "fullbleed",
+   "splitX": 724,
+   "pitcher": {
+    "file": "pitcher/1920-light-b.webp",
+    "crop": [
+     0,
+     0,
+     724,
+     1086
+    ],
+    "bytes": 40506
+   },
+   "batter": {
+    "file": "batter/1920-light-b.webp",
+    "crop": [
+     725,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 42066
+   }
+  },
+  {
+   "era": 1920,
+   "tone": "mediumbrown",
+   "variant": "a",
+   "source": "1920-mediumbrown-a.png",
+   "layout": "fullbleed",
+   "splitX": 723,
+   "pitcher": {
+    "file": "pitcher/1920-mediumbrown-a.webp",
+    "crop": [
+     0,
+     0,
+     723,
+     1086
+    ],
+    "bytes": 54532
+   },
+   "batter": {
+    "file": "batter/1920-mediumbrown-a.webp",
+    "crop": [
+     724,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 60950
+   }
+  },
+  {
+   "era": 1920,
+   "tone": "olive",
+   "variant": "a",
+   "source": "1920-olive-a.png",
+   "layout": "fullbleed",
+   "splitX": 704,
+   "pitcher": {
+    "file": "pitcher/1920-olive-a.webp",
+    "crop": [
+     0,
+     0,
+     704,
+     1086
+    ],
+    "bytes": 36368
+   },
+   "batter": {
+    "file": "batter/1920-olive-a.webp",
+    "crop": [
+     705,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 35682
+   }
+  },
+  {
+   "era": 1946,
+   "tone": "darkbrown",
+   "variant": "a",
+   "source": "1946-darkbrown-a.png",
+   "layout": "framed",
+   "splitX": null,
+   "pitcher": {
+    "file": "pitcher/1946-darkbrown-a.webp",
+    "crop": [
+     27,
+     28,
+     705,
+     1057
+    ],
+    "bytes": 47466
+   },
+   "batter": {
+    "file": "batter/1946-darkbrown-a.webp",
+    "crop": [
+     743,
+     28,
+     1421,
+     1057
+    ],
+    "bytes": 52192
+   }
+  },
+  {
+   "era": 1946,
+   "tone": "darkbrown",
+   "variant": "b",
+   "source": "1946-darkbrown-b.png",
+   "layout": "framed",
+   "splitX": null,
+   "pitcher": {
+    "file": "pitcher/1946-darkbrown-b.webp",
+    "crop": [
+     27,
+     28,
+     705,
+     1057
+    ],
+    "bytes": 49704
+   },
+   "batter": {
+    "file": "batter/1946-darkbrown-b.webp",
+    "crop": [
+     743,
+     28,
+     1421,
+     1057
+    ],
+    "bytes": 55614
+   }
+  },
+  {
+   "era": 1946,
+   "tone": "light",
+   "variant": "a",
+   "source": "1946-light-a.png",
+   "layout": "fullbleed",
+   "splitX": 718,
+   "pitcher": {
+    "file": "pitcher/1946-light-a.webp",
+    "crop": [
+     0,
+     0,
+     718,
+     1086
+    ],
+    "bytes": 44154
+   },
+   "batter": {
+    "file": "batter/1946-light-a.webp",
+    "crop": [
+     719,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 40508
+   }
+  },
+  {
+   "era": 1946,
+   "tone": "light",
+   "variant": "b",
+   "source": "1946-light-b.png",
+   "layout": "fullbleed",
+   "splitX": 724,
+   "pitcher": {
+    "file": "pitcher/1946-light-b.webp",
+    "crop": [
+     0,
+     0,
+     724,
+     1086
+    ],
+    "bytes": 49662
+   },
+   "batter": {
+    "file": "batter/1946-light-b.webp",
+    "crop": [
+     725,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 47330
+   }
+  },
+  {
+   "era": 1946,
+   "tone": "mediumbrown",
+   "variant": "a",
+   "source": "1946-mediumbrown-a.png",
+   "layout": "fullbleed",
+   "splitX": 723,
+   "pitcher": {
+    "file": "pitcher/1946-mediumbrown-a.webp",
+    "crop": [
+     0,
+     0,
+     723,
+     1086
+    ],
+    "bytes": 50760
+   },
+   "batter": {
+    "file": "batter/1946-mediumbrown-a.webp",
+    "crop": [
+     724,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 56484
+   }
+  },
+  {
+   "era": 1946,
+   "tone": "olive",
+   "variant": "a",
+   "source": "1946-olive-a.png",
+   "layout": "fullbleed",
+   "splitX": 705,
+   "pitcher": {
+    "file": "pitcher/1946-olive-a.webp",
+    "crop": [
+     0,
+     0,
+     705,
+     1086
+    ],
+    "bytes": 44122
+   },
+   "batter": {
+    "file": "batter/1946-olive-a.webp",
+    "crop": [
+     706,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 42252
+   }
+  },
+  {
+   "era": 1970,
+   "tone": "darkbrown",
+   "variant": "a",
+   "source": "1970-darkbrown-a.png",
+   "layout": "framed",
+   "splitX": null,
+   "pitcher": {
+    "file": "pitcher/1970-darkbrown-a.webp",
+    "crop": [
+     27,
+     28,
+     705,
+     1057
+    ],
+    "bytes": 43564
+   },
+   "batter": {
+    "file": "batter/1970-darkbrown-a.webp",
+    "crop": [
+     743,
+     28,
+     1421,
+     1057
+    ],
+    "bytes": 47998
+   }
+  },
+  {
+   "era": 1970,
+   "tone": "darkbrown",
+   "variant": "b",
+   "source": "1970-darkbrown-b.png",
+   "layout": "framed",
+   "splitX": null,
+   "pitcher": {
+    "file": "pitcher/1970-darkbrown-b.webp",
+    "crop": [
+     27,
+     28,
+     705,
+     1057
+    ],
+    "bytes": 42170
+   },
+   "batter": {
+    "file": "batter/1970-darkbrown-b.webp",
+    "crop": [
+     743,
+     28,
+     1421,
+     1057
+    ],
+    "bytes": 47920
+   }
+  },
+  {
+   "era": 1970,
+   "tone": "light",
+   "variant": "a",
+   "source": "1970-light-a.png",
+   "layout": "fullbleed",
+   "splitX": 724,
+   "pitcher": {
+    "file": "pitcher/1970-light-a.webp",
+    "crop": [
+     0,
+     0,
+     724,
+     1086
+    ],
+    "bytes": 41848
+   },
+   "batter": {
+    "file": "batter/1970-light-a.webp",
+    "crop": [
+     725,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 44346
+   }
+  },
+  {
+   "era": 1970,
+   "tone": "light",
+   "variant": "b",
+   "source": "1970-light-b.png",
+   "layout": "fullbleed",
+   "splitX": 724,
+   "pitcher": {
+    "file": "pitcher/1970-light-b.webp",
+    "crop": [
+     0,
+     0,
+     724,
+     1086
+    ],
+    "bytes": 41022
+   },
+   "batter": {
+    "file": "batter/1970-light-b.webp",
+    "crop": [
+     725,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 42010
+   }
+  },
+  {
+   "era": 1970,
+   "tone": "mediumbrown",
+   "variant": "a",
+   "source": "1970-mediumbrown-a.png",
+   "layout": "fullbleed",
+   "splitX": 723,
+   "pitcher": {
+    "file": "pitcher/1970-mediumbrown-a.webp",
+    "crop": [
+     0,
+     0,
+     723,
+     1086
+    ],
+    "bytes": 41662
+   },
+   "batter": {
+    "file": "batter/1970-mediumbrown-a.webp",
+    "crop": [
+     724,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 47554
+   }
+  },
+  {
+   "era": 1970,
+   "tone": "olive",
+   "variant": "a",
+   "source": "1970-olive-a.png",
+   "layout": "fullbleed",
+   "splitX": 710,
+   "pitcher": {
+    "file": "pitcher/1970-olive-a.webp",
+    "crop": [
+     0,
+     0,
+     710,
+     1086
+    ],
+    "bytes": 38260
+   },
+   "batter": {
+    "file": "batter/1970-olive-a.webp",
+    "crop": [
+     711,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 38586
+   }
+  },
+  {
+   "era": 1990,
+   "tone": "darkbrown",
+   "variant": "a",
+   "source": "1990-darkbrown-a.png",
+   "layout": "framed",
+   "splitX": null,
+   "pitcher": {
+    "file": "pitcher/1990-darkbrown-a.webp",
+    "crop": [
+     27,
+     28,
+     705,
+     1057
+    ],
+    "bytes": 42718
+   },
+   "batter": {
+    "file": "batter/1990-darkbrown-a.webp",
+    "crop": [
+     743,
+     28,
+     1421,
+     1057
+    ],
+    "bytes": 51182
+   }
+  },
+  {
+   "era": 1990,
+   "tone": "darkbrown",
+   "variant": "b",
+   "source": "1990-darkbrown-b.png",
+   "layout": "framed",
+   "splitX": null,
+   "pitcher": {
+    "file": "pitcher/1990-darkbrown-b.webp",
+    "crop": [
+     27,
+     28,
+     705,
+     1057
+    ],
+    "bytes": 51030
+   },
+   "batter": {
+    "file": "batter/1990-darkbrown-b.webp",
+    "crop": [
+     743,
+     28,
+     1421,
+     1057
+    ],
+    "bytes": 50606
+   }
+  },
+  {
+   "era": 1990,
+   "tone": "light",
+   "variant": "a",
+   "source": "1990-light-a.png",
+   "layout": "fullbleed",
+   "splitX": 724,
+   "pitcher": {
+    "file": "pitcher/1990-light-a.webp",
+    "crop": [
+     0,
+     0,
+     724,
+     1086
+    ],
+    "bytes": 37200
+   },
+   "batter": {
+    "file": "batter/1990-light-a.webp",
+    "crop": [
+     725,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 35516
+   }
+  },
+  {
+   "era": 1990,
+   "tone": "light",
+   "variant": "b",
+   "source": "1990-light-b.png",
+   "layout": "fullbleed",
+   "splitX": 724,
+   "pitcher": {
+    "file": "pitcher/1990-light-b.webp",
+    "crop": [
+     0,
+     0,
+     724,
+     1086
+    ],
+    "bytes": 36868
+   },
+   "batter": {
+    "file": "batter/1990-light-b.webp",
+    "crop": [
+     725,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 34538
+   }
+  },
+  {
+   "era": 1990,
+   "tone": "mediumbrown",
+   "variant": "a",
+   "source": "1990-mediumbrown-a.png",
+   "layout": "fullbleed",
+   "splitX": 723,
+   "pitcher": {
+    "file": "pitcher/1990-mediumbrown-a.webp",
+    "crop": [
+     0,
+     0,
+     723,
+     1086
+    ],
+    "bytes": 43998
+   },
+   "batter": {
+    "file": "batter/1990-mediumbrown-a.webp",
+    "crop": [
+     724,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 48078
+   }
+  },
+  {
+   "era": 1990,
+   "tone": "olive",
+   "variant": "a",
+   "source": "1990-olive-a.png",
+   "layout": "fullbleed",
+   "splitX": 708,
+   "pitcher": {
+    "file": "pitcher/1990-olive-a.webp",
+    "crop": [
+     0,
+     0,
+     708,
+     1086
+    ],
+    "bytes": 39692
+   },
+   "batter": {
+    "file": "batter/1990-olive-a.webp",
+    "crop": [
+     709,
+     0,
+     1448,
+     1086
+    ],
+    "bytes": 37804
+   }
+  }
+ ]
+}

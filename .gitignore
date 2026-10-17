@@ -16,3 +16,4 @@ art/source/
 art/sprites/*.gif
 art/sprites/**/*.gif
 art/sprites/_check*.png
+__pycache__/

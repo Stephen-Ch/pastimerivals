@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { Report } from './api';
 import { Era, figure } from './art';
@@ -10,7 +10,11 @@ import { Era, figure } from './art';
     @let r = report();
     <article class="rep" [class.compact]="compact()" [class.back]="flipped()">
       @if (!flipped()) {
-        <div class="art" [innerHTML]="art()"></div>
+        @if (card(); as c) {
+          <div class="art card"><img [src]="c" [class.mirror]="cardMirror()" [alt]="'Illustrated ' + (r.role === 'pit' ? 'pitcher' : 'batter') + ' in a ' + r.era + ' uniform'" width="480" height="720" decoding="async"/></div>
+        } @else {
+          <div class="art" [innerHTML]="art()"></div>
+        }
         <div class="id">
           <h3>{{ r.name }}</h3>
           <p class="sub">{{ r.year }} · {{ r.position }} · {{ r.role === 'pit' ? 'Throws ' + hand(r.throws) : 'Bats ' + hand(r.bats) }}</p>
@@ -38,6 +42,9 @@ import { Era, figure } from './art';
           </dl>
         </div>
       }
+      @if (!compact() && card() && !flipped()) {
+        <button type="button" class="wrong" (click)="reportLook()">{{ lookSent() ? 'Thanks, noted' : 'Wrong look? Tell us' }}</button>
+      }
       @if (!compact()) {
         <button type="button" class="flip" (click)="flipped.set(!flipped())">{{ flipped() ? 'Show front' : 'Show stats' }}</button>
       }
@@ -48,6 +55,10 @@ import { Era, figure } from './art';
     .art { background: var(--paper); border-radius: 8px; aspect-ratio: 3 / 4; display: grid; place-items: center; overflow: hidden; }
     .art :first-child { width: 100%; height: 100%; }
     .compact { padding: 8px; gap: 4px; }
+    .art.card, .compact .art.card { aspect-ratio: 2 / 3; border: 3px solid #2b2a28; border-radius: 6px; background: #2b2a28; }
+    .art.card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .art.card img.mirror { transform: scaleX(-1); }
+    .wrong { justify-self: start; font: inherit; font-size: .8rem; cursor: pointer; border: 0; background: none; color: var(--accent-text); text-decoration: underline; padding: 8px 0; min-height: 40px; }
     .compact .art { aspect-ratio: 1 / 1; }
     h3 { margin: 0; font-size: 1.05rem; }
     .compact h3 { font-size: .9rem; }
@@ -66,6 +77,12 @@ import { Era, figure } from './art';
 export class ReportView {
   readonly report = input.required<Report>();
   readonly compact = input(false);
+  /** Plan 18: comic card image (null keeps the drawn figure). */
+  readonly card = input<string | null>(null);
+  readonly cardMirror = input(false);
+  readonly wrongLook = output<string>();
+  protected readonly lookSent = signal(false);
+  protected reportLook() { if (!this.lookSent()) { this.lookSent.set(true); this.wrongLook.emit(this.report().id); } }
   protected readonly flipped = signal(false);
   private readonly sanitizer = inject(DomSanitizer);
 
