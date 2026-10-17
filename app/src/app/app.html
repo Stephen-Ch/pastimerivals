@@ -72,7 +72,8 @@
 
     @if (result(); as r) {
       <section class="result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
-        <p class="outcome">{{ label(r.outcome) }}</p>
+        <p class="call">{{ callText() }}</p>
+        <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong></p>
         <p class="why">{{ resultText() }}</p>
         <p class="count-note">On a {{ countText() }} count. Pitch count is for fun; only the result comes from the odds.</p>
         <div class="row">

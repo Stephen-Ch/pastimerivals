@@ -24,15 +24,15 @@ export function percent(p: number): string {
 export interface Pick { b: string; by: number; p: string; py: number; }
 
 export function shareUrl(origin: string, pick: Pick, seed: string, version: string): string {
-  const q = new URLSearchParams({ b: pick.b, by: String(pick.by), p: pick.p, py: String(pick.py), s: seed, v: version });
+  const q = new URLSearchParams({ b: pick.b, by: String(pick.by), p: pick.p, py: String(pick.py), s: seed, v: version, d: DECORATION_VERSION });
   return `${origin}/?${q.toString()}`;
 }
 
-export function parseShare(search: string): { pick: Pick; seed: string; version: string } | null {
+export function parseShare(search: string): { pick: Pick; seed: string; version: string; deco: string } | null {
   const q = new URLSearchParams(search);
   const b = q.get('b'), p = q.get('p'), by = Number(q.get('by')), py = Number(q.get('py')), s = q.get('s');
   if (!b || !p || !by || !py || !s) return null;
-  return { pick: { b, by, p, py }, seed: s, version: q.get('v') ?? '' };
+  return { pick: { b, by, p, py }, seed: s, version: q.get('v') ?? '', deco: q.get('d') ?? '1' };
 }
 
 export function timesLeague(observed: number | null | undefined, league: number): string {
@@ -113,3 +113,98 @@ export function countFor(o: OutcomeKey, seed: string): AtBatCount {
 }
 
 export const PITCH_CAPTION: Record<PitchKind, string> = { ball: 'Ball', called: 'Strike', swinging: 'Swing and miss', foul: 'Foul' };
+
+// ---- Plan 12: announcer calls. Decoration only, like the count. Version a1 is frozen. ----
+export const DECORATION_VERSION = '1';   // 1 = count c1 + call a1; travels in share links as d=1
+type Dir = 'pull' | 'center' | 'opp';
+type Spot = 'left' | 'left-center' | 'center' | 'right-center' | 'right';
+const FIELD: Record<string, string> = {
+  P: 'the pitcher', C: 'the catcher', '1B': 'first', '2B': 'second', SS: 'short', '3B': 'third',
+  LF: 'left', CF: 'center', RF: 'right',
+};
+
+function stream(prefix: string, seed: string): () => number {
+  let h = 2166136261;
+  for (const ch of `${prefix}:${seed}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  let a = h >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Side the batter hits from this at-bat: switch hitters bat opposite the pitcher; unknowns count as right. */
+export function hitsFrom(bats: string | null | undefined, pitcherThrows: string | null | undefined): 'L' | 'R' {
+  const b = (bats ?? 'R').toUpperCase();
+  if (b === 'L') return 'L';
+  if (b === 'B' || b === 'S') return (pitcherThrows ?? 'R').toUpperCase() === 'L' ? 'R' : 'L';
+  return 'R';
+}
+
+export interface Call { text: string; type: string; fielder?: string; spot?: Spot; dir?: Dir; }
+
+/** One announcer-style line for the result. The engine only decided the outcome; the rest is for show. */
+export function callFor(o: OutcomeKey, seed: string, count: AtBatCount, batter: string, bats?: string | null, pitcherThrows?: string | null): Call {
+  const r = stream('a1', seed);
+  const one = <T,>(xs: T[]): T => xs[Math.floor(r() * xs.length)];
+  const side = hitsFrom(bats, pitcherThrows);
+  const x = r();
+  const dir: Dir = x < 0.5 ? 'pull' : x < 0.8 ? 'center' : 'opp';
+  // Spots as seen by a right-handed hitter, then mirrored for left-handed hitting.
+  const spotR: Spot = dir === 'pull' ? one<Spot>(['left', 'left-center']) : dir === 'center' ? 'center' : one<Spot>(['right-center', 'right']);
+  const mirror: Record<Spot, Spot> = { left: 'right', 'left-center': 'right-center', center: 'center', 'right-center': 'left-center', right: 'left' };
+  const spot = side === 'R' ? spotR : mirror[spotR];
+  const mirrorPos = (p: string) => side === 'R' ? p : ({ '3B': '1B', '1B': '3B', SS: '2B', '2B': 'SS', LF: 'RF', RF: 'LF' } as Record<string, string>)[p] ?? p;
+  const pos = (byDir: Record<Dir, string[]>) => mirrorPos(one(byDir[dir]));
+  const of = (s: Spot) => (s === 'left' || s === 'left-center' ? 'LF' : s === 'center' ? 'CF' : 'RF');
+  const lineSpot = spot === 'left' || spot === 'right';
+  const n = batter;
+  switch (o) {
+    case 'k': return { type: 'strikeout', text: `${n} struck out ${count.finalKind === 'called' ? 'looking' : 'swinging'}.` };
+    case 'bb': return { type: 'walk', text: count.balls === 3 && count.strikes === 0 && count.leadUp.length === 3 ? `${n} walked on four pitches.` : `${n} drew a walk.` };
+    case 'hbp': return { type: 'hbp', text: `${n} was hit by a pitch.` };
+    case 'hr': {
+      const t = one([`homered to ${spot}.`, `drove one deep to ${spot} for a home run.`, `hit it over the wall in ${spot}.`]);
+      return { type: 'hr', spot, dir, text: `${n} ${t}` };
+    }
+    case 'triple': {
+      const where = lineSpot ? `into the ${spot}-field corner` : spot === 'center' ? `over the center fielder's head` : `into the ${spot} gap`;
+      return { type: 'triple', spot, dir, text: `${n} tripled ${where}.` };
+    }
+    case 'double': {
+      const where = lineSpot ? one([`down the ${spot}-field line`, `into the ${spot}-field corner`]) : spot === 'center' ? `over the center fielder's head` : `into the ${spot} gap`;
+      return { type: 'double', spot, dir, text: `${n} doubled ${where}.` };
+    }
+    case 'single': {
+      const field = spot === 'left-center' ? 'left' : spot === 'right-center' ? 'right' : spot;
+      const t = one([
+        field === 'center' ? 'singled up the middle.' : `grounded a single through the ${field === 'left' ? 'left' : 'right'} side.`,
+        `lined a single to ${field}.`, `blooped a single into ${field}.`]);
+      return { type: 'single', spot, dir, text: `${n} ${t}` };
+    }
+    case 'oip': {
+      const y = r();
+      if (y < 0.42) {
+        const f = pos({ pull: ['3B', 'SS'], center: ['SS', '2B', 'P'], opp: ['2B', '1B'] });
+        return { type: 'ground', fielder: f, dir, text: `${n} grounded out to ${FIELD[f]}.` };
+      }
+      if (y < 0.70) {
+        const f = of(spot);
+        return { type: 'fly', fielder: f, spot, dir, text: `${n} flied out to ${r() < 0.25 ? 'deep ' : ''}${FIELD[f]}.` };
+      }
+      if (y < 0.82) {
+        const f = pos({ pull: ['3B', 'SS', 'LF'], center: ['P', 'SS', '2B', 'CF'], opp: ['2B', '1B', 'RF'] });
+        return { type: 'line', fielder: f, dir, text: `${n} lined out to ${FIELD[f]}.` };
+      }
+      if (y < 0.92) {
+        const f = one(['1B', '2B', 'SS', '3B']);
+        return { type: 'pop', fielder: f, text: `${n} popped out to ${FIELD[f]}.` };
+      }
+      const f = pos({ pull: ['3B', 'LF'], center: ['C'], opp: ['1B', 'RF'] });
+      return { type: 'foul', fielder: f, dir, text: `${n} fouled out to ${FIELD[f]}.` };
+    }
+  }
+}

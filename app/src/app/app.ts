@@ -3,7 +3,7 @@ import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResul
 import { ReportView } from './report';
 import { PitchScene } from './pitch-scene';
 import { Era, eraOf } from './art';
-import { countFor, explain, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, shareUrl, timesLeague } from './logic';
+import { callFor, countFor, explain, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
 interface Chosen { id: string; name: string; year: number; line: string; }
@@ -70,6 +70,14 @@ export class App {
     if (!r) return '';
     const c = countFor(r.outcome, r.seed);
     return `${c.balls}-${c.strikes}`;
+  });
+
+  /** Announcer line, e.g. "Babe Ruth grounded out to second." For show only (plan 12). */
+  protected readonly callText = computed(() => {
+    const r = this.result(), m = this.matchup();
+    if (!r || !m) return '';
+    return callFor(r.outcome, r.seed, countFor(r.outcome, r.seed), m.batter.name,
+      this.batterReport()?.bats ?? m.batter.hand, this.pitcherReport()?.throws ?? m.pitcher.hand).text;
   });
 
   protected readonly resultText = computed(() => {
@@ -202,7 +210,7 @@ export class App {
     const p = this.pick(), r = this.result(), m = this.matchup();
     if (!p || !r || !m) return;
     const url = shareUrl(location.origin, p, r.seed, r.engineVersion);
-    const text = `${m.batter.name} (${m.batter.year}) vs ${m.pitcher.name} (${m.pitcher.year}): ${label(r.outcome)}! Can you beat it?`;
+    const text = `${this.callText()} (${m.batter.name} ${m.batter.year} vs ${m.pitcher.name} ${m.pitcher.year}) Can you beat it?`;
     api.event('share', this.session);
     try {
       if (navigator.share) { await navigator.share({ title: 'Pastime Rivals', text, url }); return; }

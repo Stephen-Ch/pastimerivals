@@ -32,7 +32,8 @@ button.link { background: none; border: none; color: var(--accent-text); padding
 .result { margin-top: 18px; padding: 18px; border-radius: 14px; background: var(--surface-1); border: 1px solid var(--border); animation: pop .25s ease-out; }
 .result.good { border-color: var(--accent); }
 @keyframes pop { from { transform: scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
-.outcome { font-size: 2rem; font-weight: 700; margin: 0; }
+.call { font-size: 1.5rem; font-weight: 700; line-height: 1.25; margin: 0; }
+.outcome-tag { margin: 6px 0 0; font-size: .85rem; color: var(--text-secondary); }
 .why { margin: 8px 0 14px; line-height: 1.45; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
 .how { margin-top: 22px; }

@@ -60,6 +60,7 @@ export function prefersReducedMotion(): boolean {
     .board { position: absolute; top: 8px; right: 8px; background: #23312a; color: #f4efe2; border-radius: 8px; padding: 4px 10px; font: 600 1rem/1.2 ui-monospace, monospace; }
     .under { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
     .caption { font-weight: 600; min-height: 1.2em; }
+    .skip { font: inherit; font-size: .9rem; cursor: pointer; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); padding: 10px 16px; min-height: 44px; }
     .pitcher { animation: windup calc(.55s * var(--k, 1)) ease-in-out both; transform-origin: 150px 112px; }
     .ball-path { transform-box: view-box; }
     .ball { transform-box: fill-box; transform-origin: center; opacity: 0; }
