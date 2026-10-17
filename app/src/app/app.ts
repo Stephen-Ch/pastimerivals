@@ -72,6 +72,14 @@ export class App {
     return `${c.balls}-${c.strikes}`;
   });
 
+  /** Plan 21: call for the pitch being animated, so the ball flight matches what the announcer will say. */
+  protected readonly sceneCall = computed(() => {
+    const r = this.pending(), m = this.matchup();
+    if (!r || !m) return null;
+    return callFor(r.outcome, r.seed, countFor(r.outcome, r.seed), m.batter.name,
+      this.batterReport()?.bats ?? m.batter.hand, this.pitcherReport()?.throws ?? m.pitcher.hand);
+  });
+
   /** Announcer line, e.g. "Babe Ruth grounded out to second." For show only (plan 12). */
   protected readonly callText = computed(() => {
     const r = this.result(), m = this.matchup();

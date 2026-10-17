@@ -206,6 +206,26 @@ def _frames(path, role, mode):
     out = []
     for i in range(8):
         own = (owner_map == i) & fg
+        # plan 21: take and bail frames lose small bright loose pieces (their drawn balls); the code draws the ball
+        if role == 'batter' and i in (6, 7):
+            cl, cn = ndi.label(own)
+            if cn > 1:
+                cs = ndi.sum(np.ones_like(cl), cl, range(1, cn + 1))
+                big = int(np.argmax(cs)) + 1
+                for j in range(1, cn + 1):
+                    if j == big: continue
+                    m = cl == j
+                    if cs[j - 1] < 2500 and (a[m].mean() > 160 or cs[j - 1] < 600): own = own & ~m
+        # plan 21: pitcher dust specks wholly inside the bottom 20% are dropped (release-frame ball sits higher)
+        if role == 'pitcher':
+            cl, cn = ndi.label(own)
+            if cn > 1:
+                cs = ndi.sum(np.ones_like(cl), cl, range(1, cn + 1))
+                big = int(np.argmax(cs)) + 1
+                ys_all = np.nonzero(own)[0]; band_top = ys_all.min() + 0.8 * (ys_all.max() - ys_all.min())
+                for j, sl in enumerate(ndi.find_objects(cl), 1):
+                    if j == big or sl is None: continue
+                    if cs[j - 1] < 300 and sl[0].start >= band_top: own = own & ~(cl == j)
         if role == 'batter' and i not in (4, 6, 7):
             # only contact, take and bail frames may carry a loose ball; drop loose bits elsewhere
             cl, cn = ndi.label(own)

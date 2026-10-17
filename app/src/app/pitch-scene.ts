@@ -1,7 +1,7 @@
 import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { Era, figure, PairArt } from './art';
-import { countFor, OutcomeKey, PITCH_CAPTION, PitchKind } from './logic';
+import { Call, countFor, OutcomeKey, PITCH_CAPTION, PitchKind, Trajectory } from './logic';
 
 export type Motion = 'hit' | 'miss' | 'take' | 'hbp' | 'out' | 'look' | 'foul';
 
@@ -31,7 +31,9 @@ export const RELEASE_S = 1.05;
 export const HANDOFF_S = 1.15;   // ball leaves the pitcher panel, enters the batter panel
 export const ARRIVE_S = 1.4;     // ball reaches the plate; contact frame shows here
 export const SPLIT_END_S = 2.4;
-export const LEAD_START_S = 0.75; // lead-up pitches skip the windup and start at the stride
+export const LEAD_START_S = 0.6;  // lead-up pitches come from the stretch: set, short leg lift, stride
+/** Plan 21: stretch delivery for lead-up pitches (set, kick, stride, cock, release, follow). */
+export const STRETCH_FRAMES: [number, number][] = [[0, 0], [0.66, 2], [0.75, 4], [0.9, 5], [1.05, 6], [1.2, 7]];
 export const LEAD_DURATION = 0.8; // lead-up pitches take 80% of the remaining time
 export const SPLIT_MS = SPLIT_END_S * 1000;
 export const SPLIT_LEAD_MS = Math.round((SPLIT_END_S - LEAD_START_S) * LEAD_DURATION * 1000) + 150;
@@ -57,36 +59,90 @@ export interface BallPos { panel: 'pit' | 'bat' | null; x: number; y: number; d:
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
 const clamp01 = (u: number) => Math.max(0, Math.min(1, u));
 
+/** Stable 0..1 numbers for a pitch (plan 21): same seed and pitch index always give the same location. */
+export function pitchRand(seed: string, index: number): [number, number, number] {
+  let h = 2166136261;
+  for (const c of `${seed}:${index}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  const next = () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0) % 10000) / 10000;
+  return [next(), next(), next()];
+}
+
+/** Screen side a batted ball leaves toward, seen from the pitcher: left field is the viewer's right (+1). */
+export function exitSide(call: Call | null): number {
+  if (!call) return 0;
+  const bySpot: Record<string, number> = { left: 1, 'left-center': 0.5, center: 0, 'right-center': -0.5, right: -1 };
+  if (call.spot) return bySpot[call.spot];
+  const byFielder: Record<string, number> = { '3B': 1, SS: 0.5, LF: 1, '2B': -0.5, '1B': -1, RF: -1, P: 0, C: 0, CF: 0 };
+  return byFielder[call.fielder ?? ''] ?? 0;
+}
+
+/** Where the pitch crosses the plate, in % of the batter panel (screen space). */
+export function pitchTarget(m: Motion, bats: string, rand: [number, number, number]): { x: number; y: number } {
+  const dir = bats === 'L' ? -1 : 1;
+  const batterX = 50 - 12 * dir, plateX = 50 + 20 * dir;
+  const [a, b, c] = rand;
+  switch (m) {
+    case 'hit': case 'out': case 'foul': return { x: 50 + 15 * dir, y: 55 };   // the art's bat meets it here
+    case 'hbp': return { x: batterX + 4 * dir, y: 50 };
+    case 'look': return { x: batterX + (3 + a * 10) * dir, y: 50 + b * 14 };   // in the zone, just inside his front hip
+    case 'miss': return { x: batterX + (3 + a * 10) * dir, y: 58 + b * 8 };    // under the bat line, so the swing misses
+    case 'take': {                                                              // outside the zone: wide, high, low or inside
+      if (c < 0.4) return { x: plateX + (8 + a * 8) * dir, y: 52 + b * 10 };
+      if (c < 0.6) return { x: batterX + (4 + a * 8) * dir, y: 38 + b * 4 };
+      if (c < 0.85) return { x: batterX + (4 + a * 8) * dir, y: 70 + b * 4 };
+      return { x: batterX - (2 + a * 4) * dir, y: 52 + b * 6 };
+    }
+  }
+}
+
+/** Ball after contact, by trajectory. Things heading to the outfield come toward the camera (behind the pitcher) and grow. */
+function flight(tr: Trajectory, side: number, from: { x: number; y: number }, dir: number, batterX: number, u: number): BallPos {
+  const e = 1 - (1 - u) * (1 - u);
+  const to = (x: number, y: number, d: number, o = 1): BallPos => ({ panel: 'bat', x: lerp(from.x, x, e), y: lerp(from.y, y, e), d: lerp(4.5, d, e), o });
+  switch (tr) {
+    case 'ground': return u < 0.35
+      ? { panel: 'bat', x: lerp(from.x, from.x + side * 6, u / 0.35), y: lerp(from.y, 88, u / 0.35), d: 5, o: 1 }
+      : { panel: 'bat', x: lerp(from.x + side * 6, 50 + side * 70, (u - 0.35) / 0.65), y: lerp(88, 97, (u - 0.35) / 0.65), d: lerp(5, 11, (u - 0.35) / 0.65), o: 1 };
+    case 'line': return to(50 + side * 75, 42, 13);
+    case 'bloop': return to(50 + side * 40, 8, 7);
+    case 'pop': return to(from.x, -10, 4.5);
+    case 'foul': return to(batterX - 10 * dir, -8, 2.5, 1 - u);   // back over his shoulder, away from the camera
+    default: return to(50 + side * 45, -20, 11);                   // fly
+  }
+}
+
 /** Where the ball is at scene time t, in % of the panel (x, y, diameter d as % of panel width, opacity o).
  *  Screen space: never mirrored. dir = side of the plate (+1 right for a right-handed batter seen from the mound). */
-export function ballAt(t: number, m: Motion, throws: string, bats: string): BallPos {
+export function ballAt(t: number, m: Motion, throws: string, bats: string, rand: [number, number, number] = [0.5, 0.5, 0.5], tr: Trajectory | null = null, side = 0): BallPos {
   const none: BallPos = { panel: null, x: 0, y: 0, d: 0, o: 0 };
-  if (t < RELEASE_S) return none;
   if (t < HANDOFF_S) return none;   // the release frame draws the ball in the pitcher's hand
   const dir = bats === 'L' ? -1 : 1;
-  const plateX = 50 + 20 * dir, batterX = 50 - 12 * dir;
+  const batterX = 50 - 12 * dir;
   const startX = 50 + (throws === 'L' ? -10 : 10);
-  // The contact, take and bail frames draw their own ball; ours meets it there and hides while that frame shows.
-  const zone = { x: 50 + 15 * dir, y: 55 };
-  const strike = { x: batterX + 8 * dir, y: 60 };   // plan 20: just inside his front hip, belt to knee
-  const end = m === 'take' ? { x: plateX + 10 * dir, y: 58 } : m === 'hbp' ? { x: batterX + 4 * dir, y: 50 }
-    : m === 'miss' || m === 'look' ? strike : zone;
+  const end = pitchTarget(m, bats, rand);
   if (t < ARRIVE_S) {  // from behind the pitcher (bottom) toward the plate, shrinking
     const u = clamp01((t - HANDOFF_S) / (ARRIVE_S - HANDOFF_S)), e = u * u;
     return { panel: 'bat', x: lerp(startX, end.x, e), y: lerp(104, end.y, e), d: lerp(16, 4.5, e), o: 1 };
   }
-  const HIDE = 0.1;   // contact frame on screen
-  const u = clamp01((t - ARRIVE_S - HIDE) / 0.55), e = 1 - (1 - u) * (1 - u);
-  const fromX = zone.x + 5 * dir, fromY = 50, hidden = t < ARRIVE_S + HIDE;
   switch (m) {
-    case 'hit': return { panel: 'bat', x: lerp(fromX, plateX - 35 * dir, e), y: lerp(fromY, -10, e), d: lerp(4.5, 12, e), o: hidden ? 0 : 1 };
-    case 'out': return { panel: 'bat', x: lerp(fromX, plateX + 5 * dir, e), y: lerp(fromY, 2, e), d: lerp(4.5, 6, e), o: hidden ? 0 : 1 };
-    case 'foul': return { panel: 'bat', x: lerp(fromX, plateX + 30 * dir, e), y: lerp(fromY, -5, e), d: lerp(4.5, 2.5, e), o: hidden ? 0 : 1 - u };
+    case 'hit': case 'out': case 'foul': {
+      const HIDE = 0.1;   // the contact frame draws its own ball for a moment
+      if (t < ARRIVE_S + HIDE) return { panel: 'bat', x: end.x, y: end.y, d: 4.5, o: 0 };
+      const dur = tr === 'line' ? 0.4 : 0.55;
+      return flight(tr ?? (m === 'foul' ? 'foul' : 'fly'), side, end, dir, batterX, clamp01((t - ARRIVE_S - HIDE) / dur));
+    }
     case 'miss': case 'look': {   // past him to the catcher: behind his legs, shrinking
       const v = clamp01((t - ARRIVE_S) / 0.35);
-      return { panel: 'bat', x: end.x, y: lerp(end.y, 64, v), d: lerp(4.5, 2.5, v), o: 1 - v, behind: true };
+      return { panel: 'bat', x: end.x, y: lerp(end.y, end.y + 5, v), d: lerp(4.5, 2.5, v), o: 1 - v, behind: true };
     }
-    default: return { panel: 'bat', x: end.x, y: end.y, d: 4.5, o: 0 };   // take, hbp: the frame's own ball takes over
+    case 'take': {               // a ball: carries on past him and fades
+      const v = clamp01((t - ARRIVE_S) / 0.3);
+      return { panel: 'bat', x: end.x, y: end.y + 3 * v, d: lerp(4.5, 3, v), o: 1 - v, behind: true };
+    }
+    default: {                   // hbp: hits him, drops and fades (the bail frame's own ball was removed)
+      const v = clamp01((t - ARRIVE_S) / 0.4);
+      return { panel: 'bat', x: end.x + 3 * dir * v, y: end.y + 12 * v, d: 4.5, o: 1 - v };
+    }
   }
 }
 
@@ -191,6 +247,8 @@ export class PitchScene {
   readonly seed = input<string>('');
   /** Plan 18: comic art for both players, already preloaded; null keeps the drawn figures. */
   readonly art = input<PairArt | null>(null);
+  /** Plan 21: the announcer call for the final pitch (trajectory and direction of a batted ball). */
+  readonly call = input<Call | null>(null);
   readonly done = output<void>();
   private readonly sanitizer = inject(DomSanitizer);
 
@@ -235,15 +293,20 @@ export class PitchScene {
     if (!a) return;
     const final = this.isFinal(), m = this.motion();
     const t0 = final ? 0 : LEAD_START_S, rate = final ? 1 : 1 / LEAD_DURATION;
+    const ptable = final ? PITCHER_FRAMES : STRETCH_FRAMES;
+    const rand = pitchRand(this.seed(), this.step());
+    const c = final ? this.call() : null;
+    const tr: Trajectory | null = final ? (c?.trajectory ?? null) : m === 'foul' ? 'foul' : null;
+    const side = exitSide(c);
     const throws = this.throws(), bats = this.bats() === 'L' ? 'L' : 'R';
     const start = performance.now();
     const frames = batterFrames(m);
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: FrameRequestCallback) => setTimeout(() => fn(performance.now()), 16) as unknown as number;
     const tick = () => {
       const t = Math.min(SPLIT_END_S, t0 + ((performance.now() - start) / 1000) * rate);
-      this.pFrame.set(frameAt(PITCHER_FRAMES, t));
+      this.pFrame.set(frameAt(ptable, t));
       this.bFrame.set(frameAt(frames, t));
-      this.ball.set(ballAt(t, m, throws, bats));
+      this.ball.set(ballAt(t, m, throws, bats, rand, tr, side));
       this.dim.set(t >= HANDOFF_S);
       if (!this.finished && t < SPLIT_END_S) this.raf = raf(tick);
     };

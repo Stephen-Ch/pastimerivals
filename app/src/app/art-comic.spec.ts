@@ -1,5 +1,6 @@
 import { ArtManifest, artFor, pairArt, sheetTone, variantFor } from './art';
-import { ARRIVE_S, ballAt, batterFrames, frameAt, LEAD_START_S, PITCHER_FRAMES, RELEASE_S, SPLIT_LEAD_MS } from './pitch-scene';
+import { ARRIVE_S, ballAt, batterFrames, exitSide, frameAt, LEAD_START_S, pitchRand, pitchTarget, PITCHER_FRAMES, RELEASE_S, SPLIT_LEAD_MS, STRETCH_FRAMES } from './pitch-scene';
+import { callFor, countFor } from './logic';
 
 const man: ArtManifest = {
   cell: [364, 480], frames: 8,
@@ -53,8 +54,9 @@ describe('comic art (plan 18)', () => {
   });
 
   it('keeps lead-up pitches short but starts them at the stride', () => {
-    expect(frameAt(PITCHER_FRAMES, LEAD_START_S)).toBe(4);
-    expect(SPLIT_LEAD_MS).toBeLessThan(1600);
+    expect(frameAt(STRETCH_FRAMES, LEAD_START_S)).toBe(0);   // from the set position, never mid-stride
+    expect(STRETCH_FRAMES.map(([, f]) => f)).toEqual([0, 2, 4, 5, 6, 7]);
+    expect(SPLIT_LEAD_MS).toBeLessThan(1700);
   });
 
   it('moves the ball from the pitcher panel to the plate side of each batter', () => {
@@ -77,5 +79,36 @@ describe('comic art (plan 18)', () => {
       expect(past.y).toBeGreaterThan(60);
     }
     expect(ballAt(ARRIVE_S + 0.2, 'hit', 'R', 'R').behind).toBeFalsy();
+  });
+
+  it('places pitches from a stable hash: strikes in the zone, balls outside it (plan 21)', () => {
+    expect(pitchRand('abc', 2)).toEqual(pitchRand('abc', 2));
+    for (let i = 0; i < 40; i++) {
+      const r = pitchRand('s' + i, i);
+      for (const v of r) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThan(1); }
+      const s = pitchTarget('look', 'R', r), b = pitchTarget('take', 'R', r);
+      expect(s.x).toBeGreaterThanOrEqual(41); expect(s.x).toBeLessThanOrEqual(51);
+      expect(s.y).toBeGreaterThanOrEqual(50); expect(s.y).toBeLessThanOrEqual(64);
+      const inZone = b.x >= 41 && b.x <= 51 && b.y >= 50 && b.y <= 64;
+      expect(inZone).toBe(false);
+    }
+  });
+
+  it('sends batted balls to the side the announcer names, the same for lefties', () => {
+    expect(exitSide({ text: '', type: 'hr', spot: 'left' })).toBe(1);
+    expect(exitSide({ text: '', type: 'single', spot: 'right' })).toBe(-1);
+    expect(exitSide({ text: '', type: 'ground', fielder: 'SS' })).toBe(0.5);
+    const lf = ballAt(2.2, 'hit', 'R', 'L', [0.5, 0.5, 0.5], 'line', 1);
+    expect(lf.x).toBeGreaterThan(50);   // still the viewer's right for a left-handed batter
+    expect(ballAt(2.2, 'hit', 'R', 'R', [0.5, 0.5, 0.5], 'ground', 1).y).toBeGreaterThan(85);
+    expect(ballAt(2.2, 'out', 'R', 'R', [0.5, 0.5, 0.5], 'pop', 0).d).toBeCloseTo(4.5, 1);
+  });
+
+  it('gives every batted-ball call a trajectory', () => {
+    for (const o of ['single', 'double', 'triple', 'hr', 'oip'] as const)
+      for (let i = 0; i < 30; i++) {
+        const c = callFor(o, 'seed' + i, countFor(o, 'seed' + i), 'X', 'R', 'R');
+        expect(c.trajectory).toBeTruthy();
+      }
   });
 });

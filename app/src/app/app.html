@@ -67,7 +67,7 @@
     </section>
 
     @if (pending(); as pr) {
-      <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="batterReport()?.bats ?? 'R'" [outcome]="pr.outcome" [seed]="pr.seed" [art]="sceneArt()" (done)="sceneDone()" />
+      <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="batterReport()?.bats ?? 'R'" [outcome]="pr.outcome" [seed]="pr.seed" [art]="sceneArt()" [call]="sceneCall()" (done)="sceneDone()" />
     }
 
     @if (result(); as r) {

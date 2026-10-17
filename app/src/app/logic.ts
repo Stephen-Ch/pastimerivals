@@ -117,7 +117,9 @@ export const PITCH_CAPTION: Record<PitchKind, string> = { ball: 'Ball', called: 
 // ---- Plan 12: announcer calls. Decoration only, like the count. Version a1 is frozen. ----
 export const DECORATION_VERSION = '1';   // 1 = count c1 + call a1; travels in share links as d=1
 type Dir = 'pull' | 'center' | 'opp';
-type Spot = 'left' | 'left-center' | 'center' | 'right-center' | 'right';
+export type Spot = 'left' | 'left-center' | 'center' | 'right-center' | 'right';
+/** Plan 21: how the batted ball travels; the animation reads only this field. */
+export type Trajectory = 'ground' | 'line' | 'fly' | 'bloop' | 'pop' | 'foul';
 const FIELD: Record<string, string> = {
   P: 'the pitcher', C: 'the catcher', '1B': 'first', '2B': 'second', SS: 'short', '3B': 'third',
   LF: 'left', CF: 'center', RF: 'right',
@@ -144,7 +146,7 @@ export function hitsFrom(bats: string | null | undefined, pitcherThrows: string 
   return 'R';
 }
 
-export interface Call { text: string; type: string; fielder?: string; spot?: Spot; dir?: Dir; }
+export interface Call { text: string; type: string; fielder?: string; spot?: Spot; dir?: Dir; trajectory?: Trajectory; }
 
 /** One announcer-style line for the result. The engine only decided the outcome; the rest is for show. */
 export function callFor(o: OutcomeKey, seed: string, count: AtBatCount, batter: string, bats?: string | null, pitcherThrows?: string | null): Call {
@@ -168,43 +170,45 @@ export function callFor(o: OutcomeKey, seed: string, count: AtBatCount, batter: 
     case 'hbp': return { type: 'hbp', text: `${n} was hit by a pitch.` };
     case 'hr': {
       const t = one([`homered to ${spot}.`, `drove one deep to ${spot} for a home run.`, `hit it over the wall in ${spot}.`]);
-      return { type: 'hr', spot, dir, text: `${n} ${t}` };
+      return { type: 'hr', spot, dir, trajectory: 'fly', text: `${n} ${t}` };
     }
     case 'triple': {
       const where = lineSpot ? `into the ${spot}-field corner` : spot === 'center' ? `over the center fielder's head` : `into the ${spot} gap`;
-      return { type: 'triple', spot, dir, text: `${n} tripled ${where}.` };
+      return { type: 'triple', spot, dir, trajectory: 'fly', text: `${n} tripled ${where}.` };
     }
     case 'double': {
       const where = lineSpot ? one([`down the ${spot}-field line`, `into the ${spot}-field corner`]) : spot === 'center' ? `over the center fielder's head` : `into the ${spot} gap`;
-      return { type: 'double', spot, dir, text: `${n} doubled ${where}.` };
+      return { type: 'double', spot, dir, trajectory: lineSpot ? 'line' : 'fly', text: `${n} doubled ${where}.` };
     }
     case 'single': {
       const field = spot === 'left-center' ? 'left' : spot === 'right-center' ? 'right' : spot;
-      const t = one([
-        field === 'center' ? 'singled up the middle.' : `grounded a single through the ${field === 'left' ? 'left' : 'right'} side.`,
-        `lined a single to ${field}.`, `blooped a single into ${field}.`]);
-      return { type: 'single', spot, dir, text: `${n} ${t}` };
+      // Same random draw as one([...]) so existing share links keep their text.
+      const opts: [string, Trajectory][] = [
+        [field === 'center' ? 'singled up the middle.' : `grounded a single through the ${field === 'left' ? 'left' : 'right'} side.`, 'ground'],
+        [`lined a single to ${field}.`, 'line'], [`blooped a single into ${field}.`, 'bloop']];
+      const [t, trajectory] = one(opts);
+      return { type: 'single', spot, dir, trajectory, text: `${n} ${t}` };
     }
     case 'oip': {
       const y = r();
       if (y < 0.42) {
         const f = pos({ pull: ['3B', 'SS'], center: ['SS', '2B', 'P'], opp: ['2B', '1B'] });
-        return { type: 'ground', fielder: f, dir, text: `${n} grounded out to ${FIELD[f]}.` };
+        return { type: 'ground', fielder: f, dir, trajectory: 'ground', text: `${n} grounded out to ${FIELD[f]}.` };
       }
       if (y < 0.70) {
         const f = of(spot);
-        return { type: 'fly', fielder: f, spot, dir, text: `${n} flied out to ${r() < 0.25 ? 'deep ' : ''}${FIELD[f]}.` };
+        return { type: 'fly', fielder: f, spot, dir, trajectory: 'fly', text: `${n} flied out to ${r() < 0.25 ? 'deep ' : ''}${FIELD[f]}.` };
       }
       if (y < 0.82) {
         const f = pos({ pull: ['3B', 'SS', 'LF'], center: ['P', 'SS', '2B', 'CF'], opp: ['2B', '1B', 'RF'] });
-        return { type: 'line', fielder: f, dir, text: `${n} lined out to ${FIELD[f]}.` };
+        return { type: 'line', fielder: f, dir, trajectory: 'line', text: `${n} lined out to ${FIELD[f]}.` };
       }
       if (y < 0.92) {
         const f = one(['1B', '2B', 'SS', '3B']);
-        return { type: 'pop', fielder: f, text: `${n} popped out to ${FIELD[f]}.` };
+        return { type: 'pop', fielder: f, trajectory: 'pop', text: `${n} popped out to ${FIELD[f]}.` };
       }
       const f = pos({ pull: ['3B', 'LF'], center: ['C'], opp: ['1B', 'RF'] });
-      return { type: 'foul', fielder: f, dir, text: `${n} fouled out to ${FIELD[f]}.` };
+      return { type: 'foul', fielder: f, dir, trajectory: 'foul', text: `${n} fouled out to ${FIELD[f]}.` };
     }
   }
 }
