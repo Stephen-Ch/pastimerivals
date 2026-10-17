@@ -3,7 +3,7 @@ import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResul
 import { ReportView } from './report';
 import { PitchScene } from './pitch-scene';
 import { Era, eraOf } from './art';
-import { explain, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, shareUrl, timesLeague } from './logic';
+import { countFor, explain, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
 interface Chosen { id: string; name: string; year: number; line: string; }
@@ -36,6 +36,11 @@ export class App {
   protected readonly hits = signal<PlayerHit[]>([]);
   protected readonly seasonsFor = signal<PlayerHit | null>(null);
   protected readonly seasons = signal<SeasonItem[]>([]);
+  protected readonly seasonsLoading = signal(false);
+  protected readonly seasonsError = signal(false);
+  protected readonly defaultSeason = computed(() => this.seasons().find(s => s.isDefault) ?? null);
+  private seasonsToken = 0;
+  private readonly sheetTitle = viewChild<ElementRef<HTMLElement>>('sheetTitle');
 
   protected readonly matchup = signal<MatchupView | null>(null);
   protected readonly result = signal<PitchResult | null>(null);
@@ -57,6 +62,14 @@ export class App {
   protected readonly pick = computed<Pick | null>(() => {
     const b = this.batter(), p = this.pitcher();
     return b && p ? { b: b.id, by: b.year, p: p.id, py: p.year } : null;
+  });
+
+  /** Count shown with the result, e.g. "3-2". For show only (plan 11). */
+  protected readonly countText = computed(() => {
+    const r = this.result();
+    if (!r) return '';
+    const c = countFor(r.outcome, r.seed);
+    return `${c.balls}-${c.strikes}`;
   });
 
   protected readonly resultText = computed(() => {
@@ -98,10 +111,20 @@ export class App {
   }
 
   protected openPicker(role: Role) {
+    this.seasonsToken++;
     this.picking.set(role); this.query.set(''); this.hits.set([]); this.seasonsFor.set(null); this.seasons.set([]);
+    this.seasonsLoading.set(false); this.seasonsError.set(false);
   }
 
-  protected closePicker() { this.picking.set(null); }
+  protected closePicker() { this.seasonsToken++; this.picking.set(null); }
+
+  protected backToSearch() {
+    this.seasonsToken++;
+    this.seasonsFor.set(null); this.seasons.set([]); this.seasonsLoading.set(false); this.seasonsError.set(false);
+    this.focusTitle();
+  }
+
+  private focusTitle() { setTimeout(() => this.sheetTitle()?.nativeElement.focus(), 0); }
 
   protected onQuery(value: string) {
     this.query.set(value);
@@ -116,8 +139,24 @@ export class App {
   protected async choosePlayer(h: PlayerHit) {
     const role = this.picking();
     if (!role) return;
-    this.seasonsFor.set(h);
-    try { this.seasons.set((await api.seasons(h.id, role)).slice().reverse()); } catch (e) { this.error.set((e as Error).message); }
+    // A repeat tap on the same player while loading does nothing; a different player wins.
+    if (this.seasonsLoading() && this.seasonsFor()?.id === h.id) return;
+    const token = ++this.seasonsToken;
+    this.seasonsFor.set(h); this.seasons.set([]); this.seasonsError.set(false); this.seasonsLoading.set(true);
+    this.focusTitle();
+    try {
+      const list = (await api.seasons(h.id, role)).slice().reverse();
+      if (token === this.seasonsToken) this.seasons.set(list);
+    } catch {
+      if (token === this.seasonsToken) this.seasonsError.set(true);
+    } finally {
+      if (token === this.seasonsToken) this.seasonsLoading.set(false);
+    }
+  }
+
+  protected retrySeasons() {
+    const h = this.seasonsFor();
+    if (h) { this.seasonsLoading.set(false); this.choosePlayer(h); }
   }
 
   protected chooseSeason(s: SeasonItem) {
@@ -125,6 +164,7 @@ export class App {
     if (!h || !role) return;
     const chosen: Chosen = { id: h.id, name: h.name, year: s.year, line: s.line };
     (role === 'pit' ? this.pitcher : this.batter).set(chosen);
+    this.seasonsToken++;
     this.picking.set(null);
     this.load();
   }

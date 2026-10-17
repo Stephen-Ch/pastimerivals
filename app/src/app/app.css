@@ -13,7 +13,7 @@ button.link { background: none; border: none; color: var(--accent-text); padding
 .slot-name { font-size: 1.15rem; font-weight: 600; }
 .slot-year { color: var(--text-secondary); font-weight: 400; }
 .slot-line { font-size: .85rem; color: var(--text-secondary); }
-.slot-change { position: absolute; right: 14px; top: 14px; font-size: .8rem; color: var(--accent-text); }
+.slot-change { position: absolute; right: 12px; top: 12px; font-size: .8rem; font-weight: 600; color: var(--on-accent); background: var(--accent); border-radius: 999px; padding: 4px 12px; }
 .muted { color: var(--text-secondary); font-weight: 400; }
 .odds { margin-top: 20px; }
 .bar { display: flex; gap: 2px; height: 22px; border-radius: 6px; overflow: hidden; background: var(--surface-1); }
@@ -66,3 +66,8 @@ footer a { color: inherit; }
 .dialog-body { padding: 14px; display: grid; gap: 10px; }
 .close { justify-self: end; }
 @media (prefers-reduced-motion: reduce) { .ball, .result { animation: none; } }
+.row-btn { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.chev { font-size: 1.4rem; color: var(--text-secondary); line-height: 1; }
+.quick { width: 100%; margin-top: 10px; }
+.sheet h2:focus { outline: none; }
+.count-note { font-size: .8rem; color: var(--text-secondary); margin: 6px 0 0; }

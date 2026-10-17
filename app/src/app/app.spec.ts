@@ -38,4 +38,42 @@ describe('App', () => {
     expect(el.textContent).toContain('Tale of the tape');
     expect(el.querySelectorAll('pr-report svg').length).toBe(2);
   });
+
+  it('picker: shows loading at once, ignores a repeat tap, and a newer player wins', async () => {
+    const fixture = TestBed.createComponent(App);
+    await new Promise(r => setTimeout(r, 0));
+    const app = fixture.componentInstance as any;
+    const calls: string[] = [];
+    const resolvers: Record<string, (v: Response) => void> = {};
+    globalThis.fetch = ((url: string) => {
+      calls.push(String(url));
+      return new Promise<Response>(res => { resolvers[String(url).includes('aaa') ? 'a' : 'b'] = res; });
+    }) as typeof fetch;
+    app.openPicker('pit');
+    const a = { id: 'aaa', name: 'Player A', years: '1900', bats: 'R', throws: 'R', hof: false };
+    const b = { id: 'bbb', name: 'Player B', years: '1950', bats: 'R', throws: 'R', hof: false };
+    app.choosePlayer(a); app.choosePlayer(a);
+    fixture.detectChanges();
+    expect(calls.length).toBe(1);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Loading seasons');
+    app.choosePlayer(b);
+    resolvers['b'](new Response(JSON.stringify([{ year: 1950, teams: 'X', pa: 600, line: 'b', grade: 'A', isDefault: true }])));
+    await new Promise(r => setTimeout(r, 0));
+    resolvers['a'](new Response(JSON.stringify([{ year: 1900, teams: 'Y', pa: 600, line: 'a', grade: 'A', isDefault: true }])));
+    await new Promise(r => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(app.seasons()[0].year).toBe(1950);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Use 1950 (most played)');
+  });
+
+  it('picker: a failed seasons request offers Retry', async () => {
+    const fixture = TestBed.createComponent(App);
+    await new Promise(r => setTimeout(r, 0));
+    const app = fixture.componentInstance as any;
+    globalThis.fetch = (async () => new Response('', { status: 500 })) as typeof fetch;
+    app.openPicker('bat');
+    await app.choosePlayer({ id: 'ccc', name: 'C', years: '2000', bats: 'L', throws: 'L', hof: false });
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Retry');
+  });
 });

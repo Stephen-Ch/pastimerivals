@@ -15,7 +15,7 @@
         } @else {
           <span class="slot-name muted">Choose a {{ role === 'pit' ? 'pitcher' : 'batter' }}</span>
         }
-        <span class="slot-change">Change</span>
+        <span class="slot-change" aria-hidden="true">Change</span>
       </button>
     }
   </section>
@@ -67,13 +67,14 @@
     </section>
 
     @if (pending(); as pr) {
-      <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="batterReport()?.bats ?? 'R'" [outcome]="pr.outcome" (done)="sceneDone()" />
+      <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="batterReport()?.bats ?? 'R'" [outcome]="pr.outcome" [seed]="pr.seed" (done)="sceneDone()" />
     }
 
     @if (result(); as r) {
       <section class="result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
         <p class="outcome">{{ label(r.outcome) }}</p>
         <p class="why">{{ resultText() }}</p>
+        <p class="count-note">On a {{ countText() }} count. Pitch count is for fun; only the result comes from the odds.</p>
         <div class="row">
           <button type="button" (click)="share()">Share</button>
           <button type="button" (click)="openPicker('pit')">New pitcher</button>
@@ -114,7 +115,7 @@
 @if (picking(); as role) {
   <div class="sheet" role="dialog" aria-modal="true" [attr.aria-label]="role === 'pit' ? 'Choose a pitcher' : 'Choose a batter'">
     <div class="sheet-head">
-      <h2>{{ seasonsFor() ? seasonsFor()!.name : (role === 'pit' ? 'Choose a pitcher' : 'Choose a batter') }}</h2>
+      <h2 #sheetTitle tabindex="-1">{{ seasonsFor() ? 'Pick a season for ' + seasonsFor()!.name : (role === 'pit' ? 'Choose a pitcher' : 'Choose a batter') }}</h2>
       <button type="button" class="link" (click)="closePicker()">Close</button>
     </div>
     @if (!seasonsFor()) {
@@ -122,12 +123,20 @@
              [value]="query()" (input)="onQuery($any($event.target).value)" autofocus>
       <ul class="list">
         @for (h of hits(); track h.id) {
-          <li><button type="button" (click)="choosePlayer(h)">{{ h.name }} <span class="muted">{{ h.years }}@if (h.hof) { · Hall of Fame }</span></button></li>
+          <li><button type="button" class="row-btn" (click)="choosePlayer(h)"><span>{{ h.name }} <span class="muted">{{ h.years }}@if (h.hof) { · Hall of Fame }</span></span><span class="chev" aria-hidden="true">›</span></button></li>
         }
         @if (query() && hits().length === 0) { <li class="muted pad">No players found yet.</li> }
       </ul>
     } @else {
-      <button type="button" class="link" (click)="seasonsFor.set(null)">Back to search</button>
+      <button type="button" class="link" (click)="backToSearch()">‹ Back to search</button>
+      @if (seasonsLoading()) { <p class="muted pad" role="status">Loading seasons...</p> }
+      @if (seasonsError()) {
+        <p class="error pad" role="alert">Could not load seasons. <button type="button" (click)="retrySeasons()">Retry</button></p>
+      }
+      @if (defaultSeason(); as d) {
+        <button type="button" class="primary quick" (click)="chooseSeason(d)">Use {{ d.year }} (most played)</button>
+        <p class="muted pad">Or pick another season:</p>
+      }
       <ul class="list">
         @for (s of seasons(); track s.year) {
           <li><button type="button" [class.best]="s.isDefault" (click)="chooseSeason(s)">
