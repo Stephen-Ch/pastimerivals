@@ -25,18 +25,62 @@ export const SCENE_MS = 1600;
 export const LEAD_SPEED = 0.6;   // lead-up pitches play at 60% of the full length
 export const LEAD_MS = Math.round(SCENE_MS * LEAD_SPEED) + 150;
 
-/** Plan 18: pitcher frames (seconds at full speed). Set, hands up, kick, peak, stride, cock, release, follow. */
-export const PITCHER_FRAMES: [number, number][] = [[0, 0], [0.07, 1], [0.14, 2], [0.22, 3], [0.3, 4], [0.38, 5], [0.45, 6], [0.5, 7]];
-/** Cut from the batter's-eye shot to the pitcher's-eye shot at release. */
-export const CUT_S = 0.55;
+/** Plan 19 split scene timeline (seconds at full speed). Pitcher: set, hands up, kick, peak, stride, cock, release, follow. */
+export const PITCHER_FRAMES: [number, number][] = [[0, 0], [0.25, 1], [0.45, 2], [0.6, 3], [0.75, 4], [0.9, 5], [1.05, 6], [1.2, 7]];
+export const RELEASE_S = 1.05;
+export const HANDOFF_S = 1.15;   // ball leaves the pitcher panel, enters the batter panel
+export const ARRIVE_S = 1.4;     // ball reaches the plate; contact frame shows here
+export const SPLIT_END_S = 2.4;
+export const LEAD_START_S = 0.75; // lead-up pitches skip the windup and start at the stride
+export const LEAD_DURATION = 0.8; // lead-up pitches take 80% of the remaining time
+export const SPLIT_MS = SPLIT_END_S * 1000;
+export const SPLIT_LEAD_MS = Math.round((SPLIT_END_S - LEAD_START_S) * LEAD_DURATION * 1000) + 150;
 
-/** Plan 18: batter frames by motion. Stance, load, stride, swing, contact, follow, take, bail. Contact lands on ball arrival (1.05 s). */
+/** Batter frames by motion. Stance, load, stride, swing, contact, follow, take, bail. */
 export function batterFrames(m: Motion): [number, number][] {
   switch (m) {
-    case 'hit': case 'out': case 'foul': return [[CUT_S, 0], [0.7, 1], [0.8, 2], [0.9, 3], [1.05, 4], [1.2, 5]];
-    case 'miss': return [[CUT_S, 0], [0.7, 1], [0.8, 2], [0.9, 3], [1.1, 5]];
-    case 'take': case 'look': return [[CUT_S, 0], [0.9, 6]];
-    case 'hbp': return [[CUT_S, 0], [1.0, 7]];
+    case 'hit': case 'out': case 'foul': return [[0, 0], [1.0, 1], [1.2, 2], [1.3, 3], [ARRIVE_S, 4], [1.55, 5]];
+    case 'miss': return [[0, 0], [1.0, 1], [1.2, 2], [1.3, 3], [1.45, 5]];
+    case 'take': case 'look': return [[0, 0], [ARRIVE_S, 6]];
+    case 'hbp': return [[0, 0], [ARRIVE_S, 7]];
+  }
+}
+
+export function frameAt(table: [number, number][], t: number): number {
+  let f = table[0][1];
+  for (const [s, x] of table) if (t >= s) f = x;
+  return f;
+}
+
+export interface BallPos { panel: 'pit' | 'bat' | null; x: number; y: number; d: number; o: number; }
+const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
+const clamp01 = (u: number) => Math.max(0, Math.min(1, u));
+
+/** Where the ball is at scene time t, in % of the panel (x, y, diameter d as % of panel width, opacity o).
+ *  Screen space: never mirrored. dir = side of the plate (+1 right for a right-handed batter seen from the mound). */
+export function ballAt(t: number, m: Motion, throws: string, bats: string): BallPos {
+  const none: BallPos = { panel: null, x: 0, y: 0, d: 0, o: 0 };
+  if (t < RELEASE_S) return none;
+  if (t < HANDOFF_S) return none;   // the release frame draws the ball in the pitcher's hand
+  const dir = bats === 'L' ? -1 : 1;
+  const plateX = 50 + 20 * dir, batterX = 50 - 12 * dir;
+  const startX = 50 + (throws === 'L' ? -10 : 10);
+  // The contact, take and bail frames draw their own ball; ours meets it there and hides while that frame shows.
+  const zone = { x: 50 + 15 * dir, y: 55 };
+  const end = m === 'take' ? { x: plateX + 10 * dir, y: 58 } : m === 'hbp' ? { x: batterX + 4 * dir, y: 50 } : zone;
+  if (t < ARRIVE_S) {  // from behind the pitcher (bottom) toward the plate, shrinking
+    const u = clamp01((t - HANDOFF_S) / (ARRIVE_S - HANDOFF_S)), e = u * u;
+    return { panel: 'bat', x: lerp(startX, end.x, e), y: lerp(104, end.y, e), d: lerp(16, 4.5, e), o: 1 };
+  }
+  const HIDE = 0.1;   // contact frame on screen
+  const u = clamp01((t - ARRIVE_S - HIDE) / 0.55), e = 1 - (1 - u) * (1 - u);
+  const fromX = zone.x + 5 * dir, fromY = 50, hidden = t < ARRIVE_S + HIDE;
+  switch (m) {
+    case 'hit': return { panel: 'bat', x: lerp(fromX, plateX - 35 * dir, e), y: lerp(fromY, -10, e), d: lerp(4.5, 12, e), o: hidden ? 0 : 1 };
+    case 'out': return { panel: 'bat', x: lerp(fromX, plateX + 5 * dir, e), y: lerp(fromY, 2, e), d: lerp(4.5, 6, e), o: hidden ? 0 : 1 };
+    case 'foul': return { panel: 'bat', x: lerp(fromX, plateX + 30 * dir, e), y: lerp(fromY, -5, e), d: lerp(4.5, 2.5, e), o: hidden ? 0 : 1 - u };
+    case 'miss': case 'look': return { panel: 'bat', x: end.x, y: lerp(end.y, 68, e), d: lerp(4.5, 2.5, e), o: 1 - u };
+    default: return { panel: 'bat', x: end.x, y: end.y, d: 4.5, o: 0 };   // take, hbp: the frame's own ball takes over
   }
 }
 
@@ -50,29 +94,19 @@ export function prefersReducedMotion(): boolean {
   template: `
     @for (k of [step()]; track k) {
       @if (art(); as a) {
-        <div [class]="'scene sprite m-' + motion() + ' shot-' + shot()" [style.--k]="speed()">
-          <div class="pshot">
-            <svg viewBox="0 0 300 190" width="100%" height="100%" aria-hidden="true">
-              <defs><linearGradient id="sky2" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#cfd9e3"/><stop offset="1" stop-color="#e9e3d2"/></linearGradient></defs>
-              <rect width="300" height="190" fill="url(#sky2)"/>
-              <path d="M0 110 Q150 90 300 110 L300 190 L0 190 Z" fill="#7d9a5f"/>
-              <ellipse cx="150" cy="112" rx="34" ry="7" fill="#b48a5a"/>
-            </svg>
-            <div class="spr spit" [class.mirror]="a.pit.mirror" [style.background-image]="'url(' + a.pit.sheet + ')'" [style.--f]="pFrame()" aria-hidden="true"></div>
+        <div class="split" [class.dim]="dim()">
+          <div class="panel ppanel">
+            <div class="spr" [class.mirror]="a.pit.mirror" [style.background-image]="'url(' + a.pit.sheet + ')'" [style.--f]="pFrame()" aria-hidden="true"></div>
+            @if (ball().panel === 'pit') { <span class="sball" [style.left.%]="ball().x" [style.top.%]="ball().y" [style.width.%]="ball().d" [style.opacity]="ball().o"></span> }
           </div>
-          <div class="bshot" [class.mirror]="a.bat.mirror">
-            <svg viewBox="0 0 300 190" width="100%" height="100%" aria-hidden="true">
-              <rect width="300" height="190" fill="#c9d3c0"/>
-              <path d="M0 120 L300 120 L300 190 L0 190 Z" fill="#7d9a5f"/>
-              <ellipse cx="160" cy="176" rx="150" ry="22" fill="#b48a5a"/>
-              <path d="M178 172 L194 172 L194 176 L186 180 L178 176 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width="1"/>
-            </svg>
-            <div class="spr sbat" [style.background-image]="'url(' + a.bat.sheet + ')'" [style.--f]="bFrame()" aria-hidden="true"></div>
-            <svg class="ballsvg" viewBox="0 0 300 190" width="100%" height="100%" aria-hidden="true">
-              <circle class="ball2" cx="186" cy="118" r="2.6" fill="#fbf8f1" stroke="#2b2a28" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
-            </svg>
+          <div class="panel bpanel">
+            <div class="field" [class.mirror]="a.bat.mirror">
+              <svg class="plate" viewBox="0 0 20 8" aria-hidden="true"><path d="M1 1 L19 1 L19 4 L10 7.5 L1 4 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width=".8"/></svg>
+              <div class="spr" [style.background-image]="'url(' + a.bat.sheet + ')'" [style.--f]="bFrame()" aria-hidden="true"></div>
+            </div>
+            @if (ball().panel === 'bat') { <span class="sball" [style.left.%]="ball().x" [style.top.%]="ball().y" [style.width.%]="ball().d" [style.opacity]="ball().o"></span> }
+            <div class="board"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span></div>
           </div>
-          <div class="board"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span></div>
         </div>
       } @else {
       <div class="scene" [class]="'scene m-' + motion()" [style.--k]="speed()">
@@ -103,30 +137,20 @@ export function prefersReducedMotion(): boolean {
     .under { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
     .caption { font-weight: 600; min-height: 1.2em; }
     .skip { font: inherit; font-size: .9rem; cursor: pointer; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); padding: 10px 16px; min-height: 44px; }
-    .sprite { background: #c9d3c0; }
-    .pshot, .bshot { position: absolute; inset: 0; }
-    .shot-pit .bshot, .shot-bat .pshot { display: none; }
-    .bshot.mirror { transform: scaleX(-1); }
-    .spr { position: absolute; aspect-ratio: 364 / 480; background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
-    .spr.mirror { transform: scaleX(-1); }
-    .spr.spit { height: 30%; left: 42.8%; bottom: 40%; }
-    .spr.sbat { height: 86%; left: 22%; bottom: 5%; }
-    .ballsvg { position: absolute; inset: 0; }
-    .ball2 { transform-box: fill-box; transform-origin: center; opacity: 0; }
-    .shot-bat .ball2 { animation: in2 calc(.5s * var(--k, 1)) ease-in forwards; }
-    .shot-bat.m-hit .ball2 { animation: in2 calc(.5s * var(--k, 1)) ease-in forwards, hit2 calc(.55s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-out forwards; }
-    .shot-bat.m-out .ball2 { animation: in2 calc(.5s * var(--k, 1)) ease-in forwards, out2 calc(.5s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-out forwards; }
-    .shot-bat.m-foul .ball2 { animation: in2 calc(.5s * var(--k, 1)) ease-in forwards, foul2 calc(.45s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-out forwards; }
-    .shot-bat.m-miss .ball2, .shot-bat.m-look .ball2 { animation: in2 calc(.5s * var(--k, 1)) ease-in forwards, past2 calc(.3s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-in forwards; }
-    .shot-bat.m-take .ball2 { animation: wide2 calc(.6s * var(--k, 1)) ease-in forwards; }
-    .shot-bat.m-hbp .ball2 { animation: inside2 calc(.5s * var(--k, 1)) ease-in forwards; }
-    @keyframes in2 { 0% { opacity: 1; transform: translate(-36px, 60px) scale(3.5) } 100% { opacity: 1; transform: none } }
-    @keyframes hit2 { 0% { opacity: 1; transform: none } 100% { opacity: 1; transform: translate(-90px, -100px) scale(4) } }
-    @keyframes out2 { 0% { opacity: 1; transform: none } 100% { opacity: 1; transform: translate(10px, -90px) scale(1.6) } }
-    @keyframes foul2 { 0% { opacity: 1; transform: none } 100% { opacity: 0; transform: translate(50px, -70px) scale(.5) } }
-    @keyframes past2 { 0% { opacity: 1; transform: none } 100% { opacity: 0; transform: translate(4px, 14px) scale(.6) } }
-    @keyframes wide2 { 0% { opacity: 1; transform: translate(-36px, 60px) scale(3.5) } 100% { opacity: 1; transform: translate(34px, 8px) scale(.9) } }
-    @keyframes inside2 { 0% { opacity: 1; transform: translate(-36px, 60px) scale(3.5) } 100% { opacity: 1; transform: translate(-58px, -6px) scale(1.2) } }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; max-width: min(460px, 75vh); margin: 0 auto; }
+    .panel { position: relative; aspect-ratio: 2 / 3; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; transition: opacity .2s; }
+    .ppanel { background: linear-gradient(#cfd9e3 0 58%, #7d9a5f 58% 100%); }
+    .ppanel::after { content: ''; position: absolute; left: 10%; right: 10%; bottom: 0; height: 12%; border-radius: 50% 50% 0 0; background: #b48a5a; }
+    .bpanel { background: linear-gradient(#c9d3c0 0 55%, #7d9a5f 55% 82%, #b48a5a 82% 100%); }
+    .split.dim .ppanel { opacity: .55; }
+    .field { position: absolute; inset: 0; }
+    .field.mirror { transform: scaleX(-1); }
+    .plate { position: absolute; left: 62%; width: 16%; bottom: 6%; }
+    .spr { position: absolute; z-index: 1; height: 90%; aspect-ratio: 364 / 480; bottom: 3%; left: 50%; transform: translateX(-50%);
+      background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
+    .spr.mirror { transform: translateX(-50%) scaleX(-1); }
+    .bpanel .spr { left: 38%; }
+    .sball { position: absolute; z-index: 2; aspect-ratio: 1; border-radius: 50%; background: #fbf8f1; border: 1.5px solid #2b2a28; transform: translate(-50%, -50%); }
     .pitcher { animation: windup calc(.55s * var(--k, 1)) ease-in-out both; transform-origin: 150px 112px; }
     .ball-path { transform-box: view-box; }
     .ball { transform-box: fill-box; transform-origin: center; opacity: 0; }
@@ -168,10 +192,11 @@ export class PitchScene {
   protected readonly step = signal(0);
   protected readonly board = signal<{ balls: number; strikes: number; caption: string }>({ balls: 0, strikes: 0, caption: '' });
 
-  protected readonly shot = signal<'pit' | 'bat'>('pit');
   protected readonly pFrame = signal(0);
   protected readonly bFrame = signal(0);
-  private frameTimers: ReturnType<typeof setTimeout>[] = [];
+  protected readonly ball = signal<BallPos>({ panel: null, x: 0, y: 0, d: 0, o: 0 });
+  protected readonly dim = signal(false);
+  private raf = 0;
 
   protected readonly isFinal = computed(() => this.step() >= this.count().leadUp.length);
   protected readonly motion = computed<Motion>(() => {
@@ -192,30 +217,43 @@ export class PitchScene {
     this.timer = setTimeout(() => (prefersReducedMotion() ? this.finish() : this.next()), 0);
   }
 
-  private clearFrames() { this.frameTimers.forEach(clearTimeout); this.frameTimers = []; }
+  private clearFrames() {
+    if (this.raf) { (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : clearTimeout)(this.raf as never); this.raf = 0; }
+  }
 
-  /** Steps both sprites through their frames for the current pitch (sprite mode only). */
+  /** One clock per pitch (plan 19): both sprites and the ball are read from the same elapsed time. */
   private runFrames() {
     this.clearFrames();
-    this.shot.set('pit'); this.pFrame.set(0); this.bFrame.set(0);
-    if (!this.art()) return;
-    const k = this.speed();
-    const at = (sec: number, fn: () => void) => this.frameTimers.push(setTimeout(fn, sec * 1000 * k));
-    for (const [t, f] of PITCHER_FRAMES) at(t, () => this.pFrame.set(f));
-    at(CUT_S, () => this.shot.set('bat'));
-    for (const [t, f] of batterFrames(this.motion())) at(t, () => this.bFrame.set(f));
+    const a = this.art();
+    if (!a) return;
+    const final = this.isFinal(), m = this.motion();
+    const t0 = final ? 0 : LEAD_START_S, rate = final ? 1 : 1 / LEAD_DURATION;
+    const throws = this.throws(), bats = this.bats() === 'L' ? 'L' : 'R';
+    const start = performance.now();
+    const frames = batterFrames(m);
+    const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: FrameRequestCallback) => setTimeout(() => fn(performance.now()), 16) as unknown as number;
+    const tick = () => {
+      const t = Math.min(SPLIT_END_S, t0 + ((performance.now() - start) / 1000) * rate);
+      this.pFrame.set(frameAt(PITCHER_FRAMES, t));
+      this.bFrame.set(frameAt(frames, t));
+      this.ball.set(ballAt(t, m, throws, bats));
+      this.dim.set(t >= HANDOFF_S);
+      if (!this.finished && t < SPLIT_END_S) this.raf = raf(tick);
+    };
+    tick();
   }
 
   private next() {
     if (this.finished) return;
     this.runFrames();
-    if (this.isFinal()) { this.timer = setTimeout(() => this.finish(), SCENE_MS); return; }
+    const sprite = !!this.art();
+    if (this.isFinal()) { this.timer = setTimeout(() => this.finish(), sprite ? SPLIT_MS : SCENE_MS); return; }
     this.timer = setTimeout(() => {
       const p = this.count().leadUp[this.step()];
       this.board.set({ balls: p.balls, strikes: p.strikes, caption: PITCH_CAPTION[p.kind] });
       this.step.update(i => i + 1);
       this.next();
-    }, LEAD_MS);
+    }, sprite ? SPLIT_LEAD_MS : LEAD_MS);
   }
 
   /** Ends the scene once, whether by timer or the Skip button. */

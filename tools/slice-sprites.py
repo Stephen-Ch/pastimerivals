@@ -27,7 +27,7 @@ def background(a):
 def remove_mound(a, fg):
     h = a.shape[0]
     r, g, b = a[..., 0].astype(int), a[..., 1].astype(int), a[..., 2].astype(int)
-    tan = (r - b > 28) & (r > 140) & (a.max(2) - a.min(2) > 25)
+    tan = (r - b > 50) & (r > 140) & (a.min(2) < 175)  # plan 19: keep cream pants near the feet
     band = np.zeros_like(fg); band[int(h * 0.78):] = True
     fg = fg & ~(tan & band)
     # drop leftover specks in the band

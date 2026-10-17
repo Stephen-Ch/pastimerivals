@@ -1,5 +1,5 @@
 import { ArtManifest, artFor, pairArt, sheetTone, variantFor } from './art';
-import { batterFrames, CUT_S, PITCHER_FRAMES } from './pitch-scene';
+import { ARRIVE_S, ballAt, batterFrames, frameAt, LEAD_START_S, PITCHER_FRAMES, RELEASE_S, SPLIT_LEAD_MS } from './pitch-scene';
 
 const man: ArtManifest = {
   cell: [364, 480], frames: 8,
@@ -41,12 +41,29 @@ describe('comic art (plan 18)', () => {
     expect(pairArt(null, pit, { id: 'ruthb101', era: '1920-1945', hand: 'L' })).toBeNull();
   });
 
-  it('times frames so contact lands on ball arrival and the cut is at release', () => {
-    expect(PITCHER_FRAMES.find(([, f]) => f === 6)![0]).toBeLessThan(CUT_S);
-    expect(batterFrames('hit').find(([, f]) => f === 4)![0]).toBe(1.05);
+  it('times frames so contact lands on ball arrival and release comes first (plan 19)', () => {
+    expect(frameAt(PITCHER_FRAMES, RELEASE_S)).toBe(6);
+    expect(frameAt(batterFrames('hit'), ARRIVE_S)).toBe(4);
+    expect(frameAt(batterFrames('hit'), ARRIVE_S - 0.01)).toBe(3);
     expect(batterFrames('miss').some(([, f]) => f === 4)).toBe(false);
     expect(batterFrames('take').map(([, f]) => f)).toEqual([0, 6]);
     expect(batterFrames('hbp').map(([, f]) => f)).toEqual([0, 7]);
-    for (const m of ['hit', 'out', 'foul', 'miss', 'take', 'look', 'hbp'] as const) expect(batterFrames(m)[0][0]).toBe(CUT_S);
+    expect(PITCHER_FRAMES[PITCHER_FRAMES.length - 1][0]).toBeGreaterThan(1);   // windup is no longer a blur
+  });
+
+  it('keeps lead-up pitches short but starts them at the stride', () => {
+    expect(frameAt(PITCHER_FRAMES, LEAD_START_S)).toBe(4);
+    expect(SPLIT_LEAD_MS).toBeLessThan(1600);
+  });
+
+  it('moves the ball from the pitcher panel to the plate side of each batter', () => {
+    expect(ballAt(1.0, 'hit', 'R', 'R').panel).toBeNull();
+    expect(ballAt(1.1, 'hit', 'R', 'R').panel).toBeNull();   // release frame shows the ball itself
+    expect(ballAt(1.2, 'hit', 'L', 'R').x).toBeLessThan(50);  // a lefty's pitch enters from the other side
+    const r = ballAt(ARRIVE_S, 'hit', 'R', 'R'), l = ballAt(ARRIVE_S, 'hit', 'R', 'L');
+    expect(r.panel).toBe('bat');
+    expect(r.x).toBeGreaterThan(50);
+    expect(l.x).toBeLessThan(50);
+    expect(ballAt(2.3, 'foul', 'R', 'R').o).toBe(0);
   });
 });
