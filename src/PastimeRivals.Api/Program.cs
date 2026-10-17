@@ -27,6 +27,15 @@ builder.Services.AddRateLimiter(o =>
 
 var app = builder.Build();
 
+// Plan 24 v2 item 9: browsers remember to use https on the live domain (the http redirect itself is in web.config).
+var hstsHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "pastimerivals.com", "www.pastimerivals.com" };
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.IsHttps && hstsHosts.Contains(ctx.Request.Host.Host))
+        ctx.Response.Headers["Strict-Transport-Security"] = "max-age=31536000";
+    await next();
+});
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseRateLimiter();
