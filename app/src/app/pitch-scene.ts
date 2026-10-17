@@ -200,6 +200,7 @@ export function prefersReducedMotion(): boolean {
     .caption { font-weight: 600; min-height: 1.2em; }
     .skip { font: inherit; font-size: .9rem; cursor: pointer; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); padding: 10px 16px; min-height: 44px; }
     .split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; max-width: min(460px, 75vh); margin: 0 auto; }
+    @container (min-height: 1px) { .split { max-width: min(460px, calc((100cqh - 64px) * 4 / 3)); } }
     .panel { position: relative; isolation: isolate; aspect-ratio: 2 / 3; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; transition: opacity .2s; }
     .ppanel { background: linear-gradient(#cfd9e3 0 58%, #7d9a5f 58% 100%); }
     .ppanel::after { content: ''; position: absolute; left: 10%; right: 10%; bottom: 0; height: 12%; border-radius: 50% 50% 0 0; background: #b48a5a; }

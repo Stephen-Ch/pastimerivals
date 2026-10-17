@@ -1,56 +1,106 @@
-<header class="top">
-  <h1>Pastime Rivals</h1>
-  <p class="tag">Any pitcher. Any batter. Any era.</p>
-</header>
-
-<main>
-  <section class="slots">
-    @for (role of ['pit', 'bat']; track role) {
-      @let c = role === 'pit' ? pitcher() : batter();
-      <button class="slot" type="button" (click)="openPicker($any(role))">
-        <span class="slot-role">{{ role === 'pit' ? 'Pitcher' : 'Batter' }}</span>
-        @if (c) {
-          <span class="slot-name">{{ c.name }} <span class="slot-year">{{ c.year }}</span></span>
-          @if (c.line) { <span class="slot-line">{{ c.line }}</span> }
-        } @else {
-          <span class="slot-name muted">Choose a {{ role === 'pit' ? 'pitcher' : 'batter' }}</span>
-        }
-        <span class="slot-change" aria-hidden="true">Change</span>
-      </button>
-    }
-  </section>
-
-  @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
-
-  @if (matchup(); as m) {
-    @if (pitcherReport() && batterReport()) {
-      <section class="tape" aria-label="Tale of the tape">
-        <h2>Tale of the tape</h2>
-        <div class="tape-grid">
-          <button type="button" class="tape-card" (click)="openReport(pitcherReport(), $event)" [attr.aria-label]="'Open scouting report for ' + pitcherReport()!.name">
-            <pr-report [report]="pitcherReport()!" [compact]="true" [card]="pair()?.pit?.card ?? null" [cardMirror]="pair()?.pit?.mirror ?? false" />
-          </button>
-          <div class="tape-vs" aria-hidden="true">vs</div>
-          <button type="button" class="tape-card" (click)="openReport(batterReport(), $event)" [attr.aria-label]="'Open scouting report for ' + batterReport()!.name">
-            <pr-report [report]="batterReport()!" [compact]="true" [card]="pair()?.bat?.card ?? null" [cardMirror]="pair()?.bat?.mirror ?? false" />
-          </button>
+<div class="game" [class.landscape]="false">
+  @switch (screen()) {
+    @case ('matchup') {
+      <header class="bar">
+        <h1 #screenTitle tabindex="-1">Pastime Rivals</h1>
+        <button type="button" class="link" (click)="openOverlay('details')" [disabled]="!matchup()">Details</button>
+      </header>
+      <main class="flex">
+        <div class="cards">
+          @for (role of roles; track role) {
+            @let c = role === 'pit' ? pitcher() : batter();
+            @let rep = role === 'pit' ? pitcherReport() : batterReport();
+            @let a = role === 'pit' ? pair()?.pit : pair()?.bat;
+            <div class="pcard-wrap">
+              <button type="button" class="pcard" (click)="openPicker(role)"
+                      [attr.aria-label]="(c ? 'Change ' + (role === 'pit' ? 'pitcher' : 'batter') + ', now ' + c.name + ' ' + c.year : 'Pick a ' + (role === 'pit' ? 'pitcher' : 'batter'))">
+                <span class="frame">
+                  <span class="prole">{{ role === 'pit' ? 'Pitcher' : 'Batter' }}</span>
+                  @if (!c) {
+                    <span class="pempty">Pick a {{ role === 'pit' ? 'pitcher' : 'batter' }}</span>
+                  } @else if (!rep) {
+                    <span class="pimg skeleton" aria-hidden="true"></span>
+                  } @else if (a) {
+                    <img class="pimg" [class.mirror]="a.mirror" [src]="a.card" alt="" decoding="async">
+                  } @else {
+                    <span class="pimg pfig" [innerHTML]="figureFor(rep)" aria-hidden="true"></span>
+                  }
+                  <span class="pchange" aria-hidden="true">Change</span>
+                </span>
+              </button>
+              @if (c) {
+                <p class="pname">{{ c.name }} <span class="muted">{{ c.year }}</span></p>
+                @if (rep) { <button type="button" class="link small" (click)="openReport(rep, $event)">Scouting report</button> }
+              }
+            </div>
+          }
         </div>
-        <dl class="tape-rows">
-          <dd>{{ pitcherReport()!.age ?? '?' }}</dd><dt>Age</dt><dd>{{ batterReport()!.age ?? '?' }}</dd>
-          <dd>{{ pitcherReport()!.height ?? '?' }}</dd><dt>Height</dt><dd>{{ batterReport()!.height ?? '?' }}</dd>
-          <dd>{{ pitcherReport()!.weight ?? '?' }}</dd><dt>Weight</dt><dd>{{ batterReport()!.weight ?? '?' }}</dd>
-          <dd>{{ pitcherReport()!.throws }}</dd><dt>Throws / bats</dt><dd>{{ batterReport()!.bats }}</dd>
-        </dl>
-      </section>
-    }
-
-    <section class="odds" aria-label="Odds for this plate appearance">
-      <h2>The odds</h2>
-      <div class="bar" role="img" [attr.aria-label]="'Outcome probabilities'">
-        @for (o of outcomes; track o) {
-          <span class="seg" [class]="'seg c-' + o" [style.width]="barWidth(o)" [title]="label(o) + ' ' + percent(m.probabilities[o])"></span>
+        @if (error()) {
+          <p class="error" role="alert">{{ error() }} <button type="button" (click)="retry()">Retry</button></p>
         }
+        @if (matchup(); as m) {
+          <div class="odds" aria-label="Odds for this plate appearance">
+            <div class="bar-odds" role="img" [attr.aria-label]="'Outcome probabilities: ' + topText()">
+              @for (o of outcomes; track o) { <span class="seg" [class]="'seg c-' + o" [style.width]="barWidth(o)"></span> }
+            </div>
+            <p class="top3">{{ topText() }}</p>
+            @if (sims(); as s) { <p class="simline">Sim 1,000: {{ simSummary() }} <button type="button" class="link small" (click)="openOverlay('details')">All</button></p> }
+          </div>
+        }
+      </main>
+      <div class="actions">
+        <button class="primary big" type="button" (click)="throwPitch()" [disabled]="busy() || !matchup() || !pitcherReport() || !batterReport()">{{ artWaiting() ? 'Loading art' : 'Pitch' }}</button>
+        <button type="button" (click)="runSims()" [disabled]="busy() || !matchup()">Sim 1,000</button>
       </div>
+    }
+    @case ('atbat') {
+      <header class="bar">
+        <button type="button" class="link" (click)="goBack()">‹ Matchup</button>
+        <span class="vs-line">{{ pitcher()?.name }} vs {{ batter()?.name }}</span>
+      </header>
+      <main class="flex scene-wrap">
+        <h1 #screenTitle tabindex="-1" class="sr-only">At bat</h1>
+        @if (pending(); as pr) {
+          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="batterReport()?.bats ?? 'R'" [outcome]="pr.outcome" [seed]="pr.seed" [art]="sceneArt()" [call]="sceneCall()" (done)="sceneDone()" />
+        }
+      </main>
+    }
+    @case ('result') {
+      <header class="bar">
+        <button type="button" class="link" (click)="goBack()">‹ Matchup</button>
+        <span class="vs-line">{{ pitcher()?.name }} {{ pitcher()?.year }} vs {{ batter()?.name }} {{ batter()?.year }}</span>
+      </header>
+      @if (matchup()) {
+        <div class="bar-odds slim" role="img" [attr.aria-label]="'Outcome probabilities: ' + topText()">
+          @for (o of outcomes; track o) { <span class="seg" [class]="'seg c-' + o" [style.width]="barWidth(o)"></span> }
+        </div>
+      }
+      <main class="flex">
+        @if (result(); as r) {
+          <section class="result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
+            <h1 #screenTitle tabindex="-1" class="call">{{ callText() }}</h1>
+            <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ countText() }} count</p>
+            <button type="button" class="link" (click)="openOverlay('why')">Why this result</button>
+            @if (shareNote()) { <p class="note">{{ shareNote() }}</p> }
+          </section>
+        }
+        @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+      </main>
+      <div class="actions three">
+        <button class="primary big" type="button" (click)="throwPitch()" [disabled]="busy()">{{ artWaiting() ? 'Loading art' : 'Pitch again' }}</button>
+        <button type="button" (click)="share()">Share</button>
+        <button type="button" (click)="goBack()">New matchup</button>
+      </div>
+    }
+  }
+  <footer class="notice">The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.</footer>
+</div>
+
+@if (overlay() === 'details') {
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Details">
+    <div class="sheet-head"><h2 #sheetTitle tabindex="-1">Details</h2><button type="button" class="link" (click)="closeOverlay()">Close</button></div>
+    @if (matchup(); as m) {
+      <h3>The odds</h3>
       <ul class="legend">
         @for (o of outcomes; track o) {
           <li><span class="swatch" [class]="'swatch c-' + o"></span>{{ label(o) }} <strong>{{ percent(m.probabilities[o]) }}</strong>
@@ -59,62 +109,41 @@
       </ul>
       <p class="note">Era-adjusted to a neutral {{ m.neutral }} league.
         @if (m.sameHand !== null) { {{ m.sameHand ? 'Same-handed matchup.' : 'Opposite-handed matchup.' }} }</p>
-    </section>
-
-    <section class="actions">
-      <button class="primary" type="button" (click)="throwPitch()" [disabled]="busy() || !!pending()">{{ artWaiting() ? 'Loading art' : result() ? 'Pitch again' : 'Pitch' }}</button>
-      <button type="button" (click)="runSims()" [disabled]="busy()">Sim 1,000</button>
-    </section>
-
-    @if (pending(); as pr) {
-      <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="batterReport()?.bats ?? 'R'" [outcome]="pr.outcome" [seed]="pr.seed" [art]="sceneArt()" [call]="sceneCall()" (done)="sceneDone()" />
-    }
-
-    @if (result(); as r) {
-      <section class="result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
-        <p class="call">{{ callText() }}</p>
-        <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong></p>
-        <p class="why">{{ resultText() }}</p>
-        <p class="count-note">On a {{ countText() }} count. Pitch count is for fun; only the result comes from the odds.</p>
-        <div class="row">
-          <button type="button" (click)="share()">Share</button>
-          <button type="button" (click)="openPicker('pit')">New pitcher</button>
-          <button type="button" (click)="openPicker('bat')">New batter</button>
-        </div>
-        @if (shareNote()) { <p class="note">{{ shareNote() }}</p> }
-      </section>
-    }
-
-    <section class="how">
-      <button type="button" class="link" (click)="showHow.set(!showHow())" [attr.aria-expanded]="showHow()">
-        {{ showHow() ? 'Hide' : 'How this works' }}
-      </button>
-      @if (showHow()) {
-        <p>Each player is compared with his own league that season, then both are placed in a neutral
-          1990-2019 league. Small samples are pulled toward average. "x league" is how far above or below
-          his league the player was.</p>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Outcome</th><th>{{ m.batter.name }}</th><th>{{ m.pitcher.name }}</th><th>Neutral</th><th>This matchup</th></tr></thead>
-            <tbody>
-              @for (o of outcomes; track o) {
-                @let s = stepFor(o);
-                @if (s) {
-                  <tr><td>{{ label(o) }}</td><td>{{ timesLeague(s.batterObserved, s.batterLeague) }}</td>
-                    <td>{{ timesLeague(s.pitcherObserved, s.pitcherLeague) }}</td><td>{{ percent(s.neutral) }}</td>
-                    <td><strong>{{ percent(s.final) }}</strong></td></tr>
-                }
+      <h3>How this works</h3>
+      <p class="how">Each player is compared with his own league that season, then both are placed in a neutral
+        1990-2019 league. Small samples are pulled toward average. "x league" is how far above or below
+        his league the player was.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Outcome</th><th>{{ m.batter.name }}</th><th>{{ m.pitcher.name }}</th><th>Neutral</th><th>This matchup</th></tr></thead>
+          <tbody>
+            @for (o of outcomes; track o) {
+              @let s = stepFor(o);
+              @if (s) {
+                <tr><td>{{ label(o) }}</td><td>{{ timesLeague(s.batterObserved, s.batterLeague) }}</td>
+                  <td>{{ timesLeague(s.pitcherObserved, s.pitcherLeague) }}</td><td>{{ percent(s.neutral) }}</td>
+                  <td><strong>{{ percent(s.final) }}</strong></td></tr>
               }
-            </tbody>
-          </table>
-        </div>
-      }
-    </section>
-  }
-</main>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+    <p class="note">The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.</p>
+    <p class="note">Not affiliated with Major League Baseball or its clubs.</p>
+  </div>
+}
+
+@if (overlay() === 'why') {
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Why this result">
+    <div class="sheet-head"><h2 #sheetTitle tabindex="-1">Why this result</h2><button type="button" class="link" (click)="closeOverlay()">Close</button></div>
+    <p class="how">{{ resultText() }}</p>
+    <p class="note">On a {{ countText() }} count. Pitch count is for fun; only the result comes from the odds.</p>
+  </div>
+}
 
 @if (picking(); as role) {
-  <div class="sheet" role="dialog" aria-modal="true" [attr.aria-label]="role === 'pit' ? 'Choose a pitcher' : 'Choose a batter'">
+  <div class="sheet picker" role="dialog" aria-modal="true" [attr.aria-label]="role === 'pit' ? 'Choose a pitcher' : 'Choose a batter'">
     <div class="sheet-head">
       <h2 #sheetTitle tabindex="-1">{{ seasonsFor() ? 'Pick a season for ' + seasonsFor()!.name : (role === 'pit' ? 'Choose a pitcher' : 'Choose a batter') }}</h2>
       <button type="button" class="link" (click)="closePicker()">Close</button>
@@ -159,9 +188,3 @@
     </div>
   }
 </dialog>
-
-<footer>
-  <p>The information used here was obtained free of charge from and is copyrighted by Retrosheet.
-    Interested parties may contact Retrosheet at <a href="https://www.retrosheet.org">www.retrosheet.org</a>.</p>
-  <p>Not affiliated with Major League Baseball or its clubs.</p>
-</footer>

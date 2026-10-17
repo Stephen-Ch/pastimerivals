@@ -18,3 +18,5 @@
 }
 html, body { margin: 0; background: var(--surface-0); color: var(--text-primary);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+/* Plan 23: the page itself never scrolls; screens fit the viewport and scroll inside when needed. */
+html, body { height: 100%; overflow: hidden; }

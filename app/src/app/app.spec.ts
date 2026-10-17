@@ -32,11 +32,11 @@ describe('App', () => {
     const el = fixture.nativeElement as HTMLElement;
     expect(el.textContent).toContain('Pedro Martinez');
     expect(el.textContent).toContain('Babe Ruth');
-    expect(el.textContent).toContain('Home run');
-    expect(el.textContent).toContain('4.5%');
-    expect(el.textContent).toContain('Retrosheet');
-    expect(el.textContent).toContain('Tale of the tape');
-    expect(el.querySelectorAll('pr-report svg').length).toBe(2);
+    expect(el.textContent).toContain('Out in play 36%');
+    expect(el.textContent).toContain('Strikeout 30%');
+    expect(el.textContent).toContain('20 Sunset Rd., Newark, DE 19711');
+    expect(el.querySelectorAll('.pcard svg').length).toBe(2);   // no art in tests: drawn figures
+    expect(el.textContent).toContain('Change');
   });
 
   it('picker: shows loading at once, ignores a repeat tap, and a newer player wins', async () => {
@@ -75,5 +75,24 @@ describe('App', () => {
     await app.choosePlayer({ id: 'ccc', name: 'C', years: '2000', bats: 'L', throws: 'L', hof: false });
     fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Retry');
+  });
+
+  it('moves matchup -> at-bat -> result and back (plan 23)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await new Promise(r => setTimeout(r, 0));
+    await fixture.whenStable();
+    const app = fixture.componentInstance as any;
+    expect(app.screen()).toBe('matchup');
+    app.pending.set({ outcome: 'hr', seed: 'x', engineVersion: '0.1.0' });
+    app['enterPlay']();
+    expect(app.screen()).toBe('atbat');
+    app.sceneDone();
+    expect(app.screen()).toBe('result');
+    app['onPopState']();
+    expect(app.screen()).toBe('matchup');
+    app.openOverlay('details');
+    expect(app.overlay()).toBe('details');
+    app['onPopState']();
+    expect(app.overlay()).toBeNull();
   });
 });
