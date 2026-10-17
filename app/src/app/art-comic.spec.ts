@@ -47,6 +47,7 @@ describe('comic art (plan 18)', () => {
     expect(frameAt(batterFrames('hit'), ARRIVE_S - 0.01)).toBe(3);
     expect(batterFrames('miss').some(([, f]) => f === 4)).toBe(false);
     expect(batterFrames('take').map(([, f]) => f)).toEqual([0, 6]);
+    expect(batterFrames('look').map(([, f]) => f)).toEqual([0]);
     expect(batterFrames('hbp').map(([, f]) => f)).toEqual([0, 7]);
     expect(PITCHER_FRAMES[PITCHER_FRAMES.length - 1][0]).toBeGreaterThan(1);   // windup is no longer a blur
   });
@@ -65,5 +66,16 @@ describe('comic art (plan 18)', () => {
     expect(r.x).toBeGreaterThan(50);
     expect(l.x).toBeLessThan(50);
     expect(ballAt(2.3, 'foul', 'R', 'R').o).toBe(0);
+  });
+
+  it('sends strikes past the batter, just inside his front hip (plan 20)', () => {
+    for (const [bats, dir] of [['R', 1], ['L', -1]] as const) {
+      const at = ballAt(ARRIVE_S - 0.001, 'look', 'R', bats);
+      expect(at.x).toBeCloseTo(50 - 12 * dir + 8 * dir, 0);
+      const past = ballAt(ARRIVE_S + 0.2, 'miss', 'R', bats);
+      expect(past.behind).toBe(true);
+      expect(past.y).toBeGreaterThan(60);
+    }
+    expect(ballAt(ARRIVE_S + 0.2, 'hit', 'R', 'R').behind).toBeFalsy();
   });
 });

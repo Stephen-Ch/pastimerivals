@@ -41,7 +41,8 @@ export function batterFrames(m: Motion): [number, number][] {
   switch (m) {
     case 'hit': case 'out': case 'foul': return [[0, 0], [1.0, 1], [1.2, 2], [1.3, 3], [ARRIVE_S, 4], [1.55, 5]];
     case 'miss': return [[0, 0], [1.0, 1], [1.2, 2], [1.3, 3], [1.45, 5]];
-    case 'take': case 'look': return [[0, 0], [ARRIVE_S, 6]];
+    case 'take': return [[0, 0], [ARRIVE_S, 6]];
+    case 'look': return [[0, 0]];   // called strike: he never moves (the take frame draws its own ball)
     case 'hbp': return [[0, 0], [ARRIVE_S, 7]];
   }
 }
@@ -52,7 +53,7 @@ export function frameAt(table: [number, number][], t: number): number {
   return f;
 }
 
-export interface BallPos { panel: 'pit' | 'bat' | null; x: number; y: number; d: number; o: number; }
+export interface BallPos { panel: 'pit' | 'bat' | null; x: number; y: number; d: number; o: number; behind?: boolean; }
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
 const clamp01 = (u: number) => Math.max(0, Math.min(1, u));
 
@@ -67,7 +68,9 @@ export function ballAt(t: number, m: Motion, throws: string, bats: string): Ball
   const startX = 50 + (throws === 'L' ? -10 : 10);
   // The contact, take and bail frames draw their own ball; ours meets it there and hides while that frame shows.
   const zone = { x: 50 + 15 * dir, y: 55 };
-  const end = m === 'take' ? { x: plateX + 10 * dir, y: 58 } : m === 'hbp' ? { x: batterX + 4 * dir, y: 50 } : zone;
+  const strike = { x: batterX + 8 * dir, y: 60 };   // plan 20: just inside his front hip, belt to knee
+  const end = m === 'take' ? { x: plateX + 10 * dir, y: 58 } : m === 'hbp' ? { x: batterX + 4 * dir, y: 50 }
+    : m === 'miss' || m === 'look' ? strike : zone;
   if (t < ARRIVE_S) {  // from behind the pitcher (bottom) toward the plate, shrinking
     const u = clamp01((t - HANDOFF_S) / (ARRIVE_S - HANDOFF_S)), e = u * u;
     return { panel: 'bat', x: lerp(startX, end.x, e), y: lerp(104, end.y, e), d: lerp(16, 4.5, e), o: 1 };
@@ -79,7 +82,10 @@ export function ballAt(t: number, m: Motion, throws: string, bats: string): Ball
     case 'hit': return { panel: 'bat', x: lerp(fromX, plateX - 35 * dir, e), y: lerp(fromY, -10, e), d: lerp(4.5, 12, e), o: hidden ? 0 : 1 };
     case 'out': return { panel: 'bat', x: lerp(fromX, plateX + 5 * dir, e), y: lerp(fromY, 2, e), d: lerp(4.5, 6, e), o: hidden ? 0 : 1 };
     case 'foul': return { panel: 'bat', x: lerp(fromX, plateX + 30 * dir, e), y: lerp(fromY, -5, e), d: lerp(4.5, 2.5, e), o: hidden ? 0 : 1 - u };
-    case 'miss': case 'look': return { panel: 'bat', x: end.x, y: lerp(end.y, 68, e), d: lerp(4.5, 2.5, e), o: 1 - u };
+    case 'miss': case 'look': {   // past him to the catcher: behind his legs, shrinking
+      const v = clamp01((t - ARRIVE_S) / 0.35);
+      return { panel: 'bat', x: end.x, y: lerp(end.y, 64, v), d: lerp(4.5, 2.5, v), o: 1 - v, behind: true };
+    }
     default: return { panel: 'bat', x: end.x, y: end.y, d: 4.5, o: 0 };   // take, hbp: the frame's own ball takes over
   }
 }
@@ -104,7 +110,7 @@ export function prefersReducedMotion(): boolean {
               <svg class="plate" viewBox="0 0 20 8" aria-hidden="true"><path d="M1 1 L19 1 L19 4 L10 7.5 L1 4 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width=".8"/></svg>
               <div class="spr" [style.background-image]="'url(' + a.bat.sheet + ')'" [style.--f]="bFrame()" aria-hidden="true"></div>
             </div>
-            @if (ball().panel === 'bat') { <span class="sball" [style.left.%]="ball().x" [style.top.%]="ball().y" [style.width.%]="ball().d" [style.opacity]="ball().o"></span> }
+            @if (ball().panel === 'bat') { <span class="sball" [class.behind]="ball().behind" [style.left.%]="ball().x" [style.top.%]="ball().y" [style.width.%]="ball().d" [style.opacity]="ball().o"></span> }
             <div class="board"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span></div>
           </div>
         </div>
@@ -138,19 +144,20 @@ export function prefersReducedMotion(): boolean {
     .caption { font-weight: 600; min-height: 1.2em; }
     .skip { font: inherit; font-size: .9rem; cursor: pointer; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); padding: 10px 16px; min-height: 44px; }
     .split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; max-width: min(460px, 75vh); margin: 0 auto; }
-    .panel { position: relative; aspect-ratio: 2 / 3; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; transition: opacity .2s; }
+    .panel { position: relative; isolation: isolate; aspect-ratio: 2 / 3; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; transition: opacity .2s; }
     .ppanel { background: linear-gradient(#cfd9e3 0 58%, #7d9a5f 58% 100%); }
     .ppanel::after { content: ''; position: absolute; left: 10%; right: 10%; bottom: 0; height: 12%; border-radius: 50% 50% 0 0; background: #b48a5a; }
     .bpanel { background: linear-gradient(#c9d3c0 0 55%, #7d9a5f 55% 82%, #b48a5a 82% 100%); }
     .split.dim .ppanel { opacity: .55; }
-    .field { position: absolute; inset: 0; }
+    .field { position: absolute; inset: 0; z-index: 1; }
     .field.mirror { transform: scaleX(-1); }
-    .plate { position: absolute; left: 62%; width: 16%; bottom: 6%; }
+    .plate { position: absolute; left: 36%; width: 20%; bottom: 4%; }
     .spr { position: absolute; z-index: 1; height: 90%; aspect-ratio: 364 / 480; bottom: 3%; left: 50%; transform: translateX(-50%);
       background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
     .spr.mirror { transform: translateX(-50%) scaleX(-1); }
     .bpanel .spr { left: 38%; }
     .sball { position: absolute; z-index: 2; aspect-ratio: 1; border-radius: 50%; background: #fbf8f1; border: 1.5px solid #2b2a28; transform: translate(-50%, -50%); }
+    .sball.behind { z-index: 0; }
     .pitcher { animation: windup calc(.55s * var(--k, 1)) ease-in-out both; transform-origin: 150px 112px; }
     .ball-path { transform-box: view-box; }
     .ball { transform-box: fill-box; transform-origin: center; opacity: 0; }
