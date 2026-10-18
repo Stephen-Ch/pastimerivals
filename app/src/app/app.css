@@ -45,7 +45,8 @@ button.link.small { font-size: .82rem; min-height: 32px; padding: 2px 0; }
 .bar-odds.slim { height: 8px; flex: none; margin: 2px 0 6px; }
 .seg { height: 100%; min-width: 0; }
 .top3 { margin: 6px 0 0; font-size: .88rem; }
-.simline { margin: 4px 0 0; font-size: .82rem; color: var(--text-secondary); }
+.simline { margin: 2px 0 0; text-align: left; }
+.hint { grid-column: 1 / -1; margin: 0; font-size: .78rem; color: var(--text-secondary); }
 .c-k { background: var(--s1); } .c-bb { background: var(--s2); } .c-hbp { background: var(--s3); } .c-single { background: var(--s4); }
 .c-double { background: var(--s5); } .c-triple { background: var(--s6); } .c-hr { background: var(--s7); } .c-oip { background: var(--s8); }
 .legend { list-style: none; padding: 0; margin: 8px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: .9rem; }

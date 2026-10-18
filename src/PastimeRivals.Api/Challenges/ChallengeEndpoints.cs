@@ -14,7 +14,7 @@ public sealed record SlotOut(int Slot, IReadOnlyList<PlayerOut> Choices);
 public sealed record AtBatOut(int Index, int Round, int BattingSide, PlayerOut Pitcher, PlayerOut Batter, string Seed, string Outcome, int Points);
 public sealed record GameOut(IReadOnlyList<IReadOnlyList<PlayerOut>> Lineups, IReadOnlyList<AtBatOut> AtBats, int[] Totals, int Winner, IReadOnlyList<string> Notes);
 public sealed record ChallengeView(string Code, string Status, string You, string CreatorName, string? OpponentName, DateTime ExpiresUtc,
-    bool CanClaim, string? RematchOf, IReadOnlyList<SlotOut>? YourPicks, GameOut? Game);
+    bool CanClaim, string? RematchOf, IReadOnlyList<SlotOut>? YourPicks, GameOut? Game, bool VsCpu = false);
 public sealed record CreatedOut(string Code, string Key);
 
 public static class ChallengeEndpoints
@@ -22,6 +22,10 @@ public static class ChallengeEndpoints
     public static readonly TimeSpan Lifetime = TimeSpan.FromHours(72);
     // Counted then inserted without a lock, so a burst of parallel requests can overshoot by a few (accepted).
     public const int PerGuestPerDay = 20, PerIpPerDay = 200, MaxOpen = 50, GuestsPerIpPerDay = 300;
+    public const int CpuPerGuestPerDay = 50, CpuPerIpPerDay = 200;
+    /// <summary>The computer's fixed id (plan 25). Never a real guest.</summary>
+    public static readonly Guid ComputerId = new("00000000-0000-0000-0000-00000000c0de");
+    public const string ComputerName = "The Computer";
 
     private static string Salt(IConfiguration cfg) => cfg["Challenges:IpSalt"] ?? "local-dev-only";
 
@@ -99,7 +103,7 @@ public static class ChallengeEndpoints
             var now = DateTime.UtcNow;
             return Results.Ok(list.Select(s => new
             {
-                s.Code, you = s.Side == 0 ? "creator" : "opponent", s.CreatorName, s.OpponentName, s.CreatedUtc,
+                s.Code, you = s.Side == 0 ? "creator" : "opponent", s.CreatorName, s.OpponentName, s.CreatedUtc, s.VsCpu,
                 status = s.Status == ChallengeStatus.Open && s.OpponentName is null && s.ExpiresUtc <= now ? "expired" : s.Status.ToString().ToLowerInvariant(),
             }));
         });
@@ -171,13 +175,54 @@ public static class ChallengeEndpoints
             return Results.Ok(new { key, view = await ViewFor(ch, ctx, store, play, misses, asGuest: g) });
         });
 
+        // Plan 25: play the computer. The user is the home side (keeps every pick); the computer bats first.
+        write.MapPost("/challenges/computer", async (PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, IConfiguration cfg, MissCounter misses) =>
+        {
+            if (await CheckPicks(body.Picks, play) is { } err) return Results.BadRequest(new { error = err });
+            if (body.Nickname is not null && !Identity.IsGeneratedNickname(body.Nickname)) return Results.BadRequest(new { error = "Pick one of the suggested names." });
+            var now = DateTime.UtcNow;
+            var ipHash = Identity.IpHash(ctx, Salt(cfg));
+            var g = await CurrentGuest(ctx, store);
+            if (g is not null && await store.CreatedSinceAsync(g.Id, null, now.AddDays(-1), vsCpu: true) >= CpuPerGuestPerDay) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            if (await store.CreatedSinceAsync(null, ipHash, now.AddDays(-1), vsCpu: true) >= CpuPerIpPerDay) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            g ??= await NewGuest(ctx, store, body.Nickname ?? Identity.NewNickname(), cfg);
+            if (g is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            if (body.Nickname is not null && body.Nickname != g.Nickname) { await store.SetNicknameAsync(g.Id, body.Nickname); g = g with { Nickname = body.Nickname }; }
+
+            var oracle = await play.OracleAsync();
+            // The computer never uses any of the user's players, in any season or role (all 12 picks).
+            var used = body.Picks.SelectMany(p => p.Choices).Select(c => c.Id).ToHashSet();
+            var cpu = new List<StoredPick>();
+            for (var slot = 0; slot < Rules.Slots; slot++)
+            {
+                var pool = oracle.ComputerPool(slot == 0).Where(p => !used.Contains(p.Id)).ToList();
+                if (pool.Count == 0) return Results.Problem("Player data is still loading. Try again.", statusCode: 503);
+                var pick = pool[System.Security.Cryptography.RandomNumberGenerator.GetInt32(pool.Count)];
+                used.Add(pick.Id);
+                cpu.Add(new StoredPick(1, slot, 0, pick.Id, pick.Year));
+            }
+            oracle.Top50(true); oracle.Top50(false);
+
+            var code = Identity.NewCode();
+            var key = Identity.NewToken();
+            // Reserved for the computer, so nobody else can ever claim it.
+            var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, ComputerId, null, null, null, VsCpu: true);
+            await store.CreateChallengeAsync(ch, ToStored(body.Picks, side: 0), Identity.Hash(key), ipHash);
+            var outcome = await store.LockAndResolveAsync(code, ComputerId, ComputerName, cpu, Identity.Hash(Identity.NewToken()), now,
+                all => Rules.Play(new[] { ToSlots(all, 0), ToSlots(all, 1) }, PlayService.NewSeed(), oracle));
+            if (outcome != LockOutcome.Locked) return Results.Problem("Could not start the game. Try again.", statusCode: 500);
+            try { await store.PurgeCpuGamesAsync(now.AddDays(-30)); } catch { /* retention is best effort */ }
+            var view = await ViewFor((await store.GetAsync(code))!, ctx, store, play, misses, asGuest: g);
+            return Results.Ok(new { code, key, view });
+        });
+
         write.MapPost("/challenges/{code}/rematch", async (string code, PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, Turnstile ts, IConfiguration cfg, MissCounter misses) =>
         {
             var ip = MissCounter.KeyFor(ctx);
             if (misses.Blocked(ip)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
             var g = await CurrentGuest(ctx, store);
             if (!Identity.CodePattern().IsMatch(code) || await store.GetAsync(code) is not { } ch
-                || g is null || ch.Status != ChallengeStatus.Resolved || (g.Id != ch.CreatorId && g.Id != ch.OpponentId))
+                || g is null || ch.Status != ChallengeStatus.Resolved || ch.VsCpu || (g.Id != ch.CreatorId && g.Id != ch.OpponentId))
             {
                 misses.Miss(ip);
                 return Results.NotFound();
@@ -283,7 +328,7 @@ public static class ChallengeEndpoints
             else misses.Miss(MissCounter.KeyFor(ctx));
         }
         var you = side switch { 0 => "creator", 1 => "opponent", _ => "visitor" };
-        var canClaim = ch.Status == ChallengeStatus.Open && ch.OpponentId is null && side != 0
+        var canClaim = !ch.VsCpu && ch.Status == ChallengeStatus.Open && ch.OpponentId is null && side != 0
             && (ch.RematchFor is null || ch.RematchFor == g?.Id);
 
         async Task<PlayerOut> P(PickRef r) => await Out(play, r);
@@ -319,6 +364,6 @@ public static class ChallengeEndpoints
             game = new GameOut(lineups, outs, ch.Totals!, ch.Winner ?? -1, ch.Notes ?? new List<string>());
         }
         return new ChallengeView(ch.Code, ch.Status.ToString().ToLowerInvariant(), you, ch.CreatorName, ch.OpponentName, ch.ExpiresUtc,
-            canClaim, ch.RematchOf, yourPicks, game);
+            canClaim, ch.RematchOf, yourPicks, game, ch.VsCpu);
     }
 }

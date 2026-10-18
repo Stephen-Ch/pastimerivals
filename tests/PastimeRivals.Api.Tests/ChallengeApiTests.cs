@@ -93,9 +93,14 @@ public sealed class MemoryChallengeStore : IChallengeStore
     private readonly HashSet<string> _checked = new();
     public Task<bool> TryUseClashCheckAsync(string code) { lock (_gate) return Task.FromResult(_checked.Add(code)); }
     public Task<(string Code, int Side)?> SideByKeyHashAsync(string h) { lock (_gate) return Task.FromResult<(string, int)?>(_keys.TryGetValue(h, out var v) ? v : null); }
-    public Task<int> CreatedSinceAsync(Guid? id, string? ip, DateTime since)
+    public Task<int> CreatedSinceAsync(Guid? id, string? ip, DateTime since, bool vsCpu = false)
     {
-        lock (_gate) return Task.FromResult(_ch.Values.Count(v => v.C.CreatedUtc > since && (id is { } g ? v.C.CreatorId == g : v.Ip == ip)));
+        lock (_gate) return Task.FromResult(_ch.Values.Count(v => v.C.CreatedUtc > since && v.C.VsCpu == vsCpu && (id is { } g ? v.C.CreatorId == g : v.Ip == ip)));
+    }
+    public Task PurgeCpuGamesAsync(DateTime before)
+    {
+        lock (_gate) foreach (var k in _ch.Where(kv => kv.Value.C.VsCpu && kv.Value.C.CreatedUtc < before).Select(kv => kv.Key).ToList()) _ch.Remove(k);
+        return Task.CompletedTask;
     }
     public Task<int> OpenCountAsync(Guid id, DateTime now)
     {
@@ -105,7 +110,7 @@ public sealed class MemoryChallengeStore : IChallengeStore
     {
         lock (_gate) return Task.FromResult<IReadOnlyList<ChallengeSummary>>(_ch.Values.Select(v => v.C).Where(c => c.CreatorId == id || c.OpponentId == id)
             .OrderByDescending(c => c.CreatedUtc).Take(take)
-            .Select(c => new ChallengeSummary(c.Code, c.CreatorId == id ? 0 : 1, c.Status, c.CreatorName, c.OpponentName, c.CreatedUtc, c.ExpiresUtc)).ToList());
+            .Select(c => new ChallengeSummary(c.Code, c.CreatorId == id ? 0 : 1, c.Status, c.CreatorName, c.OpponentName, c.CreatedUtc, c.ExpiresUtc, c.VsCpu)).ToList());
     }
 
     /// <summary>Test hook: push a challenge's expiry into the past.</summary>
@@ -209,6 +214,50 @@ public class ChallengeApiTests
         var b = await Browser(f);
         var probe = await b.PostAsJsonAsync($"/api/challenges/{code}/lock", Picks("pit02", "bat07", "bat02", "bat06"));
         Assert.Equal(HttpStatusCode.OK, probe.StatusCode);   // no second warning: it locks and the backup or top-50 pick plays
+    }
+
+    [Fact]
+    public async Task Computer_game_plays_at_once_with_no_shared_players_and_user_at_home()
+    {
+        var f = Factory(NewStore());
+        var c = await Browser(f);
+        var r = await c.PostAsJsonAsync("/api/challenges/computer", Picks("pit01", "bat01", "bat02", "bat03", backup1: "bat10"));
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var j = await r.Content.ReadFromJsonAsync<JsonElement>();
+        var view = j.GetProperty("view");
+        Assert.True(view.GetProperty("vsCpu").GetBoolean());
+        Assert.Equal("creator", view.GetProperty("you").GetString());
+        Assert.Equal("The Computer", view.GetProperty("opponentName").GetString());
+        var game = view.GetProperty("game");
+        var mine = new[] { "pit01", "bat01", "bat02", "bat03", "bat10" };
+        Assert.DoesNotContain(game.GetProperty("lineups")[1].EnumerateArray(), p => mine.Contains(p.GetProperty("id").GetString()));
+        Assert.Equal(1, game.GetProperty("atBats")[0].GetProperty("battingSide").GetInt32());   // computer bats first
+        // Nobody can claim it, and it cannot be rematched.
+        var code = j.GetProperty("code").GetString();
+        var other = await Browser(f);
+        Assert.Equal(HttpStatusCode.Conflict, (await other.PostAsJsonAsync($"/api/challenges/{code}/lock", Picks("pit02", "bat04", "bat05", "bat06"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await c.PostAsJsonAsync($"/api/challenges/{code}/rematch", Picks("pit02", "bat04", "bat05", "bat06"))).StatusCode);
+        var list = await c.GetFromJsonAsync<JsonElement>("/api/challenges/mine");
+        Assert.True(list[0].GetProperty("vsCpu").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Computer_games_do_not_use_up_friend_challenge_limits()
+    {
+        var f = Factory(NewStore());
+        var c = await Browser(f);
+        for (var i = 0; i < ChallengeEndpoints.PerGuestPerDay + 2; i++)
+            Assert.Equal(HttpStatusCode.OK, (await c.PostAsJsonAsync("/api/challenges/computer", Picks("pit01", "bat01", "bat02", "bat03"))).StatusCode);
+        var (code, _) = await Create(c);   // still allowed
+        Assert.False(string.IsNullOrEmpty(code));
+    }
+
+    [Fact]
+    public async Task Computer_game_needs_the_anti_forgery_header()
+    {
+        var f = Factory(NewStore());
+        var r = await f.CreateClient().PostAsJsonAsync("/api/challenges/computer", Picks("pit01", "bat01", "bat02", "bat03"));
+        Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
     }
 
     [Fact]

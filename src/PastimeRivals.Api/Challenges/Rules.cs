@@ -17,6 +17,7 @@ public interface IMatchupOracle
 {
     Rates? Odds(PickRef batter, PickRef pitcher);
     IReadOnlyList<PickRef> Top50(bool pitchers);
+    IReadOnlyList<PickRef> ComputerPool(bool pitchers) => Top50(pitchers);
 }
 
 /// <summary>Pure challenge rules (D17 to D21). Same picks and seed always give the same game.</summary>

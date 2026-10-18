@@ -2,21 +2,21 @@
   @switch (step()) {
     @case ('loading') {
       <header class="bar"><button type="button" class="link" (click)="leave()">‹ Solo play</button></header>
-      <main class="flex"><h1 #stepTitle tabindex="-1" class="sr-only">Loading</h1><p class="muted pad" role="status">Loading the challenge...</p></main>
+      <main class="flex"><h1 #stepTitle tabindex="-1" class="sr-only">Loading</h1><p class="muted pad" role="status">Loading the game...</p></main>
     }
 
     @case ('home') {
       <header class="bar"><button type="button" class="link" (click)="leave()">‹ Solo play</button></header>
       <main class="flex">
-        <h1 #stepTitle tabindex="-1">Challenge a friend</h1>
-        <p class="how">Pick a pitcher and 3 batters from any season. Send the link. Your friend picks their team without seeing yours.
-          Their batters face your pitcher, then yours face theirs. Walk or single 1 point, double 2, triple 3, homer 4.</p>
+        <h1 #stepTitle tabindex="-1">Play a game</h1>
+        <p class="how">Pick a pitcher and 3 batters from any season. Your batters face their pitcher, then theirs face yours.
+          Walk or single 1 point, double 2, triple 3, homer 4. Most points wins.</p>
         @if (mine().length) {
-          <h2 class="sub">Your challenges</h2>
+          <h2 class="sub">Your games</h2>
           <ul class="list">
             @for (m of mine(); track m.code) {
               <li><button type="button" class="row-btn" (click)="openMine(m.code)">
-                <span>{{ m.you === 'creator' ? 'You vs ' + (m.opponentName ?? 'waiting for a friend') : m.creatorName + ' vs you' }}
+                <span>{{ m.vsCpu ? 'You vs the Computer' : m.you === 'creator' ? 'You vs ' + (m.opponentName ?? 'waiting for a friend') : m.creatorName + ' vs you' }}
                   <span class="muted"> · {{ m.status === 'resolved' ? 'played' : m.status }}</span></span><span class="chev" aria-hidden="true">›</span>
               </button></li>
             }
@@ -24,9 +24,9 @@
         }
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
-      <div class="actions">
-        <button class="primary big" type="button" (click)="startPicking('create')">Pick your team</button>
-        <button type="button" (click)="quickPick()" [disabled]="busy()">Quick pick</button>
+      <div class="actions even">
+        <button class="primary big" type="button" (click)="startPicking('cpu')">Play the computer</button>
+        <button class="primary big" type="button" (click)="startPicking('create')">Challenge a friend</button>
       </div>
     }
 
@@ -120,7 +120,7 @@
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
       <div class="actions">
-        <button class="primary big" type="button" (click)="lockTeam()" [disabled]="!teamDone() || busy() || clashOpen().length > 0">{{ mode() === 'accept' ? 'Lock team and play' : 'Lock team and get link' }}</button>
+        <button class="primary big" type="button" (click)="lockTeam()" [disabled]="!teamDone() || busy() || clashOpen().length > 0">{{ mode() === 'cpu' ? 'Play ball' : mode() === 'accept' ? 'Lock team and play' : 'Lock team and get link' }}</button>
         <button type="button" (click)="quickPick()" [disabled]="busy()">Quick pick</button>
       </div>
     }
@@ -221,11 +221,19 @@
         @if (note()) { <p class="note" role="status">{{ note() }}</p> }
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
-      <div class="actions three">
-        <button class="primary big" type="button" (click)="shareResult()">{{ view()?.you === 'opponent' ? 'Send the result to ' + view()?.creatorName : 'Share the game' }}</button>
-        @if (yourSide() !== null) { <button type="button" (click)="startPicking('rematch')">Rematch</button> }
-        @else { <button type="button" (click)="newChallenge()">Start your own</button> }
-      </div>
+      @if (view()?.vsCpu && yourSide() === 0) {
+        <div class="actions three">
+          <button class="primary big" type="button" (click)="startPicking('cpu')">Play again</button>
+          <button type="button" (click)="sameTeamAgain()" [disabled]="busy()">Same team again</button>
+          <button type="button" (click)="shareResult()">Share the game</button>
+        </div>
+      } @else {
+        <div class="actions three">
+          <button class="primary big" type="button" (click)="shareResult()">{{ view()?.you === 'opponent' ? 'Send the result to ' + view()?.creatorName : 'Share the game' }}</button>
+          @if (yourSide() !== null && !view()?.vsCpu) { <button type="button" (click)="startPicking('rematch')">Rematch</button> }
+          @else { <button type="button" (click)="newChallenge()">Start your own</button> }
+        </div>
+      }
     }
 
     @case ('closed') {

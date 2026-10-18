@@ -9,7 +9,7 @@
       <header class="bar">
         <h1 #screenTitle tabindex="-1">Pastime Rivals</h1>
         <span class="bar-links">
-          <button type="button" class="link" (click)="openChallenge()">Challenge a friend</button>
+          <button type="button" class="link" (click)="openChallenge()">Play a game</button>
           <button type="button" class="link" (click)="openOverlay('details')" [disabled]="!matchup()">Details</button>
         </span>
       </header>
@@ -52,13 +52,14 @@
               @for (o of outcomes; track o) { <span class="seg" [class]="'seg c-' + o" [style.width]="barWidth(o)"></span> }
             </div>
             <p class="top3">{{ topText() }}</p>
-            @if (sims(); as s) { <p class="simline">Sim 1,000: {{ simSummary() }} <button type="button" class="link small" (click)="openOverlay('details')">All</button></p> }
+            @if (sims()) { <button type="button" class="link small simline" (click)="openOverlay('sims')">Simulated: {{ simSummary() }} ›</button> }
           </div>
         }
       </main>
       <div class="actions">
         <button class="primary big" type="button" (click)="throwPitch()" [disabled]="busy() || !matchup() || !pitcherReport() || !batterReport()">{{ artWaiting() ? 'Loading art' : 'Pitch' }}</button>
-        <button type="button" (click)="runSims()" [disabled]="busy() || !matchup()">Sim 1,000</button>
+        <button type="button" (click)="runSims()" [disabled]="busy() || !matchup()">Simulate 1,000</button>
+        <p class="hint">Pitch plays one at-bat. Simulate runs this matchup 1,000 times.</p>
       </div>
     }
     @case ('atbat') {
@@ -113,7 +114,7 @@
       <ul class="legend">
         @for (o of outcomes; track o) {
           <li><span class="swatch" [class]="'swatch c-' + o"></span>{{ label(o) }} <strong>{{ percent(m.probabilities[o]) }}</strong>
-            @if (sims()) { <span class="sim">sim {{ simShare(o) }}</span> }</li>
+</li>
         }
       </ul>
       <p class="note">Era-adjusted to a neutral {{ m.neutral }} league.
@@ -140,6 +141,37 @@
     }
     <p class="note">The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.</p>
     <p class="note">Not affiliated with Major League Baseball or its clubs.</p>
+  </div>
+}
+
+@if (overlay() === 'sims') {
+  <div class="sheet sims" role="dialog" aria-modal="true" aria-label="Simulated results">
+    <div class="sheet-head"><h2 #sheetTitle tabindex="-1">{{ sims()?.n === 1000 ? '1,000' : sims()?.n }} plate appearances</h2><button type="button" class="link" (click)="closeOverlay()">Close</button></div>
+    <p class="muted">{{ batter()?.name }} {{ batter()?.year }} vs {{ pitcher()?.name }} {{ pitcher()?.year }}</p>
+    @if (simLine(); as l) {
+      <div class="sim-grid">
+        <div class="slash" aria-label="Batting line">
+          <div><strong>{{ rate3(l.avg) }}</strong><span>AVG</span></div>
+          <div><strong>{{ rate3(l.obp) }}</strong><span>OBP</span></div>
+          <div><strong>{{ rate3(l.slg) }}</strong><span>SLG</span></div>
+          <div><strong>{{ l.hr }}</strong><span>HR</span></div>
+          <div><strong>{{ l.k }}</strong><span>K</span></div>
+          <div><strong>{{ l.bb }}</strong><span>BB+HBP</span></div>
+        </div>
+        <ul class="sim-bars">
+          @for (o of outcomes; track o) {
+            <li><span class="sim-label">{{ label(o) }}</span>
+              <span class="sim-track"><span class="seg" [class]="'seg c-' + o" [style.width]="simWidth(o)"></span></span>
+              <span class="sim-num">{{ sims()!.counts[o] }} <span class="muted">({{ simShare(o) }}, odds {{ percent(matchup()?.probabilities?.[o] ?? 0) }})</span></span></li>
+          }
+        </ul>
+      </div>
+      <p class="note">A simulation, so each run comes out a little different.</p>
+    }
+    <div class="sheet-actions">
+      <button type="button" class="primary" (click)="runSims()" [disabled]="busy()">Run again</button>
+      <button type="button" (click)="closeOverlay()">Close</button>
+    </div>
   </div>
 }
 

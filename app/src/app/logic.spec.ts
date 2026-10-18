@@ -38,3 +38,22 @@ describe('logic', () => {
     expect(s).toContain('6.1%');
   });
 });
+
+import { battingLine, rate3 } from './logic';
+describe('battingLine (plan 25)', () => {
+  it('computes AVG, OBP and SLG from plate appearances', () => {
+    const c = { k: 200, bb: 90, hbp: 10, single: 150, double: 40, triple: 5, hr: 30, oip: 475 };
+    const l = battingLine(c, 1000);
+    expect(l.ab).toBe(900);
+    expect(l.hits).toBe(225);
+    expect(rate3(l.avg)).toBe('.250');
+    expect(rate3(l.obp)).toBe('.325');
+    expect(rate3(l.slg)).toBe(".406");   // (150 + 80 + 15 + 120) / 900
+    expect(l.bb).toBe(100);
+  });
+  it('never divides by zero', () => {
+    const z = { k: 0, bb: 5, hbp: 0, single: 0, double: 0, triple: 0, hr: 0, oip: 0 };
+    expect(battingLine(z, 5).avg).toBe(0);
+    expect(rate3(1)).toBe('1.000');
+  });
+});

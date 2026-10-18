@@ -20,3 +20,5 @@
   .game:has(.scoreboard) .flex, .game:has(.scoreboard) .actions { grid-row: 3; }
 }
 .clash { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--surface-1); border: 1px solid var(--error); color: var(--text-primary); font-weight: 600; font-size: .92rem; }
+.actions.even { grid-template-columns: 1fr 1fr; }
+@media (orientation: landscape) and (max-height: 500px) { .actions.even { grid-template-columns: 1fr; } }

@@ -23,7 +23,7 @@ public sealed class PlayService(IStatsSource source)
         public Rates Neutral { get; }
         public IReadOnlyList<TeamRow> Teams { get; }
         public Platoon NeutralPlatoon { get; }
-        public IReadOnlyList<Challenges.PickRef>? TopBat, TopPit;
+        public IReadOnlyList<Challenges.PickRef>? TopBat, TopPit, CpuBat, CpuPit;
         private Dictionary<int, double>? _batMean, _pitMean;
 
         private static Dictionary<int, double> Means(Dictionary<string, List<PlayerRow>> pool) =>
@@ -183,6 +183,16 @@ public sealed class PlayService(IStatsSource source)
         }
 
         // Top 50 by challenge points per plate appearance (batters, 300+ PA) or fewest allowed (pitchers, 150+ batters faced).
+        /// <summary>Plan 25: the computer picks from the best 40 per era at each position (200 in all), so it is beatable.</summary>
+        public IReadOnlyList<Challenges.PickRef> ComputerPool(bool pitchers)
+        {
+            lock (d)
+            {
+                if (pitchers) return d.CpuPit ??= Rank(d, d.Pit, 400, ascending: true, perEra: 40);
+                return d.CpuBat ??= Rank(d, d.Bat, 300, ascending: false, perEra: 40);
+            }
+        }
+
         public IReadOnlyList<Challenges.PickRef> Top50(bool pitchers)
         {
             lock (d)
@@ -193,11 +203,11 @@ public sealed class PlayService(IStatsSource source)
         }
 
         // Era-adjusted (each season against the average of its year), and 10 from each era so no one era fills the list.
-        private static IReadOnlyList<Challenges.PickRef> Rank(Loaded d, Dictionary<string, List<PlayerRow>> pool, int minPa, bool ascending)
+        private static IReadOnlyList<Challenges.PickRef> Rank(Loaded d, Dictionary<string, List<PlayerRow>> pool, int minPa, bool ascending, int perEra = 10)
         {
             var rows = pool.Values.SelectMany(v => v).Where(r => r.Counts.Pa >= minPa).ToList();
             return rows.GroupBy(r => EraBucket(r.Year))
-                .SelectMany(g => (ascending ? g.OrderBy(r => d.Score(r, ascending)) : g.OrderByDescending(r => d.Score(r, ascending))).ThenBy(r => r.Id).ThenBy(r => r.Year).Take(10))
+                .SelectMany(g => (ascending ? g.OrderBy(r => d.Score(r, ascending)) : g.OrderByDescending(r => d.Score(r, ascending))).ThenBy(r => r.Id).ThenBy(r => r.Year).Take(perEra))
                 .Select(r => new Challenges.PickRef(r.Id, r.Year)).ToList();
         }
 

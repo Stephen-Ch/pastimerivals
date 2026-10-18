@@ -111,6 +111,16 @@ public class ChallengeRulesTests
     }
 
     [Fact]
+    public void A_tie_that_stays_tied_is_a_draw_after_five_extra_rounds()
+    {
+        // Every batter strikes out: 0-0 after 6, then 5 extra rounds of 0-0.
+        var g = Rules.Play(new[] { Side("p1", "ak", "bk", "ck"), Side("p2", "dk", "ek", "fk") }, 11, new FixedOracle());
+        Assert.Equal(new[] { 0, 0 }, g.Totals);
+        Assert.Equal(-1, g.Winner);
+        Assert.Equal(Rules.MaxExtraRounds, g.AtBats.Max(a => a.Round));
+    }
+
+    [Fact]
     public void Per_at_bat_seeds_differ_and_are_stable()
     {
         Assert.NotEqual(Rules.SeedFor(1, 0), Rules.SeedFor(1, 1));

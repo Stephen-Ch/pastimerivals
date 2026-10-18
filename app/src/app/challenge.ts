@@ -8,7 +8,7 @@ import {
 } from './challenge-api';
 
 type Step = 'loading' | 'home' | 'intro' | 'pick' | 'review' | 'shared' | 'waiting' | 'play' | 'final' | 'closed';
-type Mode = 'create' | 'accept' | 'rematch';
+type Mode = 'create' | 'accept' | 'rematch' | 'cpu';
 
 export const SLOT_NAMES = ['Your pitcher', 'Batter 1', 'Batter 2', 'Batter 3'];
 
@@ -83,7 +83,7 @@ export class ChallengeFlow {
   protected readonly yourSide = computed(() => (this.view()?.you === 'creator' ? 0 : this.view()?.you === 'opponent' ? 1 : null));
   protected readonly sideName = (side: number) => {
     const v = this.view();
-    const n = side === 0 ? v?.creatorName : v?.opponentName;
+    const n = side === 0 ? v?.creatorName : v?.vsCpu ? 'The Computer' : v?.opponentName;
     return (n ?? 'Friend') + (this.yourSide() === side ? ' (you)' : '');
   };
   protected readonly finalText = computed(() => {
@@ -247,7 +247,7 @@ export class ChallengeFlow {
   protected backFromPicking() {
     if (this.mode() === 'accept') this.step.set('intro');
     else if (this.mode() === 'rematch') this.step.set('final');
-    else this.step.set('home');
+    else this.step.set('home');   // create and cpu both start from the games screen
   }
 
   protected chooseName(n: string) { this.nickname.set(n); }
@@ -258,7 +258,9 @@ export class ChallengeFlow {
     const body = toBody(slots as CSlot[], this.nickname() ?? this.nickChoices()[0]);
     this.busy.set(true); this.error.set(null);
     try {
-      if (this.mode() === 'accept') {
+      if (this.mode() === 'cpu') {
+        await this.playComputer(body);
+      } else if (this.mode() === 'accept') {
         const code = this.current()!;
         const r = await capi.lock(code, body);
         saveKey(code, r.key);
@@ -295,6 +297,33 @@ export class ChallengeFlow {
     } finally { this.busy.set(false); }
   }
 
+  /** Plan 25: the server picks the computer's team and plays the game at once; then the same tap-per-at-bat screens. */
+  private async playComputer(body: ReturnType<typeof toBody>) {
+    const r = await capi.computer(body);
+    saveKey(r.code, r.key);
+    this.current.set(r.code);
+    this.view.set(r.view);
+    this.shareLink.set(links(location.origin, r.code, null).share);
+    this.privateLink.set(null);
+    this.revealed.set(0); setWatched(r.code, 0); this.lastCall.set(null);
+    try { history.pushState({ pr: 'challenge' }, '', `/c/${r.code}`); } catch { /* fine */ }
+    this.mode.set('cpu');
+    this.step.set('play');
+    let session = 'no-storage';
+    try { session = sessionStorage.getItem('pr-session') ?? session; } catch { /* fine */ }
+    api.event('cpu_game', session);
+  }
+
+  /** Same team against a new computer team. */
+  protected async sameTeamAgain() {
+    const picks = this.view()?.yourPicks;
+    if (!picks) return;
+    this.busy.set(true); this.error.set(null);
+    try { await this.playComputer(toBody(picks, this.nickname() ?? undefined)); }
+    catch (e) { this.error.set((e as Error).message); }
+    finally { this.busy.set(false); }
+  }
+
   // ---- Sharing ----
   protected async shareChallenge() {
     const url = this.shareLink();
@@ -306,7 +335,8 @@ export class ChallengeFlow {
     const g = this.game(), v = this.view();
     if (!g || !v) return;
     const score = `${v.creatorName} ${g.totals[0]}, ${v.opponentName ?? 'Friend'} ${g.totals[1]}`;
-    const text = v.you === 'opponent' ? `I played your Pastime Rivals challenge. Watch the game!` : `Watch our Pastime Rivals game!`;
+    const text = v.vsCpu ? 'Watch my game against the Computer on Pastime Rivals!'
+      : v.you === 'opponent' ? `I played your Pastime Rivals challenge. Watch the game!` : `Watch our Pastime Rivals game!`;
     await this.shareOut(text, this.shareLink(), score);
   }
 

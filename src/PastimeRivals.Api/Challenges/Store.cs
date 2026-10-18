@@ -7,11 +7,11 @@ public enum ChallengeStatus { Open, Resolved, Expired }
 public sealed record Challenge(
     string Code, Guid CreatorId, string CreatorName, Guid? OpponentId, string? OpponentName,
     ChallengeStatus Status, DateTime CreatedUtc, DateTime ExpiresUtc, Guid? RematchFor, string? RematchOf,
-    int[]? Totals, int? Winner, IReadOnlyList<string>? Notes = null);
+    int[]? Totals, int? Winner, IReadOnlyList<string>? Notes = null, bool VsCpu = false);
 
 public sealed record StoredPick(int Side, int Slot, int Rank, string PlayerId, int Year);
 
-public sealed record ChallengeSummary(string Code, int Side, ChallengeStatus Status, string CreatorName, string? OpponentName, DateTime CreatedUtc, DateTime ExpiresUtc);
+public sealed record ChallengeSummary(string Code, int Side, ChallengeStatus Status, string CreatorName, string? OpponentName, DateTime CreatedUtc, DateTime ExpiresUtc, bool VsCpu = false);
 
 public enum LockOutcome { Locked, Taken, NotFound, Expired, OwnChallenge, NotForYou }
 
@@ -44,7 +44,11 @@ public interface IChallengeStore
     /// <summary>Which side of which challenge a private link opens, or null.</summary>
     Task<(string Code, int Side)?> SideByKeyHashAsync(string keyHash);
 
-    Task<int> CreatedSinceAsync(Guid? creatorId, string? ipHash, DateTime sinceUtc);
+    /// <summary>Games created since a time, by guest or by address; computer games and friend challenges are counted apart.</summary>
+    Task<int> CreatedSinceAsync(Guid? creatorId, string? ipHash, DateTime sinceUtc, bool vsCpu = false);
+
+    /// <summary>Deletes a small batch of computer games older than the cutoff (plan 25 retention).</summary>
+    Task PurgeCpuGamesAsync(DateTime beforeUtc);
     Task<int> OpenCountAsync(Guid creatorId, DateTime nowUtc);
     Task<IReadOnlyList<ChallengeSummary>> MineAsync(Guid guestId, int take);
 }

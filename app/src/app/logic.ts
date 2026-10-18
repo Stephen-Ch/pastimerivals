@@ -212,3 +212,17 @@ export function callFor(o: OutcomeKey, seed: string, count: AtBatCount, batter: 
     }
   }
 }
+
+/** Plan 25: a batting line from simulated outcomes (n plate appearances; no sacrifices in the model). */
+export interface BattingLine { avg: number; obp: number; slg: number; hr: number; k: number; bb: number; hits: number; ab: number; }
+export function battingLine(c: Record<OutcomeKey, number>, n: number): BattingLine {
+  const hits = c.single + c.double + c.triple + c.hr;
+  const ab = Math.max(0, n - c.bb - c.hbp);
+  const tb = c.single + 2 * c.double + 3 * c.triple + 4 * c.hr;
+  return { avg: ab ? hits / ab : 0, obp: n ? (hits + c.bb + c.hbp) / n : 0, slg: ab ? tb / ab : 0, hr: c.hr, k: c.k, bb: c.bb + c.hbp, hits, ab };
+}
+/** ".287" style. */
+export function rate3(x: number): string {
+  const s = x.toFixed(3);
+  return s.startsWith('0') ? s.slice(1) : s;
+}

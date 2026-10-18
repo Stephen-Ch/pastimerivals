@@ -9,9 +9,9 @@ export interface CGame { lineups: CPlayer[][]; atBats: CAtBat[]; totals: [number
 export interface CView {
   code: string; status: 'open' | 'resolved' | 'expired'; you: 'creator' | 'opponent' | 'visitor';
   creatorName: string; opponentName: string | null; expiresUtc: string; canClaim: boolean; rematchOf: string | null;
-  yourPicks: CSlot[] | null; game: CGame | null;
+  yourPicks: CSlot[] | null; game: CGame | null; vsCpu: boolean;
 }
-export interface CMine { code: string; you: 'creator' | 'opponent'; creatorName: string; opponentName: string | null; createdUtc: string; status: string; }
+export interface CMine { code: string; you: 'creator' | 'opponent'; creatorName: string; opponentName: string | null; createdUtc: string; status: string; vsCpu: boolean; }
 export interface CClash { creatorName: string; clashes: { slot: number; id: string; name: string }[]; }
 export interface CMe { nickname: string | null; choices: string[]; }
 
@@ -79,6 +79,7 @@ export const capi = {
   quickpick: () => get<CSlot[]>('/api/challenges/quickpick'),
   create: (b: PickBody) => send<{ code: string; key: string }>('POST', '/api/challenges', b),
   lock: (code: string, b: PickBody) => send<{ key: string; view: CView }>('POST', `/api/challenges/${encodeURIComponent(code)}/lock`, b),
+  computer: (b: PickBody) => send<{ code: string; key: string; view: CView }>('POST', '/api/challenges/computer', b),
   rematch: (code: string, b: PickBody) => send<{ code: string; key: string }>('POST', `/api/challenges/${encodeURIComponent(code)}/rematch`, b),
 };
 

@@ -1,0 +1,22 @@
+.sim-grid { display: grid; gap: 14px; margin-top: 10px; }
+.slash { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.slash div { background: var(--surface-1); border-radius: 10px; padding: 8px; text-align: center; }
+.slash strong { display: block; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.slash span { font-size: .75rem; color: var(--text-secondary); }
+.sim-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sim-bars li { display: grid; grid-template-columns: 6.5em 1fr; gap: 2px 8px; align-items: center; font-size: .85rem; }
+.sim-track { height: 10px; border-radius: 4px; background: var(--surface-1); overflow: hidden; display: block; }
+.sim-track .seg { display: block; height: 100%; }
+.sim-num { grid-column: 2; font-size: .78rem; font-variant-numeric: tabular-nums; }
+.sheet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .sheet.sims { max-width: 760px; }
+  .sim-grid { grid-template-columns: 1fr 1.4fr; align-items: start; margin-top: 4px; }
+  .sim-bars { gap: 2px; }
+  .sim-bars li { grid-template-columns: 6.5em 1fr 9.5em; }
+  .sim-num { grid-column: 3; }
+  .sheet.sims .note, .sheet.sims > .muted { display: none; }
+  .slash div { padding: 4px; }
+  .slash strong { font-size: 1.1rem; }
+  .sheet-actions { margin-top: 8px; }
+}

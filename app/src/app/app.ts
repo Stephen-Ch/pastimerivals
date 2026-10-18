@@ -5,7 +5,7 @@ import { ReportView } from './report';
 import { ChallengeFlow } from './challenge';
 import { PitchScene } from './pitch-scene';
 import { ArtManifest, Era, eraOf, figure, PairArt, pairArt, PlayerArt, preloadImages } from './art';
-import { callFor, countFor, explain, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, shareUrl, timesLeague } from './logic';
+import { battingLine, callFor, countFor, explain, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
 interface Chosen { id: string; name: string; year: number; line: string; }
@@ -28,7 +28,7 @@ function sessionId(): string {
 @Component({
   selector: 'app-root',
   imports: [ReportView, PitchScene, ChallengeFlow],
-  styleUrl: './app.css',
+  styleUrls: ['./app.css', './sims.css'],
   templateUrl: './app.html',
 })
 export class App {
@@ -123,7 +123,9 @@ export class App {
   // ---- Plan 23: one screen at a time ----
   protected readonly roles = ['pit', 'bat'] as const;
   protected readonly screen = signal<'matchup' | 'atbat' | 'result'>('matchup');
-  protected readonly overlay = signal<'details' | 'why' | null>(null);
+  protected readonly overlay = signal<'details' | 'why' | 'sims' | null>(null);
+  protected readonly rate3 = rate3;
+  protected readonly simLine = computed(() => { const s = this.sims(); return s ? battingLine(s.counts, s.n) : null; });
   private readonly screenTitle = viewChild<ElementRef<HTMLElement>>('screenTitle');
   private readonly sanitizer = inject(DomSanitizer);
   private playPushed = false;     // history entry for the at-bat/result screens
@@ -138,10 +140,8 @@ export class App {
   });
 
   protected readonly simSummary = computed(() => {
-    const s = this.sims();
-    if (!s) return '';
-    const hits = s.counts.single + s.counts.double + s.counts.triple + s.counts.hr;
-    return `${hits} hits (${s.counts.hr} HR), ${s.counts.k} strikeouts, ${s.counts.bb + s.counts.hbp} walks`;
+    const l = this.simLine();
+    return l ? `${rate3(l.avg)} average, ${l.hr} HR, ${l.k} K in 1,000 tries` : '';
   });
 
   // Our own generated SVG from fixed parameters only, so it is safe to trust.
@@ -170,7 +170,7 @@ export class App {
     if (!this.overlayPushed && this.canHistory()) { history.pushState({ pr: 'overlay' }, ''); this.overlayPushed = true; }
   }
 
-  protected openOverlay(o: 'details' | 'why') { this.overlay.set(o); this.pushOverlay(); }
+  protected openOverlay(o: 'details' | 'why' | 'sims') { this.overlay.set(o); this.pushOverlay(); }
 
   private closeOverlays() { this.overlay.set(null); this.seasonsToken++; this.picking.set(null); }
 
@@ -356,7 +356,11 @@ export class App {
   protected async runSims() {
     const p = this.pick();
     if (!p) return;
-    try { this.busy.set(true); this.sims.set(await api.sims(p)); api.event('sim1000', this.session); }
+    try {
+      this.busy.set(true); this.sims.set(await api.sims(p)); api.event('sim1000', this.session);
+      // Plan 25: results open in their own sheet so they are seen.
+      if (this.overlay() !== 'sims') this.openOverlay('sims');
+    }
     catch (e) { this.error.set((e as Error).message); }
     finally { this.busy.set(false); }
   }
@@ -382,6 +386,13 @@ export class App {
   protected simShare(o: OutcomeKey): string {
     const s = this.sims();
     return s ? `${(s.counts[o] / s.n * 100).toFixed(1)}%` : '';
+  }
+
+  protected simWidth(o: OutcomeKey): string {
+    const s = this.sims();
+    if (!s) return '0';
+    const max = Math.max(...OUTCOMES.map(x => s.counts[x]));
+    return `${max ? (s.counts[o] / max) * 100 : 0}%`;
   }
 
   protected stepFor(o: OutcomeKey) {
