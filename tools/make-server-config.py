@@ -4,11 +4,14 @@ import json, os, secrets, sys
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sp = os.path.join(root, "secrets", "deploy.local.json")
 s = json.load(open(sp))
-if not s.get("importKey"):
-    s["importKey"] = secrets.token_urlsafe(32)
+changed = False
+for k in ("importKey", "ipSalt"):  # generated once, kept in the git-ignored secrets file
+    if not s.get(k):
+        s[k] = secrets.token_urlsafe(32); changed = True
+if changed:
     json.dump(s, open(sp, "w"), indent=2)
 cs = ("Server=sql5110.site4now.net;Database=db_a0bef1_pastimerivals;User Id=db_a0bef1_pastimerivals_admin;"
       f"Password={s['dbPassword']};Encrypt=True;TrustServerCertificate=True;")
 out = os.path.join(root, sys.argv[1] if len(sys.argv) > 1 else "publish/fd", "appsettings.Production.json")
-json.dump({"ConnectionStrings": {"Stats": cs}, "Import": {"Key": s["importKey"]}}, open(out, "w"), indent=2)
+json.dump({"ConnectionStrings": {"Stats": cs}, "Import": {"Key": s["importKey"]}, "Challenges": {"IpSalt": s["ipSalt"]}}, open(out, "w"), indent=2)
 print("wrote", os.path.relpath(out, root))

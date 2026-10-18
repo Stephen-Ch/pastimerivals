@@ -1,0 +1,50 @@
+namespace PastimeRivals.Api.Challenges;
+
+public sealed record Guest(Guid Id, string Nickname);
+
+public enum ChallengeStatus { Open, Resolved, Expired }
+
+public sealed record Challenge(
+    string Code, Guid CreatorId, string CreatorName, Guid? OpponentId, string? OpponentName,
+    ChallengeStatus Status, DateTime CreatedUtc, DateTime ExpiresUtc, Guid? RematchFor, string? RematchOf,
+    int[]? Totals, int? Winner, IReadOnlyList<string>? Notes = null);
+
+public sealed record StoredPick(int Side, int Slot, int Rank, string PlayerId, int Year);
+
+public sealed record ChallengeSummary(string Code, int Side, ChallengeStatus Status, string CreatorName, string? OpponentName, DateTime CreatedUtc, DateTime ExpiresUtc);
+
+public enum LockOutcome { Locked, Taken, NotFound, Expired, OwnChallenge, NotForYou }
+
+/// <summary>Everything challenges keep. SqlChallengeStore in production; tests use an in-memory copy.</summary>
+public interface IChallengeStore
+{
+    Task<Guest?> GuestByTokenHashAsync(string tokenHash);
+    Task<Guest> CreateGuestAsync(string tokenHash, string nickname, string ipHash);
+    Task<int> GuestsCreatedSinceAsync(string ipHash, DateTime sinceUtc);
+    Task<bool> RematchExistsAsync(string code, Guid creatorId);
+    Task AddKeyAsync(string code, int side, string keyHash);
+    Task SetNicknameAsync(Guid guestId, string nickname);
+
+    Task CreateChallengeAsync(Challenge c, IReadOnlyList<StoredPick> picks, string creatorKeyHash, string ipHash);
+    Task<Challenge?> GetAsync(string code);
+    Task<IReadOnlyList<StoredPick>> PicksAsync(string code);
+    Task<IReadOnlyList<AtBatResult>> AtBatsAsync(string code);
+    Task ExpireAsync(string code);
+
+    /// <summary>Uses the challenge's single clash check; true only the first time (atomic).</summary>
+    Task<bool> TryUseClashCheckAsync(string code);
+
+    /// <summary>
+    /// Claims an open challenge for the opponent and stores their picks and the played game, all in one transaction.
+    /// The resolve callback gets both sides' picks (creator first) and returns the game; it runs only if the claim wins.
+    /// </summary>
+    Task<LockOutcome> LockAndResolveAsync(string code, Guid opponentId, string opponentName, IReadOnlyList<StoredPick> opponentPicks,
+        string opponentKeyHash, DateTime nowUtc, Func<IReadOnlyList<StoredPick>, GameResult> resolve);
+
+    /// <summary>Which side of which challenge a private link opens, or null.</summary>
+    Task<(string Code, int Side)?> SideByKeyHashAsync(string keyHash);
+
+    Task<int> CreatedSinceAsync(Guid? creatorId, string? ipHash, DateTime sinceUtc);
+    Task<int> OpenCountAsync(Guid creatorId, DateTime nowUtc);
+    Task<IReadOnlyList<ChallengeSummary>> MineAsync(Guid guestId, int take);
+}

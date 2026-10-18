@@ -97,3 +97,5 @@ th { color: var(--text-secondary); font-weight: 500; }
   .bar-odds.slim { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) { .result, .skeleton { animation: none; } }
+
+.bar-links { display: flex; gap: 14px; }

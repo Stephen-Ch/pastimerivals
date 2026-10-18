@@ -23,6 +23,21 @@ public sealed class PlayService(IStatsSource source)
         public Rates Neutral { get; }
         public IReadOnlyList<TeamRow> Teams { get; }
         public Platoon NeutralPlatoon { get; }
+        public IReadOnlyList<Challenges.PickRef>? TopBat, TopPit;
+        private Dictionary<int, double>? _batMean, _pitMean;
+
+        private static Dictionary<int, double> Means(Dictionary<string, List<PlayerRow>> pool) =>
+            pool.Values.SelectMany(v => v).Where(r => r.Counts.Pa > 0).GroupBy(r => r.Year).ToDictionary(g => g.Key,
+                g => (double)g.Sum(r => r.Counts.Bb + r.Counts.Hbp + r.Counts.Single + 2 * r.Counts.Double + 3 * r.Counts.Triple + 4 * r.Counts.Hr) / g.Sum(r => r.Counts.Pa));
+
+        /// <summary>Challenge points per plate appearance divided by that year's average (1.0 = average for the year).</summary>
+        public double Score(PlayerRow r, bool pitcher)
+        {
+            var means = pitcher ? (_pitMean ??= Means(Pit)) : (_batMean ??= Means(Bat));
+            var c = r.Counts;
+            var ppa = c.Pa == 0 ? 0 : (double)(c.Bb + c.Hbp + c.Single + 2 * c.Double + 3 * c.Triple + 4 * c.Hr) / c.Pa;
+            return means.TryGetValue(r.Year, out var m) && m > 0 ? ppa / m : 1;
+        }
 
         public Loaded(StatsBundle b)
         {
@@ -117,6 +132,76 @@ public sealed class PlayService(IStatsSource source)
             Reports.Weight(p?.Weight), p?.Bats ?? "?", p?.Throws ?? "?", role == "pit" ? "P" : (row.Position is { Length: > 0 } pos ? pos : "?"),
             places, Line(row, role), row.Grade, Reports.EraOf(year), p?.Hof == "HOF",
             Reports.Ratios(row.Counts, player.Input.League, role));
+    }
+
+    /// <summary>Challenge rules need synchronous odds; call this first so the stats are loaded.</summary>
+    public async Task<Challenges.IMatchupOracle> OracleAsync() => new Oracle(await _loaded.Value);
+
+    public async Task<string?> NameAsync(string id) => (await _loaded.Value).People.TryGetValue(id, out var p) ? p.Name : null;
+
+    public async Task<(string Name, string Bats, string Throws)?> PersonAsync(string id) =>
+        (await _loaded.Value).People.TryGetValue(id, out var p) ? (p.Name, p.Bats, p.Throws) : null;
+
+    private static double PointsPerPa(SeasonCounts c) => c.Pa == 0 ? 0 : (double)(c.Bb + c.Hbp + c.Single + 2 * c.Double + 3 * c.Triple + 4 * c.Hr) / c.Pa;
+
+    /// <summary>Plan 24: suggested backups, the player-seasons nearest in challenge points per plate appearance (same role, other players).</summary>
+    public async Task<IReadOnlyList<Challenges.PickRef>> SimilarAsync(string id, int year, bool pitcher, int n = 2, IEnumerable<string>? exclude = null)
+    {
+        var d = await _loaded.Value;
+        var pool = pitcher ? d.Pit : d.Bat;
+        if (!pool.TryGetValue(id, out var rows) || rows.FirstOrDefault(r => r.Year == year) is not { } me) return Array.Empty<Challenges.PickRef>();
+        var skip = new HashSet<string>(exclude ?? Array.Empty<string>()) { id };
+        double target;
+        lock (d) target = d.Score(me, pitcher);
+        var minPa = pitcher ? 400 : 300;
+        double Gap(PlayerRow r) { lock (d) return Math.Abs(d.Score(r, pitcher) - target); }
+        return pool.Where(kv => !skip.Contains(kv.Key))
+            .Select(kv => kv.Value.Where(r => r.Counts.Pa >= minPa).MinBy(Gap))
+            .Where(r => r != null)
+            .OrderBy(r => Gap(r!)).ThenBy(r => r!.Id)
+            .Take(n).Select(r => new Challenges.PickRef(r!.Id, r.Year)).ToList();
+    }
+
+    public async Task<bool> SeasonExistsAsync(string id, int year, bool pitcher)
+    {
+        var d = await _loaded.Value;
+        return (pitcher ? d.Cat.Pitcher(id, year) : d.Cat.Batter(id, year)) != null;
+    }
+
+    private sealed class Oracle(Loaded d) : Challenges.IMatchupOracle
+    {
+
+        public Rates? Odds(Challenges.PickRef batter, Challenges.PickRef pitcher)
+        {
+            var bat = d.Cat.Batter(batter.Id, batter.Year);
+            var pit = d.Cat.Pitcher(pitcher.Id, pitcher.Year);
+            if (bat == null || pit == null) return null;
+            var bp = d.People.GetValueOrDefault(batter.Id);
+            var pp = d.People.GetValueOrDefault(pitcher.Id);
+            bool? same = bp is { Bats: "L" or "R" or "B" } && pp is { Throws: "L" or "R" } ? bp.Bats != "B" && bp.Bats == pp.Throws : null;
+            return Matchup.Compute(bat.Input, pit.Input, d.Neutral, d.NeutralPlatoon, EngineOptions.Default, same).Probabilities;
+        }
+
+        // Top 50 by challenge points per plate appearance (batters, 300+ PA) or fewest allowed (pitchers, 150+ batters faced).
+        public IReadOnlyList<Challenges.PickRef> Top50(bool pitchers)
+        {
+            lock (d)
+            {
+                if (pitchers) return d.TopPit ??= Rank(d, d.Pit, 400, ascending: true);
+                return d.TopBat ??= Rank(d, d.Bat, 300, ascending: false);
+            }
+        }
+
+        // Era-adjusted (each season against the average of its year), and 10 from each era so no one era fills the list.
+        private static IReadOnlyList<Challenges.PickRef> Rank(Loaded d, Dictionary<string, List<PlayerRow>> pool, int minPa, bool ascending)
+        {
+            var rows = pool.Values.SelectMany(v => v).Where(r => r.Counts.Pa >= minPa).ToList();
+            return rows.GroupBy(r => EraBucket(r.Year))
+                .SelectMany(g => (ascending ? g.OrderBy(r => d.Score(r, ascending)) : g.OrderByDescending(r => d.Score(r, ascending))).ThenBy(r => r.Id).ThenBy(r => r.Year).Take(10))
+                .Select(r => new Challenges.PickRef(r.Id, r.Year)).ToList();
+        }
+
+        private static int EraBucket(int y) => y < 1920 ? 0 : y < 1946 ? 1 : y < 1970 ? 2 : y < 1990 ? 3 : 4;
     }
 
     public static ulong NewSeed()

@@ -1,9 +1,17 @@
+@if (challenge() !== undefined) {
+  @for (k of [challengeKey()]; track k) {
+    <pr-challenge [code]="challenge() ?? null" [manifest]="manifest()" (exit)="leaveChallenge()" />
+  }
+} @else {
 <div class="game" [class.landscape]="false">
   @switch (screen()) {
     @case ('matchup') {
       <header class="bar">
         <h1 #screenTitle tabindex="-1">Pastime Rivals</h1>
-        <button type="button" class="link" (click)="openOverlay('details')" [disabled]="!matchup()">Details</button>
+        <span class="bar-links">
+          <button type="button" class="link" (click)="openChallenge()">Challenge a friend</button>
+          <button type="button" class="link" (click)="openOverlay('details')" [disabled]="!matchup()">Details</button>
+        </span>
       </header>
       <main class="flex">
         <div class="cards">
@@ -95,6 +103,7 @@
   }
   <footer class="notice">The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.</footer>
 </div>
+}
 
 @if (overlay() === 'details') {
   <div class="sheet" role="dialog" aria-modal="true" aria-label="Details">

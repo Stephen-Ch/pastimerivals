@@ -2,12 +2,20 @@ import { Component, computed, effect, ElementRef, inject, signal, viewChild } fr
 import { DomSanitizer } from '@angular/platform-browser';
 import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResult } from './api';
 import { ReportView } from './report';
+import { ChallengeFlow } from './challenge';
 import { PitchScene } from './pitch-scene';
 import { ArtManifest, Era, eraOf, figure, PairArt, pairArt, PlayerArt, preloadImages } from './art';
 import { callFor, countFor, explain, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
 interface Chosen { id: string; name: string; year: number; line: string; }
+
+/** Plan 24: /c/new starts a challenge, /c/{code} opens one. */
+export function challengeFromPath(path = typeof location !== 'undefined' ? location.pathname : '/'): string | null | undefined {
+  const m = /^\/c\/([A-Za-z0-9_-]{1,40})\/?$/.exec(path);
+  if (!m) return undefined;
+  return m[1] === 'new' ? null : m[1];
+}
 
 function sessionId(): string {
   try {
@@ -19,7 +27,7 @@ function sessionId(): string {
 
 @Component({
   selector: 'app-root',
-  imports: [ReportView, PitchScene],
+  imports: [ReportView, PitchScene, ChallengeFlow],
   styleUrl: './app.css',
   templateUrl: './app.html',
 })
@@ -96,6 +104,22 @@ export class App {
     return step ? explain(r.outcome, step, m.batter.name, m.pitcher.name) : '';
   });
 
+  // ---- Plan 24: challenges. undefined = solo play, null = start a new challenge, string = a challenge code ----
+  protected readonly challenge = signal<string | null | undefined>(challengeFromPath());
+  protected readonly challengeKey = signal(0);
+
+  protected openChallenge() {
+    if (this.canHistory()) history.pushState({ pr: 'challenge' }, '', '/c/new');
+    this.challengeKey.update(k => k + 1);
+    this.challenge.set(null);
+  }
+
+  protected leaveChallenge() {
+    if (this.canHistory()) history.pushState({}, '', '/');
+    this.challenge.set(undefined);
+    this.screen.set('matchup');
+  }
+
   // ---- Plan 23: one screen at a time ----
   protected readonly roles = ['pit', 'bat'] as const;
   protected readonly screen = signal<'matchup' | 'atbat' | 'result'>('matchup');
@@ -156,12 +180,18 @@ export class App {
   }
 
   private onPopState() {
+    const c = challengeFromPath();
+    if (c !== undefined || this.challenge() !== undefined) {
+      this.challengeKey.update(k => k + 1);
+      this.challenge.set(c);
+      if (c !== undefined) return;
+    }
     if (this.overlayPushed) { this.overlayPushed = false; this.closeOverlays(); return; }
     if (this.playPushed) { this.playPushed = false; this.toMatchup(); }
   }
 
   // ---- Plan 18: comic art ----
-  private readonly manifest = signal<ArtManifest | null>(null);
+  protected readonly manifest = signal<ArtManifest | null>(null);
   /** Art for both players of the current matchup, or null (then both use drawn figures). */
   protected readonly pair = computed<PairArt | null>(() => {
     const p = this.pitcherReport(), b = this.batterReport();
