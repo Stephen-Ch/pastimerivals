@@ -77,10 +77,15 @@ app.MapGet("/c/{code}", async (string code, IChallengeStore store, IWebHostEnvir
     var title = status == ChallengeStatus.Resolved ? "Your game is ready" : "You've been challenged on Pastime Rivals";
     var desc = status == ChallengeStatus.Resolved ? "Watch the game on Pastime Rivals." : "Pick a pitcher and three batters from all of baseball history. Can you beat my team?";
     var meta = $"<meta property=\"og:title\" content=\"{title}\"><meta property=\"og:description\" content=\"{desc}\">"
-        + "<meta property=\"og:image\" content=\"https://pastimerivals.com/icons/icon-512.png\"><meta property=\"og:type\" content=\"website\">"
-        + "<meta name=\"twitter:card\" content=\"summary\"><meta name=\"robots\" content=\"noindex\">";
-    html = html.Replace("<title>Pastime Rivals</title>", $"<title>{title}</title>{meta}")
+        + "<meta property=\"og:image\" content=\"https://pastimerivals.com/og/pr-share-v1.png\"><meta property=\"og:image:width\" content=\"1200\">"
+        + "<meta property=\"og:image:height\" content=\"630\"><meta property=\"og:type\" content=\"website\">"
+        + "<meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"robots\" content=\"noindex\">";
+    html = html.Replace("<title>Pastime Rivals</title>", $"<title>{title}</title>")
         .Replace("<link rel=\"canonical\" href=\"https://pastimerivals.com/\">", "");   // game pages are noindex, not copies of home
+    // Plan 29: swap the home page's preview block for the challenge's own, so the page carries exactly one set.
+    var a = html.IndexOf("<!--og-->", StringComparison.Ordinal);
+    var b = html.IndexOf("<!--/og-->", StringComparison.Ordinal);
+    html = a >= 0 && b > a ? html[..a] + meta + html[(b + "<!--/og-->".Length)..] : html.Replace("</head>", meta + "</head>");
     return Results.Content(html, "text/html; charset=utf-8");
 }).RequireRateLimiting("per-ip");
 

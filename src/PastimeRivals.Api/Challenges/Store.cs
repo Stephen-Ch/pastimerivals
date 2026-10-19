@@ -15,6 +15,10 @@ public sealed record ChallengeSummary(string Code, int Side, ChallengeStatus Sta
 
 public enum LockOutcome { Locked, Taken, NotFound, Expired, OwnChallenge, NotForYou }
 
+/// <summary>Plan 29 funnel readout: one row per day the challenges were created, first challenges and rematches apart.</summary>
+public sealed record FunnelDay(DateTime Day, bool Rematch, int Created, int Sent, int Opened, int OpenedExpired, int Picking, int Played, int Watched);
+public sealed record FunnelReport(IReadOnlyList<FunnelDay> Days, int Spread, IReadOnlyList<(DateTime Day, int Games)> Computer, IReadOnlyList<(string Source, int Opens)> Sources);
+
 /// <summary>Everything challenges keep. SqlChallengeStore in production; tests use an in-memory copy.</summary>
 public interface IChallengeStore
 {
@@ -51,4 +55,9 @@ public interface IChallengeStore
     Task PurgeCpuGamesAsync(DateTime beforeUtc);
     Task<int> OpenCountAsync(Guid creatorId, DateTime nowUtc);
     Task<IReadOnlyList<ChallengeSummary>> MineAsync(Guid guestId, int take);
+
+    /// <summary>Plan 29: records a funnel step once per friend challenge (never for computer games).
+    /// notFromIp: only when the visitor's address differs from the creator's.</summary>
+    Task FunnelAsync(string code, string step, string? notFromIp = null);
+    Task<FunnelReport> FunnelReportAsync(DateTime sinceUtc);
 }

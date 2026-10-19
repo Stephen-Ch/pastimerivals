@@ -41,5 +41,5 @@ export const api = {
   card: (id: string, year: number, role: 'bat' | 'pit') => get<Report>(`/api/card?id=${encodeURIComponent(id)}&year=${year}&role=${role}`),
   pitch: (m: Pick, seed?: string) => post<PitchResult>('/api/pitch', { ...m, seed }),
   sims: (m: Pick) => post<SimsResult>('/api/sims', { ...m, n: 1000 }),
-  event: (name: string, session: string) => post<void>('/api/events', { name, session }).catch(() => undefined),
+  event: (name: string, session: string, source?: string | null) => post<void>('/api/events', source ? { name, session, source } : { name, session }).catch(() => undefined),
 };

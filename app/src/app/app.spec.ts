@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { App, vsFromSearch } from './app';
+import { App, sourceFromSearch, vsFromSearch } from './app';
 
 const probs = { k: 0.3, bb: 0.12, hbp: 0.01, single: 0.12, double: 0.04, triple: 0.005, hr: 0.045, oip: 0.36 };
 const matchup = {
@@ -116,5 +116,12 @@ describe('App', () => {
     expect(vsFromSearch('?vs=friend')).toBe('friend');
     expect(vsFromSearch('?vs=x')).toBeNull();
     expect(vsFromSearch('')).toBeNull();
+  });
+
+  it('reads the visit source from utm_source or ref (plan 29)', () => {
+    expect(sourceFromSearch('?utm_source=Facebook&utm_medium=social')).toBe('facebook');
+    expect(sourceFromSearch('?ref=reddit-baseball')).toBe('reddit-baseball');
+    expect(sourceFromSearch('?utm_source=<script>')).toBeNull();
+    expect(sourceFromSearch('')).toBeNull();
   });
 });

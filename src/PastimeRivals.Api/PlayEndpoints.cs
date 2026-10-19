@@ -4,7 +4,7 @@ using PastimeRivals.Engine;
 namespace PastimeRivals.Api;
 
 public sealed record PitchRequest(string B, int By, string P, int Py, string? Seed, int? N);
-public sealed record EventRequest(string Name, string Session);
+public sealed record EventRequest(string Name, string Session, string? Source = null);
 
 public static class PlayEndpoints
 {
@@ -49,8 +49,16 @@ public static class PlayEndpoints
         {
             if (!EventNames.Contains(e.Name) || string.IsNullOrWhiteSpace(e.Session) || e.Session.Length > 64)
                 return Results.BadRequest();
-            await sink.WriteAsync(e.Name, e.Session);
+            await sink.WriteAsync(e.Name, e.Session, CleanSource(e.Source));
             return Results.NoContent();
         });
+    }
+
+    /// <summary>Plan 29: utm_source/ref as given in a link: lowercase letters, digits and dashes, 1-30 long; anything else is dropped.</summary>
+    public static string? CleanSource(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        s = s.Trim().ToLowerInvariant();
+        return s.Length <= 30 && s.All(ch => ch is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-') ? s : null;
     }
 }

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using System.Net;
 using Microsoft.Extensions.Configuration;
 using System.Net.Http.Json;
@@ -92,6 +94,30 @@ public sealed class MemoryChallengeStore : IChallengeStore
     }
     private readonly HashSet<string> _checked = new();
     public Task<bool> TryUseClashCheckAsync(string code) { lock (_gate) return Task.FromResult(_checked.Add(code)); }
+
+    // Plan 29 funnel, same rules as SQL: friend challenges only, once per step, optional "not from the creator's address".
+    private readonly HashSet<(string Code, string Step)> _funnel = new();
+    public IReadOnlyList<(string Code, string Step)> FunnelRows { get { lock (_gate) return _funnel.ToList(); } }
+    public Task FunnelAsync(string code, string step, string? notFromIp = null)
+    {
+        lock (_gate) if (_ch.TryGetValue(code, out var v) && !v.C.VsCpu && (notFromIp is null || v.Ip != notFromIp)) _funnel.Add((code, step));
+        return Task.CompletedTask;
+    }
+    public Task<FunnelReport> FunnelReportAsync(DateTime since)
+    {
+        lock (_gate)
+        {
+            var all = _ch.Values.Select(v => v.C).Where(c => c.CreatedUtc >= since).ToList();
+            int Has(Challenge c, string st) => _funnel.Contains((c.Code, st)) ? 1 : 0;
+            var days = all.Where(c => !c.VsCpu).GroupBy(c => (c.CreatedUtc.Date, c.RematchOf is not null)).OrderBy(g => g.Key)
+                .Select(g => new FunnelDay(g.Key.Date, g.Key.Item2, g.Count(), g.Sum(c => Has(c, "sent")), g.Sum(c => Has(c, "opened")), g.Sum(c => Has(c, "opened_expired")),
+                    g.Sum(c => Has(c, "picking")), g.Sum(c => Has(c, "played")), g.Sum(c => Has(c, "watched")))).ToList();
+            var friends = _ch.Values.Select(v => v.C).Where(c => !c.VsCpu).ToList();
+            var spread = all.Where(a => !a.VsCpu && a.OpponentId is { } o && friends.Any(b => b.CreatorId == o && b.CreatedUtc > a.CreatedUtc)).Select(a => a.OpponentId).Distinct().Count();
+            var cpu = all.Where(c => c.VsCpu).GroupBy(c => c.CreatedUtc.Date).Select(g => (g.Key, g.Count())).ToList();
+            return Task.FromResult(new FunnelReport(days, spread, cpu, new List<(string, int)>()));
+        }
+    }
     public Task<(string Code, int Side)?> SideByKeyHashAsync(string h) { lock (_gate) return Task.FromResult<(string, int)?>(_keys.TryGetValue(h, out var v) ? v : null); }
     public Task<int> CreatedSinceAsync(Guid? id, string? ip, DateTime since, bool vsCpu = false)
     {
@@ -267,6 +293,79 @@ public class ChallengeApiTests
     }
 
     [Fact]
+    public async Task Funnel_counts_each_step_once_and_never_the_creator()
+    {
+        var store = NewStore();
+        var f = Factory(store);
+        var admin = f.CreateClient();
+        async Task<string> Readout(string? key = "test-funnel-key")
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, "/api/admin/funnel?days=7");
+            if (key is not null) req.Headers.Add("X-Funnel-Key", key);
+            var res = await admin.SendAsync(req);
+            return res.StatusCode == HttpStatusCode.OK ? await res.Content.ReadAsStringAsync() : res.StatusCode.ToString();
+        }
+        // TOTAL created sent opened opened-late picking played watched
+        async Task<int[]> Totals() => System.Text.RegularExpressions.Regex.Match(await Readout(), @"TOTAL((\s+\d+){7})").Groups[1].Value
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToArray();
+
+        var creator = await Browser(f);
+        creator.DefaultRequestHeaders.Add("X-Test-Ip", "10.0.0.1");
+        var before = await Totals();
+        var (code, key) = await Create(creator);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await creator.PostAsync($"/api/challenges/{code}/sent", null)).StatusCode);
+        await creator.PostAsync($"/api/challenges/{code}/sent", null);   // double tap
+        await creator.GetAsync($"/api/challenges/{code}");                 // creator by cookie
+        var otherDevice = await Browser(f);                                  // creator's private link on another device and address
+        otherDevice.DefaultRequestHeaders.Add("X-Side-Key", key);
+        otherDevice.DefaultRequestHeaders.Add("X-Test-Ip", "10.0.0.9");
+        await otherDevice.GetAsync($"/api/challenges/{code}");
+        var sameHouse = await Browser(f);                                    // a visitor on the creator's address
+        sameHouse.DefaultRequestHeaders.Add("X-Test-Ip", "10.0.0.1");
+        await sameHouse.GetAsync($"/api/challenges/{code}");
+        var mid = await Totals();
+        Assert.Equal(new[] { 1, 1, 0, 0, 0, 0, 0 }, mid.Zip(before, (a, b) => a - b).ToArray());
+
+        var friend = await Browser(f);
+        friend.DefaultRequestHeaders.Add("X-Test-Ip", "10.0.0.2");
+        await friend.GetAsync($"/api/challenges/{code}");
+        await friend.GetAsync($"/api/challenges/{code}");
+        Assert.Equal(HttpStatusCode.NoContent, (await friend.PostAsync($"/api/challenges/{code}/picking", null)).StatusCode);
+        await friend.PostAsync($"/api/challenges/{code}/picking", null);
+        Assert.Equal(HttpStatusCode.NotFound, (await friend.PostAsync($"/api/challenges/{code}/sent", null)).StatusCode);   // only the creator sends
+        Assert.Equal(HttpStatusCode.NotFound, (await friend.PostAsync("/api/challenges/AAAAAAAAAAAAAAAAAAAAAA/picking", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await friend.PostAsJsonAsync($"/api/challenges/{code}/lock", Picks("pit02", "bat04", "bat05", "bat06"))).StatusCode);
+        await creator.GetAsync($"/api/challenges/{code}");
+        Assert.Equal(HttpStatusCode.OK, (await creator.PostAsJsonAsync("/api/challenges/computer", Picks("pit01", "bat01", "bat02", "bat03"))).StatusCode);
+        var after = await Totals();
+        Assert.Equal(new[] { 1, 1, 1, 0, 1, 1, 1 }, after.Zip(before, (a, b) => a - b).ToArray());   // the computer game adds nothing here
+        Assert.Matches(@"Computer games \(kept 30 days\): [1-9]", await Readout());
+
+        Assert.Equal("NotFound", await Readout(null));
+        Assert.Equal("NotFound", await Readout("nope"));
+    }
+
+    [Fact]
+    public async Task Challenge_link_preview_has_exactly_one_set_of_tags_and_the_branded_image()
+    {
+        var f = Factory(NewStore());
+        var (code, _) = await Create(await Browser(f));
+        var html = await f.CreateClient().GetStringAsync($"/c/{code}");
+        if (!html.Contains("<html")) return;   // no built app in this checkout
+        int Count(string what) => System.Text.RegularExpressions.Regex.Matches(html, System.Text.RegularExpressions.Regex.Escape(what)).Count;
+        Assert.Equal(1, Count("property=\"og:image\""));
+        Assert.Equal(1, Count("property=\"og:title\""));
+        Assert.Contains("You've been challenged on Pastime Rivals", html);
+        Assert.Contains("https://pastimerivals.com/og/pr-share-v1.png", html);
+        Assert.Contains("summary_large_image", html);
+        Assert.Equal(0, Count("og:url"));
+        Assert.Equal(0, Count("rel=\"canonical\""));
+        var home = await f.CreateClient().GetStringAsync("/");
+        Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(home, "property=\"og:image\"").Count);
+    }
+
+    [Fact]
     public async Task Computer_games_do_not_use_up_friend_challenge_limits()
     {
         var f = Factory(NewStore());
@@ -303,7 +402,9 @@ public class ChallengeApiTests
                 s.AddSingleton<IStatsSource, ChallengeStats>();
                 s.AddSingleton<IEventSink, MemoryEvents>();
                 s.AddSingleton<IChallengeStore>(store);
+                s.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter, TestIpFilter>();
             });
+            b.UseSetting("Funnel:Key", "test-funnel-key");
         });
 
     /// <summary>A browser: its own cookie jar, and the anti-forgery header Angular would send.</summary>
@@ -572,4 +673,18 @@ public class SqlKeyRepositoryTests
         repo.StoreElement(new System.Xml.Linq.XElement("key", new System.Xml.Linq.XAttribute("id", name)), name);
         Assert.Contains(repo.GetAllElements(), e => (string?)e.Attribute("id") == name);
     }
+}
+
+/// <summary>Plan 29 tests: lets a test client pose as another network address (X-Test-Ip).</summary>
+public sealed class TestIpFilter : Microsoft.AspNetCore.Hosting.IStartupFilter
+{
+    public Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> Configure(Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> next) => app =>
+    {
+        app.Use(async (ctx, n) =>
+        {
+            if (ctx.Request.Headers.TryGetValue("X-Test-Ip", out var v) && System.Net.IPAddress.TryParse(v.ToString(), out var ip)) ctx.Connection.RemoteIpAddress = ip;
+            await n();
+        });
+        next(app);
+    };
 }

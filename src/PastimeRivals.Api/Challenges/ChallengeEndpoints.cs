@@ -107,7 +107,7 @@ public static class ChallengeEndpoints
             }));
         });
 
-        api.MapGet("/challenges/{code}", async (string code, HttpContext ctx, IChallengeStore store, PlayService play, MissCounter misses) =>
+        api.MapGet("/challenges/{code}", async (string code, HttpContext ctx, IChallengeStore store, PlayService play, MissCounter misses, IConfiguration cfg) =>
         {
             var ip = MissCounter.KeyFor(ctx);
             if (misses.Blocked(ip)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
@@ -116,7 +116,49 @@ public static class ChallengeEndpoints
                 misses.Miss(ip);
                 return Results.NotFound();
             }
-            return Results.Ok(await ViewFor(ch, ctx, store, play, misses));
+            var view = await ViewFor(ch, ctx, store, play, misses);
+            // Plan 29 funnel: a friend (not the creator by cookie, private key or address) opened it; the creator watched the result.
+            if (!ch.VsCpu)
+            {
+                if (view.You == "visitor") await Funnel(store, code, view.Status == "expired" ? "opened_expired" : "opened", Identity.IpHash(ctx, Salt(cfg)));
+                else if (view.You == "creator" && view.Status == "resolved") await Funnel(store, code, "watched");
+            }
+            return Results.Ok(view);
+        });
+
+        // Plan 29: the creator sent or copied the link (shared and waiting screens).
+        write.MapPost("/challenges/{code}/sent", async (string code, HttpContext ctx, IChallengeStore store, MissCounter misses) =>
+        {
+            var ip = MissCounter.KeyFor(ctx);
+            if (misses.Blocked(ip)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            if (!Identity.CodePattern().IsMatch(code) || await store.GetAsync(code) is not { } ch) { misses.Miss(ip); return Results.NotFound(); }
+            if (await SideOf(ch, ctx, store) != 0) return Results.NotFound();
+            await Funnel(store, code, "sent");
+            return Results.NoContent();
+        });
+
+        // Plan 29: the friend started picking (intro screen: "Pick your team" or "Quick pick").
+        write.MapPost("/challenges/{code}/picking", async (string code, HttpContext ctx, IChallengeStore store, MissCounter misses, IConfiguration cfg) =>
+        {
+            var ip = MissCounter.KeyFor(ctx);
+            if (misses.Blocked(ip)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            if (!Identity.CodePattern().IsMatch(code) || await store.GetAsync(code) is not { } ch) { misses.Miss(ip); return Results.NotFound(); }
+            if (ch.VsCpu || ch.Status != ChallengeStatus.Open || await SideOf(ch, ctx, store) == 0) return Results.NoContent();
+            await Funnel(store, code, "picking", Identity.IpHash(ctx, Salt(cfg)));
+            return Results.NoContent();
+        });
+
+        // Plan 29: funnel readout, plain text. Hidden (404) unless Funnel:Key is set and given.
+        api.MapGet("/admin/funnel", async (int? days, HttpRequest req, IChallengeStore store, IConfiguration cfg) =>
+        {
+            var key = cfg["Funnel:Key"];
+            var given = req.Headers["X-Funnel-Key"].ToString();
+            if (string.IsNullOrEmpty(key) || !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                    System.Text.Encoding.UTF8.GetBytes(given), System.Text.Encoding.UTF8.GetBytes(key)))
+                return Results.NotFound();
+            var n = Math.Clamp(days ?? 30, 1, 365);
+            var r = await store.FunnelReportAsync(DateTime.UtcNow.Date.AddDays(1 - n));
+            return Results.Text(FunnelText(r, n), "text/plain; charset=utf-8");
         });
 
         write.MapPost("/challenges/{code}/lock", async (string code, PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, Turnstile ts, MissCounter misses, IConfiguration cfg) =>
@@ -171,6 +213,7 @@ public static class ChallengeEndpoints
                 case LockOutcome.NotForYou: return Results.Conflict(new { error = "not_for_you" });
             }
             var ch = (await store.GetAsync(code))!;
+            await Funnel(store, code, "played");
             return Results.Ok(new { key, view = await ViewFor(ch, ctx, store, play, misses, asGuest: g) });
         });
 
@@ -230,6 +273,38 @@ public static class ChallengeEndpoints
             var other = g.Id == ch.CreatorId ? ch.OpponentId : ch.CreatorId;
             return await Create(body, ctx, store, play, ts, cfg, rematchOf: (code, other));
         });
+    }
+
+    /// <summary>Plan 29: funnel counts never break the request they ride on.</summary>
+    private static async Task Funnel(IChallengeStore store, string code, string step, string? notFromIp = null)
+    {
+        try { await store.FunnelAsync(code, step, notFromIp); } catch { /* counting is best effort */ }
+    }
+
+    /// <summary>0 creator, 1 friend, null anyone else: by guest cookie, else by private key (same rule as ViewFor).</summary>
+    private static async Task<int?> SideOf(Challenge ch, HttpContext ctx, IChallengeStore store)
+    {
+        var g = await CurrentGuest(ctx, store);
+        if (g is not null && g.Id == ch.CreatorId) return 0;
+        if (g is not null && g.Id == ch.OpponentId) return 1;
+        if (ctx.Request.Headers.TryGetValue("X-Side-Key", out var k) && Identity.KeyPattern().IsMatch(k.ToString())
+            && await store.SideByKeyHashAsync(Identity.Hash(k.ToString())) is { } h && h.Code == ch.Code) return h.Side;
+        return null;
+    }
+
+    public static string FunnelText(FunnelReport r, int days)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Pastime Rivals funnel, last {days} days (UTC; friend challenges grouped by the day they were created)");
+        sb.AppendLine("day         kind      created  sent  opened  opened-late  picking  played  watched");
+        foreach (var d in r.Days)
+            sb.AppendLine($"{d.Day:yyyy-MM-dd}  {(d.Rematch ? "rematch" : "first  ")}  {d.Created,7}  {d.Sent,4}  {d.Opened,6}  {d.OpenedExpired,11}  {d.Picking,7}  {d.Played,6}  {d.Watched,7}");
+        int T(Func<FunnelDay, int> f) => r.Days.Sum(f);
+        sb.AppendLine($"TOTAL                 {T(d => d.Created),7}  {T(d => d.Sent),4}  {T(d => d.Opened),6}  {T(d => d.OpenedExpired),11}  {T(d => d.Picking),7}  {T(d => d.Played),6}  {T(d => d.Watched),7}");
+        sb.AppendLine($"Spread (friends who played and later made their own challenge): {r.Spread}");
+        sb.AppendLine($"Computer games (kept 30 days): {r.Computer.Sum(c => c.Games)}" + (r.Computer.Count > 0 ? " | " + string.Join(", ", r.Computer.Select(c => $"{c.Day:MM-dd} {c.Games}")) : ""));
+        sb.AppendLine("App opens by source: " + (r.Sources.Count == 0 ? "none yet" : string.Join(", ", r.Sources.Select(s => $"{s.Source} {s.Opens}"))));
+        return sb.ToString();
     }
 
     private static int Rnd(int n) => System.Security.Cryptography.RandomNumberGenerator.GetInt32(n);

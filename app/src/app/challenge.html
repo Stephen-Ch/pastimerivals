@@ -40,8 +40,8 @@
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
       <div class="actions">
-        <button class="primary big" type="button" (click)="startPicking('accept')">Pick your team</button>
-        <button type="button" (click)="quickPick()" [disabled]="busy()">Quick pick</button>
+        <button class="primary big" type="button" (click)="acceptPick(false)">Pick your team</button>
+        <button type="button" (click)="acceptPick(true)" [disabled]="busy()">Quick pick</button>
       </div>
     }
 
@@ -139,7 +139,7 @@
       </main>
       <div class="actions three">
         <button class="primary big" type="button" (click)="shareChallenge()">Send to a friend</button>
-        <button type="button" (click)="copy(shareLink())">Copy link</button>
+        <button type="button" (click)="copyChallengeLink()">Copy link</button>
         <button type="button" (click)="startFresh('cpu')">Play the computer while you wait</button>
       </div>
     }
@@ -159,7 +159,7 @@
       </main>
       <div class="actions three">
         <button class="primary big" type="button" (click)="shareChallenge()">Send the link again</button>
-        <button type="button" (click)="copy(shareLink())">Copy link</button>
+        <button type="button" (click)="copyChallengeLink()">Copy link</button>
         <button type="button" (click)="startFresh('cpu')">Play the computer while you wait</button>
       </div>
     }

@@ -24,6 +24,13 @@ export function vsFromSearch(search = typeof location !== 'undefined' ? location
   return v === 'cpu' || v === 'friend' ? v : null;
 }
 
+/** Plan 29: where a visit came from (utm_source, else ref): lowercase letters, digits and dashes, max 30; else null. */
+export function sourceFromSearch(search = typeof location !== 'undefined' ? location.search : ''): string | null {
+  const p = new URLSearchParams(search);
+  const v = (p.get('utm_source') ?? p.get('ref') ?? '').trim().toLowerCase();
+  return /^[a-z0-9-]{1,30}$/.test(v) ? v : null;
+}
+
 function sessionId(): string {
   try {
     let s = sessionStorage.getItem('pr-session');
@@ -263,7 +270,7 @@ export class App {
         return ok;
       });
     });
-    api.event('open', this.session);
+    api.event('open', this.session, sourceFromSearch());
     const shared = typeof location !== 'undefined' ? parseShare(location.search) : null;
     if (shared) {
       this.screen.set('matchup');   // plan 27: share links skip Home

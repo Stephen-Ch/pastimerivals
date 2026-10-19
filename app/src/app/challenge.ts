@@ -363,8 +363,15 @@ export class ChallengeFlow {
   protected async shareChallenge() {
     const url = this.shareLink();
     const text = 'I picked my team on Pastime Rivals. Think you can beat it?';
-    await this.shareOut(text, url);
+    if (await this.shareOut(text, url)) this.countSent();
   }
+
+  /** "Copy link" on the shared and waiting screens. */
+  protected async copyChallengeLink() {
+    if (await this.copy(this.shareLink())) this.countSent();
+  }
+
+  private countSent() { const c = this.current(); if (c) void capi.funnel(c, 'sent'); }
 
   protected async shareResult() {
     const g = this.game(), v = this.view();
@@ -375,20 +382,30 @@ export class ChallengeFlow {
     await this.shareOut(text, this.shareLink(), score);
   }
 
-  private async shareOut(text: string, url: string, _score?: string) {
+  /** True when the link was shared or copied. */
+  private async shareOut(text: string, url: string, _score?: string): Promise<boolean> {
     this.note.set(null);
     try {
-      if (navigator.share) { await navigator.share({ title: 'Pastime Rivals', text, url }); return; }
+      if (navigator.share) { await navigator.share({ title: 'Pastime Rivals', text, url }); return true; }
       await navigator.clipboard.writeText(`${text} ${url}`);
       this.note.set('Link copied.');
+      return true;
     } catch (e) {
       if ((e as Error)?.name !== 'AbortError') this.note.set(url);
+      return false;
     }
   }
 
-  protected async copy(text: string | null) {
-    if (!text) return;
-    try { await navigator.clipboard.writeText(text); this.note.set('Copied.'); } catch { this.note.set(text); }
+  protected async copy(text: string | null): Promise<boolean> {
+    if (!text) return false;
+    try { await navigator.clipboard.writeText(text); this.note.set('Copied.'); return true; } catch { this.note.set(text); return false; }
+  }
+
+  /** Plan 29: the friend started picking (intro screen). */
+  protected acceptPick(quick: boolean) {
+    const c = this.current();
+    if (c) void capi.funnel(c, 'picking');
+    if (quick) void this.quickPick(); else this.startPicking('accept');
   }
 
   // ---- Playing out the game ----

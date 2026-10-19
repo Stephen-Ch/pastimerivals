@@ -66,6 +66,17 @@ async function send<T>(method: string, url: string, body: unknown, retried = fal
   return r.json() as Promise<T>;
 }
 
+/** Plan 29: fire-and-forget funnel count (sent, picking). Never throws; the creator's private key goes along when we have it. */
+async function ping(code: string, step: 'sent' | 'picking'): Promise<void> {
+  try {
+    if (!readCookie('XSRF-TOKEN')) { xsrfReady ??= get<CMe>('/api/me'); await xsrfReady; }
+    const headers: Record<string, string> = { 'X-XSRF-TOKEN': readCookie('XSRF-TOKEN') ?? '' };
+    const k = keyFor(code);
+    if (k) headers['X-Side-Key'] = k;
+    await fetch(`/api/challenges/${encodeURIComponent(code)}/${step}`, { method: 'POST', credentials: 'same-origin', headers });
+  } catch { /* counting is best effort */ }
+}
+
 export interface PickBody { picks: { slot: number; choices: { id: string; year: number }[] }[]; nickname?: string; turnstile?: string; level?: number; }
 
 export function toBody(slots: CSlot[], nickname?: string): PickBody {
@@ -73,6 +84,7 @@ export function toBody(slots: CSlot[], nickname?: string): PickBody {
 }
 
 export const capi = {
+  funnel: ping,
   me: () => get<CMe>('/api/me'),
   setName: (nickname: string) => send<{ nickname: string }>('PUT', '/api/me', { nickname }),
   view: (code: string) => get<CView>(`/api/challenges/${encodeURIComponent(code)}`, code),

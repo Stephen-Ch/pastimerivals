@@ -24,6 +24,8 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         IF COL_LENGTH('dbo.ch_challenges', 'clash_checks') IS NULL ALTER TABLE dbo.ch_challenges ADD clash_checks TINYINT NOT NULL DEFAULT 0;
         IF COL_LENGTH('dbo.ch_challenges', 'vs_cpu') IS NULL ALTER TABLE dbo.ch_challenges ADD vs_cpu BIT NOT NULL DEFAULT 0;
         IF COL_LENGTH('dbo.ch_challenges', 'cpu_level') IS NULL ALTER TABLE dbo.ch_challenges ADD cpu_level TINYINT NULL;
+        IF OBJECT_ID('dbo.ch_funnel') IS NULL CREATE TABLE dbo.ch_funnel (
+          code VARCHAR(24) COLLATE Latin1_General_BIN2 NOT NULL, step VARCHAR(16) NOT NULL, at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(), PRIMARY KEY (code, step));
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ch_creator') CREATE INDEX ix_ch_creator ON dbo.ch_challenges (creator_id, created_utc);
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ch_ip') CREATE INDEX ix_ch_ip ON dbo.ch_challenges (creator_ip, created_utc);
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ch_rematch') CREATE INDEX ix_ch_rematch ON dbo.ch_challenges (rematch_of);
@@ -306,5 +308,65 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
             list.Add(new ChallengeSummary(r.GetString(0), r.GetInt32(1), (ChallengeStatus)r.GetByte(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4),
                 DateTime.SpecifyKind(r.GetDateTime(5), DateTimeKind.Utc), DateTime.SpecifyKind(r.GetDateTime(6), DateTimeKind.Utc), r.GetBoolean(7)));
         return list;
+    }
+
+    // ---- Plan 29: funnel ----
+    public async Task FunnelAsync(string code, string step, string? notFromIp = null)
+    {
+        await using var c = await OpenAsync();
+        await using var cmd = Cmd(c, """
+            INSERT INTO dbo.ch_funnel (code, step)
+            SELECT ch.code, @st FROM dbo.ch_challenges ch
+            WHERE ch.code = @c AND ch.vs_cpu = 0 AND (@ip IS NULL OR ch.creator_ip <> @ip)
+              AND NOT EXISTS (SELECT 1 FROM dbo.ch_funnel f WHERE f.code = ch.code AND f.step = @st)
+            """, null, ("@c", code), ("@st", step), ("@ip", notFromIp));
+        try { await cmd.ExecuteNonQueryAsync(); }
+        catch (SqlException e) when (e.Number is 2627 or 2601) { /* a double tap won the race: already counted */ }
+    }
+
+    public async Task<FunnelReport> FunnelReportAsync(DateTime sinceUtc)
+    {
+        await using var c = await OpenAsync();
+        var days = new List<FunnelDay>();
+        await using (var cmd = Cmd(c, """
+            SELECT CAST(ch.created_utc AS date), CASE WHEN ch.rematch_of IS NULL THEN 0 ELSE 1 END, COUNT(*),
+                   SUM(ISNULL(f.sent, 0)), SUM(ISNULL(f.opened, 0)), SUM(ISNULL(f.opened_expired, 0)),
+                   SUM(ISNULL(f.picking, 0)), SUM(ISNULL(f.played, 0)), SUM(ISNULL(f.watched, 0))
+            FROM dbo.ch_challenges ch
+            LEFT JOIN (SELECT code,
+                MAX(CASE WHEN step = 'sent' THEN 1 ELSE 0 END) sent, MAX(CASE WHEN step = 'opened' THEN 1 ELSE 0 END) opened,
+                MAX(CASE WHEN step = 'opened_expired' THEN 1 ELSE 0 END) opened_expired, MAX(CASE WHEN step = 'picking' THEN 1 ELSE 0 END) picking,
+                MAX(CASE WHEN step = 'played' THEN 1 ELSE 0 END) played, MAX(CASE WHEN step = 'watched' THEN 1 ELSE 0 END) watched
+                FROM dbo.ch_funnel GROUP BY code) f ON f.code = ch.code
+            WHERE ch.vs_cpu = 0 AND ch.created_utc >= @s
+            GROUP BY CAST(ch.created_utc AS date), CASE WHEN ch.rematch_of IS NULL THEN 0 ELSE 1 END
+            ORDER BY 1, 2
+            """, null, ("@s", sinceUtc)))
+        await using (var r = await cmd.ExecuteReaderAsync())
+            while (await r.ReadAsync())
+                days.Add(new FunnelDay(r.GetDateTime(0), r.GetInt32(1) == 1, r.GetInt32(2), r.GetInt32(3), r.GetInt32(4), r.GetInt32(5), r.GetInt32(6), r.GetInt32(7), r.GetInt32(8)));
+
+        int spread;
+        await using (var cmd = Cmd(c, """
+            SELECT COUNT(DISTINCT a.opponent_id) FROM dbo.ch_challenges a
+            WHERE a.vs_cpu = 0 AND a.opponent_id IS NOT NULL AND a.created_utc >= @s
+              AND EXISTS (SELECT 1 FROM dbo.ch_challenges b WHERE b.vs_cpu = 0 AND b.creator_id = a.opponent_id AND b.created_utc > a.created_utc)
+            """, null, ("@s", sinceUtc)))
+            spread = (int)(await cmd.ExecuteScalarAsync())!;
+
+        var cpu = new List<(DateTime, int)>();
+        await using (var cmd = Cmd(c, "SELECT CAST(created_utc AS date), COUNT(*) FROM dbo.ch_challenges WHERE vs_cpu = 1 AND created_utc >= @s GROUP BY CAST(created_utc AS date) ORDER BY 1", null, ("@s", sinceUtc)))
+        await using (var r = await cmd.ExecuteReaderAsync())
+            while (await r.ReadAsync()) cpu.Add((r.GetDateTime(0), r.GetInt32(1)));
+
+        var sources = new List<(string, int)>();
+        await using (var cmd = Cmd(c, """
+            IF COL_LENGTH('dbo.app_events', 'source') IS NOT NULL
+              EXEC sp_executesql N'SELECT ISNULL(source, ''(none)''), COUNT(*) FROM dbo.app_events WHERE name = ''open'' AND at >= @s GROUP BY source ORDER BY 2 DESC', N'@s DATETIME2', @s = @s
+            """, null, ("@s", sinceUtc)))
+        await using (var r = await cmd.ExecuteReaderAsync())
+            while (await r.ReadAsync()) sources.Add((r.GetString(0), r.GetInt32(1)));
+
+        return new FunnelReport(days, spread, cpu, sources);
     }
 }

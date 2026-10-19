@@ -63,14 +63,19 @@ public sealed class SqlStatsSource(IConfiguration cfg) : IStatsSource
 public interface IEventSink
 {
     Task WriteAsync(string name, string session);
+    /// <summary>Plan 29: with the visit source (utm_source or ref), already checked by the caller.</summary>
+    Task WriteAsync(string name, string session, string? source) => WriteAsync(name, session);
 }
 
 /// <summary>Stores analytics events in our own table (no third-party tracker).</summary>
 public sealed class SqlEventSink(IConfiguration cfg) : IEventSink
 {
-    private bool _ready;
+    private volatile bool _ready;
+    private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public async Task WriteAsync(string name, string session)
+    public Task WriteAsync(string name, string session) => WriteAsync(name, session, null);
+
+    public async Task WriteAsync(string name, string session, string? source)
     {
         var cs = cfg.GetConnectionString("Stats");
         if (string.IsNullOrEmpty(cs)) return;
@@ -78,14 +83,24 @@ public sealed class SqlEventSink(IConfiguration cfg) : IEventSink
         await conn.OpenAsync();
         if (!_ready)
         {
-            await using var ddl = new SqlCommand(
-                "IF OBJECT_ID('dbo.app_events') IS NULL CREATE TABLE dbo.app_events (id BIGINT IDENTITY PRIMARY KEY, at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(), name NVARCHAR(40) NOT NULL, session NVARCHAR(64) NOT NULL);", conn);
-            await ddl.ExecuteNonQueryAsync();
-            _ready = true;
+            await _gate.WaitAsync();
+            try
+            {
+                if (!_ready)
+                {
+                    await using var ddl = new SqlCommand(
+                        "IF OBJECT_ID('dbo.app_events') IS NULL CREATE TABLE dbo.app_events (id BIGINT IDENTITY PRIMARY KEY, at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(), name NVARCHAR(40) NOT NULL, session NVARCHAR(64) NOT NULL);"
+                        + " IF COL_LENGTH('dbo.app_events', 'source') IS NULL ALTER TABLE dbo.app_events ADD source NVARCHAR(30) NULL;", conn);
+                    try { await ddl.ExecuteNonQueryAsync(); } catch (SqlException) { /* another server process added it first */ }
+                    _ready = true;
+                }
+            }
+            finally { _gate.Release(); }
         }
-        await using var cmd = new SqlCommand("INSERT INTO dbo.app_events (name, session) VALUES (@n, @s)", conn);
+        await using var cmd = new SqlCommand("INSERT INTO dbo.app_events (name, session, source) VALUES (@n, @s, @src)", conn);
         cmd.Parameters.AddWithValue("@n", name);
         cmd.Parameters.AddWithValue("@s", session);
+        cmd.Parameters.AddWithValue("@src", (object?)source ?? DBNull.Value);
         await cmd.ExecuteNonQueryAsync();
     }
 }
