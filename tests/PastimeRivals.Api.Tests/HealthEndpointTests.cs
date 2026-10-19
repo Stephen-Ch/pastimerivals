@@ -23,4 +23,22 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Equal("ok", body!.Status);
         Assert.Equal(EngineInfo.Version, body.EngineVersion);
     }
+
+    [Theory]
+    [InlineData("pastimerivals.com", "Disallow: /api/")]
+    [InlineData("www.pastimerivals.com", "Disallow: /api/")]
+    [InlineData("staging.example.net", "Disallow: /\n")]
+    public async Task Robots_txt_opens_only_the_live_domain(string host, string expected)
+    {
+        var client = _factory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Get, "/robots.txt");
+        req.Headers.Host = host;
+        var response = await client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/plain", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains(expected, body);
+        Assert.DoesNotContain("/c/", body);   // challenge links stay open for link-preview bots
+        if (expected.Contains("api")) Assert.Contains("Sitemap: https://pastimerivals.com/sitemap.xml", body);
+    }
 }

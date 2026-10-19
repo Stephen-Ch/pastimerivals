@@ -79,9 +79,21 @@ app.MapGet("/c/{code}", async (string code, IChallengeStore store, IWebHostEnvir
     var meta = $"<meta property=\"og:title\" content=\"{title}\"><meta property=\"og:description\" content=\"{desc}\">"
         + "<meta property=\"og:image\" content=\"https://pastimerivals.com/icons/icon-512.png\"><meta property=\"og:type\" content=\"website\">"
         + "<meta name=\"twitter:card\" content=\"summary\"><meta name=\"robots\" content=\"noindex\">";
-    html = html.Replace("<title>Pastime Rivals</title>", $"<title>{title}</title>{meta}");
+    html = html.Replace("<title>Pastime Rivals</title>", $"<title>{title}</title>{meta}")
+        .Replace("<link rel=\"canonical\" href=\"https://pastimerivals.com/\">", "");   // game pages are noindex, not copies of home
     return Results.Content(html, "text/html; charset=utf-8");
 }).RequireRateLimiting("per-ip");
+
+// Plan 28: crawl rules. Only the live domain is crawlable; game links (/c/) stay open for link-preview bots and send noindex.
+app.MapGet("/robots.txt", (HttpContext ctx) =>
+{
+    var host = ctx.Request.Host.Host.ToLowerInvariant();
+    var live = host is "pastimerivals.com" or "www.pastimerivals.com";
+    var body = live
+        ? "User-agent: *\nDisallow: /api/\nSitemap: https://pastimerivals.com/sitemap.xml\n"
+        : "User-agent: *\nDisallow: /\n";
+    return Results.Text(body, "text/plain; charset=utf-8");
+});
 
 // Single-page app: unknown non-API paths serve index.html.
 app.MapFallbackToFile("index.html");

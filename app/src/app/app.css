@@ -25,8 +25,8 @@ button.link.small { font-size: .82rem; min-height: 32px; padding: 2px 0; }
 
 /* Matchup cards: share the height left over, keep 2:3 art */
 .cards { flex: 1 1 0; min-height: calc(140px + 5.5em); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
-.pcard-wrap { min-height: 0; display: flex; flex-direction: column; align-items: center; }
-.pcard { flex: 1 1 auto; min-height: 140px; width: 100%; padding: 0; border: 0; background: none; display: flex; align-items: flex-end; justify-content: center; container-type: size; }
+.pcard-wrap { min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }   /* plan 28: keep min-height 0 */
+.pcard { flex: 0 1 auto; aspect-ratio: 2 / 3; min-height: 140px; width: 100%; padding: 0; border: 0; background: none; display: flex; align-items: stretch; justify-content: center; container-type: size; }   /* plan 28: own height, centred group */
 .frame { position: relative; height: min(100cqh, 150cqw); max-width: 100%; aspect-ratio: 2 / 3; box-sizing: border-box; border: 3px solid #2b2a28; border-radius: 8px; background: #2b2a28; overflow: hidden; display: flex; align-items: stretch; justify-content: center; }
 .pimg { display: block; height: 100%; width: 100%; object-fit: cover; }
 .pimg.mirror { transform: scaleX(-1); }
