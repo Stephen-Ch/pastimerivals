@@ -23,6 +23,7 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
           seed DECIMAL(20,0) NULL, total0 INT NULL, total1 INT NULL, winner INT NULL, notes NVARCHAR(2000) NULL, clash_checks TINYINT NOT NULL DEFAULT 0);
         IF COL_LENGTH('dbo.ch_challenges', 'clash_checks') IS NULL ALTER TABLE dbo.ch_challenges ADD clash_checks TINYINT NOT NULL DEFAULT 0;
         IF COL_LENGTH('dbo.ch_challenges', 'vs_cpu') IS NULL ALTER TABLE dbo.ch_challenges ADD vs_cpu BIT NOT NULL DEFAULT 0;
+        IF COL_LENGTH('dbo.ch_challenges', 'cpu_level') IS NULL ALTER TABLE dbo.ch_challenges ADD cpu_level TINYINT NULL;
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ch_creator') CREATE INDEX ix_ch_creator ON dbo.ch_challenges (creator_id, created_utc);
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ch_ip') CREATE INDEX ix_ch_ip ON dbo.ch_challenges (creator_ip, created_utc);
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ch_rematch') CREATE INDEX ix_ch_rematch ON dbo.ch_challenges (rematch_of);
@@ -127,9 +128,9 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         await using var c = await OpenAsync();
         await using var tx = (SqlTransaction)await c.BeginTransactionAsync();
         await using (var cmd = Cmd(c, """
-            INSERT INTO dbo.ch_challenges (code, creator_id, creator_name, status, created_utc, expires_utc, rematch_for, rematch_of, creator_ip, vs_cpu)
-            VALUES (@c, @g, @n, 0, @cr, @ex, @rf, @ro, @ip, @cpu)
-            """, tx, ("@cpu", ch.VsCpu), ("@c", ch.Code), ("@g", ch.CreatorId), ("@n", ch.CreatorName), ("@cr", ch.CreatedUtc), ("@ex", ch.ExpiresUtc),
+            INSERT INTO dbo.ch_challenges (code, creator_id, creator_name, status, created_utc, expires_utc, rematch_for, rematch_of, creator_ip, vs_cpu, cpu_level)
+            VALUES (@c, @g, @n, 0, @cr, @ex, @rf, @ro, @ip, @cpu, @lv)
+            """, tx, ("@cpu", ch.VsCpu), ("@lv", ch.CpuLevel), ("@c", ch.Code), ("@g", ch.CreatorId), ("@n", ch.CreatorName), ("@cr", ch.CreatedUtc), ("@ex", ch.ExpiresUtc),
             ("@rf", ch.RematchFor), ("@ro", ch.RematchOf), ("@ip", ipHash)))
             await cmd.ExecuteNonQueryAsync();
         await InsertPicks(c, tx, ch.Code, picks);
@@ -148,14 +149,14 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         }
     }
 
-    private const string ChallengeColumns = "code, creator_id, creator_name, opponent_id, opponent_name, status, created_utc, expires_utc, rematch_for, rematch_of, total0, total1, winner, notes, vs_cpu";
+    private const string ChallengeColumns = "code, creator_id, creator_name, opponent_id, opponent_name, status, created_utc, expires_utc, rematch_for, rematch_of, total0, total1, winner, notes, vs_cpu, cpu_level";
 
     private static Challenge ReadChallenge(SqlDataReader r) => new(
         r.GetString(0), r.GetGuid(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetGuid(3), r.IsDBNull(4) ? null : r.GetString(4),
         (ChallengeStatus)r.GetByte(5), DateTime.SpecifyKind(r.GetDateTime(6), DateTimeKind.Utc), DateTime.SpecifyKind(r.GetDateTime(7), DateTimeKind.Utc),
         r.IsDBNull(8) ? null : r.GetGuid(8), r.IsDBNull(9) ? null : r.GetString(9),
         r.IsDBNull(10) ? null : new[] { r.GetInt32(10), r.GetInt32(11) }, r.IsDBNull(12) ? null : r.GetInt32(12),
-        r.IsDBNull(13) ? null : JsonSerializer.Deserialize<List<string>>(r.GetString(13)), r.GetBoolean(14));
+        r.IsDBNull(13) ? null : JsonSerializer.Deserialize<List<string>>(r.GetString(13)), r.GetBoolean(14), r.IsDBNull(15) ? null : r.GetByte(15));
 
     public async Task<Challenge?> GetAsync(string code)
     {

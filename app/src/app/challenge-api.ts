@@ -2,7 +2,7 @@ import { OutcomeKey } from './logic';
 
 /** Plan 24: challenge API client. Writes carry the anti-forgery header; private links carry X-Side-Key. */
 
-export interface CPlayer { id: string; year: number; name: string; bats: string; throws: string; }
+export interface CPlayer { id: string; year: number; name: string; bats: string; throws: string; bio?: string; }
 export interface CSlot { slot: number; choices: CPlayer[]; }
 export interface CAtBat { index: number; round: number; battingSide: number; pitcher: CPlayer; batter: CPlayer; seed: string; outcome: OutcomeKey; points: number; }
 export interface CGame { lineups: CPlayer[][]; atBats: CAtBat[]; totals: [number, number]; winner: number; notes: string[]; }
@@ -10,6 +10,8 @@ export interface CView {
   code: string; status: 'open' | 'resolved' | 'expired'; you: 'creator' | 'opponent' | 'visitor';
   creatorName: string; opponentName: string | null; expiresUtc: string; canClaim: boolean; rematchOf: string | null;
   yourPicks: CSlot[] | null; game: CGame | null; vsCpu: boolean;
+  /** Plan 26: computer level 1-4 (1 for old games). */
+  cpuLevel?: number;
 }
 export interface CMine { code: string; you: 'creator' | 'opponent'; creatorName: string; opponentName: string | null; createdUtc: string; status: string; vsCpu: boolean; }
 export interface CClash { creatorName: string; clashes: { slot: number; id: string; name: string }[]; }
@@ -64,7 +66,7 @@ async function send<T>(method: string, url: string, body: unknown, retried = fal
   return r.json() as Promise<T>;
 }
 
-export interface PickBody { picks: { slot: number; choices: { id: string; year: number }[] }[]; nickname?: string; turnstile?: string; }
+export interface PickBody { picks: { slot: number; choices: { id: string; year: number }[] }[]; nickname?: string; turnstile?: string; level?: number; }
 
 export function toBody(slots: CSlot[], nickname?: string): PickBody {
   return { picks: slots.map(s => ({ slot: s.slot, choices: s.choices.map(c => ({ id: c.id, year: c.year })) })), nickname };

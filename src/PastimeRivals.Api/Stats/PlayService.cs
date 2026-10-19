@@ -1,9 +1,10 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using PastimeRivals.Engine;
 
 namespace PastimeRivals.Api.Stats;
 
-public sealed record PlayerHit(string Id, string Name, string Years, string Bats, string Throws, bool Hof);
+public sealed record PlayerHit(string Id, string Name, string Years, string Bats, string Throws, bool Hof, string Bio = "");
 public sealed record SeasonItem(int Year, string Teams, int Pa, string Line, char Grade, bool IsDefault);
 public sealed record Side(string Id, string Name, int Year, string Hand);
 public sealed record MatchupView(Side Batter, Side Pitcher, bool? SameHand, Dictionary<string, double> Probabilities,
@@ -23,7 +24,9 @@ public sealed class PlayService(IStatsSource source)
         public Rates Neutral { get; }
         public IReadOnlyList<TeamRow> Teams { get; }
         public Platoon NeutralPlatoon { get; }
-        public IReadOnlyList<Challenges.PickRef>? TopBat, TopPit, CpuBat, CpuPit;
+        public IReadOnlyList<Challenges.PickRef>? TopBat, TopPit;
+        public readonly Dictionary<(bool Pit, int Level), IReadOnlyList<Challenges.PickRef>[]> Levels = new();
+        public readonly ConcurrentDictionary<(string Id, bool Pit), string> Bios = new();
         private Dictionary<int, double>? _batMean, _pitMean;
 
         private static Dictionary<int, double> Means(Dictionary<string, List<PlayerRow>> pool) =>
@@ -64,7 +67,8 @@ public sealed class PlayService(IStatsSource source)
             .Select(kv =>
             {
                 var p = d.People[kv.Key];
-                return new PlayerHit(p.Id, p.Name, $"{kv.Value[0].Year}-{kv.Value[^1].Year}", p.Bats, p.Throws, p.Hof == "HOF");
+                return new PlayerHit(p.Id, p.Name, $"{kv.Value[0].Year}-{kv.Value[^1].Year}", p.Bats, p.Throws, p.Hof == "HOF",
+                    d.Bios.GetOrAdd((p.Id, role == "pit"), k => BuildBio(d, k.Id, k.Pit)));
             })
             .ToList();
     }
@@ -131,7 +135,7 @@ public sealed class PlayService(IStatsSource source)
         return new ScoutingReport(id, p?.Name ?? id, role, year, Reports.AgeOn(p?.BirthDate, year), Reports.Height(p?.Height),
             Reports.Weight(p?.Weight), p?.Bats ?? "?", p?.Throws ?? "?", role == "pit" ? "P" : (row.Position is { Length: > 0 } pos ? pos : "?"),
             places, Line(row, role), row.Grade, Reports.EraOf(year), p?.Hof == "HOF",
-            Reports.Ratios(row.Counts, player.Input.League, role));
+            Reports.Ratios(row.Counts, player.Input.League, role), d.Bios.GetOrAdd((id, role == "pit"), k => BuildBio(d, k.Id, k.Pit)));
     }
 
     /// <summary>Challenge rules need synchronous odds; call this first so the stats are loaded.</summary>
@@ -141,6 +145,49 @@ public sealed class PlayService(IStatsSource source)
 
     public async Task<(string Name, string Bats, string Throws)?> PersonAsync(string id) =>
         (await _loaded.Value).People.TryGetValue(id, out var p) ? (p.Name, p.Bats, p.Throws) : null;
+
+    /// <summary>Plan 26: real-workload floors for random picks (same as the old top-50 floors).</summary>
+    public const int BatFloor = 300, PitFloor = 400, LegendPitFloor = 600;
+
+    /// <summary>Plan 26: one-line career bio, e.g. "1914-1935 · Boston AL, New York AL +1 · Hall of Fame · Best: 60 HR (1927)".</summary>
+    public async Task<string> BioAsync(string id, string role)
+    {
+        var d = await _loaded.Value;
+        var pit = role == "pit";
+        return d.Bios.GetOrAdd((id, pit), k => BuildBio(d, k.Id, k.Pit));
+    }
+
+    private static string BuildBio(Loaded d, string id, bool pit)
+    {
+        if (!(pit ? d.Pit : d.Bat).TryGetValue(id, out var rows) || rows.Count == 0) return "";
+        var parts = new List<string> { rows[0].Year == rows[^1].Year ? $"{rows[0].Year}" : $"{rows[0].Year}-{rows[^1].Year}" };
+        // Places in the order he first played there (per-team plate appearances do not exist). City and league only (plan 10).
+        var places = new List<string>();
+        foreach (var r in rows)
+            foreach (var code in r.Teams.Split('/', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var t = d.Teams.FirstOrDefault(t => t.Code == code && r.Year >= t.FirstYear && r.Year <= (t.LastYear >= 2021 ? 9999 : t.LastYear));
+                var name = t is null ? null : $"{System.Text.RegularExpressions.Regex.Replace(t.City, @"\.(?=\S)", ". ")} {t.League}";   // "St.Louis" -> "St. Louis"
+                if (name is not null && !places.Contains(name)) places.Add(name);
+            }
+        if (places.Count > 0) parts.Add(string.Join(", ", places.Take(2)) + (places.Count > 2 ? $" +{places.Count - 2}" : ""));
+        if (d.People.TryGetValue(id, out var p) && p.Hof == "HOF") parts.Add("Hall of Fame");
+        // Ties go to the earliest year (rows are sorted by year, MaxBy keeps the first).
+        if (pit)
+        {
+            var best = rows.MaxBy(r => r.Counts.K)!;
+            if (best.Counts.K > 0) parts.Add($"Best: {best.Counts.K} K ({best.Year})");
+        }
+        else
+        {
+            var hr = rows.MaxBy(r => r.Counts.Hr)!;
+            static int H(PlayerRow r) => r.Counts.Single + r.Counts.Double + r.Counts.Triple + r.Counts.Hr;
+            var hits = rows.MaxBy(H)!;
+            if (hr.Counts.Hr >= 20) parts.Add($"Best: {hr.Counts.Hr} HR ({hr.Year})");
+            else if (H(hits) > 0) parts.Add($"Best: {H(hits)} H ({hits.Year})");
+        }
+        return string.Join(" · ", parts);
+    }
 
     private static double PointsPerPa(SeasonCounts c) => c.Pa == 0 ? 0 : (double)(c.Bb + c.Hbp + c.Single + 2 * c.Double + 3 * c.Triple + 4 * c.Hr) / c.Pa;
 
@@ -182,14 +229,13 @@ public sealed class PlayService(IStatsSource source)
             return Matchup.Compute(bat.Input, pit.Input, d.Neutral, d.NeutralPlatoon, EngineOptions.Default, same).Probabilities;
         }
 
-        // Top 50 by challenge points per plate appearance (batters, 300+ PA) or fewest allowed (pitchers, 150+ batters faced).
-        /// <summary>Plan 25: the computer picks from the best 40 per era at each position (200 in all), so it is beatable.</summary>
-        public IReadOnlyList<Challenges.PickRef> ComputerPool(bool pitchers)
+        public IReadOnlyList<Challenges.PickRef>[] RandomPool(bool pitchers, int level)
         {
+            level = Math.Clamp(level, Challenges.Rules.MinLevel, Challenges.Rules.MaxLevel);
             lock (d)
             {
-                if (pitchers) return d.CpuPit ??= Rank(d, d.Pit, 400, ascending: true, perEra: 40);
-                return d.CpuBat ??= Rank(d, d.Bat, 300, ascending: false, perEra: 40);
+                if (!d.Levels.TryGetValue((pitchers, level), out var eras)) d.Levels[(pitchers, level)] = eras = BuildLevel(d, pitchers, level);
+                return eras;
             }
         }
 
@@ -209,6 +255,32 @@ public sealed class PlayService(IStatsSource source)
             return rows.GroupBy(r => EraBucket(r.Year))
                 .SelectMany(g => (ascending ? g.OrderBy(r => d.Score(r, ascending)) : g.OrderByDescending(r => d.Score(r, ascending))).ThenBy(r => r.Id).ThenBy(r => r.Year).Take(perEra))
                 .Select(r => new Challenges.PickRef(r.Id, r.Year)).ToList();
+        }
+
+        /// <summary>Plan 26 levels. Strength = Loaded.Score (era-adjusted); higher is better for batters, lower for pitchers.
+        /// 1 every real-workload season; 2 the better half of each era; 3 Hall of Famers' seasons in that better half;
+        /// 4 the best 5% of each era (pitchers first need 600+ batters faced, so starters only). Call under lock(d).</summary>
+        private static IReadOnlyList<Challenges.PickRef>[] BuildLevel(Loaded d, bool pit, int level)
+        {
+            var floor = pit ? PitFloor : BatFloor;
+            var rows = (pit ? d.Pit : d.Bat).Values.SelectMany(v => v).Where(r => r.Counts.Pa >= floor).ToList();
+            var eras = new IReadOnlyList<Challenges.PickRef>[5];
+            for (var e = 0; e < eras.Length; e++)
+            {
+                var inEra = rows.Where(r => EraBucket(r.Year) == e);
+                if (level == 4 && pit) inEra = inEra.Where(r => r.Counts.Pa >= LegendPitFloor);
+                var list = inEra.ToList();
+                var better = (pit ? list.OrderBy(r => d.Score(r, true)) : list.OrderByDescending(r => d.Score(r, false))).ThenBy(r => r.Id).ThenBy(r => r.Year).ToList();
+                IEnumerable<PlayerRow> pick = level switch
+                {
+                    2 => better.Take((better.Count + 1) / 2),
+                    3 => better.Take((better.Count + 1) / 2).Where(r => d.People.TryGetValue(r.Id, out var p) && p.Hof == "HOF"),
+                    4 => better.Take(better.Count == 0 ? 0 : Math.Max(1, (int)Math.Ceiling(better.Count * 0.05))),
+                    _ => better,
+                };
+                eras[e] = pick.OrderBy(r => r.Id, StringComparer.Ordinal).ThenBy(r => r.Year).Select(r => new Challenges.PickRef(r.Id, r.Year)).ToList();
+            }
+            return eras;
         }
 
         private static int EraBucket(int y) => y < 1920 ? 0 : y < 1946 ? 1 : y < 1970 ? 2 : y < 1990 ? 3 : 4;

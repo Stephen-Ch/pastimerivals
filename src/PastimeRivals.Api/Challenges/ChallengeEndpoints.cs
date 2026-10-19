@@ -6,15 +6,15 @@ namespace PastimeRivals.Api.Challenges;
 
 public sealed record PickChoiceIn(string Id, int Year);
 public sealed record SlotIn(int Slot, List<PickChoiceIn> Choices);
-public sealed record PicksIn(List<SlotIn> Picks, string? Nickname, string? Turnstile);
+public sealed record PicksIn(List<SlotIn> Picks, string? Nickname, string? Turnstile, int? Level = null);
 public sealed record NicknameIn(string Nickname);
 
-public sealed record PlayerOut(string Id, int Year, string Name, string Bats = "R", string Throws = "R");
+public sealed record PlayerOut(string Id, int Year, string Name, string Bats = "R", string Throws = "R", string Bio = "");
 public sealed record SlotOut(int Slot, IReadOnlyList<PlayerOut> Choices);
 public sealed record AtBatOut(int Index, int Round, int BattingSide, PlayerOut Pitcher, PlayerOut Batter, string Seed, string Outcome, int Points);
 public sealed record GameOut(IReadOnlyList<IReadOnlyList<PlayerOut>> Lineups, IReadOnlyList<AtBatOut> AtBats, int[] Totals, int Winner, IReadOnlyList<string> Notes);
 public sealed record ChallengeView(string Code, string Status, string You, string CreatorName, string? OpponentName, DateTime ExpiresUtc,
-    bool CanClaim, string? RematchOf, IReadOnlyList<SlotOut>? YourPicks, GameOut? Game, bool VsCpu = false);
+    bool CanClaim, string? RematchOf, IReadOnlyList<SlotOut>? YourPicks, GameOut? Game, bool VsCpu = false, int CpuLevel = 1);
 public sealed record CreatedOut(string Code, string Key);
 
 public static class ChallengeEndpoints
@@ -42,25 +42,24 @@ public static class ChallengeEndpoints
         api.MapGet("/challenges/similar", async (string id, int year, string role, PlayService play) =>
         {
             var list = new List<PlayerOut>();
-            foreach (var r in await play.SimilarAsync(id, year, role == "pit")) list.Add(await Out(play, r));
+            foreach (var r in await play.SimilarAsync(id, year, role == "pit")) list.Add(await Out(play, r, bioRole: role == "pit" ? "pit" : "bat"));
             return Results.Ok(list);
         });
 
-        // Quick pick: a random team from the top 50 at each position, each with suggested backups.
+        // Quick pick (plan 26): a fully random team (random era, then a random real-workload season), each with suggested backups.
         api.MapGet("/challenges/quickpick", async (PlayService play) =>
         {
             var oracle = await play.OracleAsync();
-            var pits = oracle.Top50(true); var bats = oracle.Top50(false);
-            if (pits.Count == 0 || bats.Count < 3) return Results.Problem("Player data is still loading. Try again.", statusCode: 503);
             var used = new HashSet<string>();
             var slots = new List<SlotOut>();
             for (var slot = 0; slot < Rules.Slots; slot++)
             {
-                var pool = (slot == 0 ? pits : bats).Where(p => !used.Contains(p.Id)).ToList();
-                var first = pool[System.Security.Cryptography.RandomNumberGenerator.GetInt32(pool.Count)];
+                var role = slot == 0 ? "pit" : "bat";
+                if (Rules.DrawAtLevel(oracle, slot == 0, Rules.MinLevel, used, Rnd) is not { } first)
+                    return Results.Problem("Player data is still loading. Try again.", statusCode: 503);
                 used.Add(first.Id);
-                var choices = new List<PlayerOut> { await Out(play, first) };
-                foreach (var b in await play.SimilarAsync(first.Id, first.Year, slot == 0, 2, used)) { choices.Add(await Out(play, b)); used.Add(b.Id); }
+                var choices = new List<PlayerOut> { await Out(play, first, role) };
+                foreach (var b in await play.SimilarAsync(first.Id, first.Year, slot == 0, 2, used)) { choices.Add(await Out(play, b, role)); used.Add(b.Id); }
                 slots.Add(new SlotOut(slot, choices));
             }
             return Results.Ok(slots);
@@ -190,14 +189,14 @@ public static class ChallengeEndpoints
             if (body.Nickname is not null && body.Nickname != g.Nickname) { await store.SetNicknameAsync(g.Id, body.Nickname); g = g with { Nickname = body.Nickname }; }
 
             var oracle = await play.OracleAsync();
+            var level = Math.Clamp(body.Level ?? Rules.MinLevel, Rules.MinLevel, Rules.MaxLevel);
             // The computer never uses any of the user's players, in any season or role (all 12 picks).
             var used = body.Picks.SelectMany(p => p.Choices).Select(c => c.Id).ToHashSet();
             var cpu = new List<StoredPick>();
             for (var slot = 0; slot < Rules.Slots; slot++)
             {
-                var pool = oracle.ComputerPool(slot == 0).Where(p => !used.Contains(p.Id)).ToList();
-                if (pool.Count == 0) return Results.Problem("Player data is still loading. Try again.", statusCode: 503);
-                var pick = pool[System.Security.Cryptography.RandomNumberGenerator.GetInt32(pool.Count)];
+                if (Rules.DrawAtLevel(oracle, slot == 0, level, used, Rnd) is not { } pick)
+                    return Results.Problem("Player data is still loading. Try again.", statusCode: 503);
                 used.Add(pick.Id);
                 cpu.Add(new StoredPick(1, slot, 0, pick.Id, pick.Year));
             }
@@ -206,7 +205,7 @@ public static class ChallengeEndpoints
             var code = Identity.NewCode();
             var key = Identity.NewToken();
             // Reserved for the computer, so nobody else can ever claim it.
-            var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, ComputerId, null, null, null, VsCpu: true);
+            var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, ComputerId, null, null, null, VsCpu: true, CpuLevel: level);
             await store.CreateChallengeAsync(ch, ToStored(body.Picks, side: 0), Identity.Hash(key), ipHash);
             var outcome = await store.LockAndResolveAsync(code, ComputerId, ComputerName, cpu, Identity.Hash(Identity.NewToken()), now,
                 all => Rules.Play(new[] { ToSlots(all, 0), ToSlots(all, 1) }, PlayService.NewSeed(), oracle));
@@ -233,8 +232,13 @@ public static class ChallengeEndpoints
         });
     }
 
-    private static async Task<PlayerOut> Out(PlayService play, PickRef r) =>
-        await play.PersonAsync(r.Id) is { } p ? new PlayerOut(r.Id, r.Year, p.Name, p.Bats, p.Throws) : new PlayerOut(r.Id, r.Year, r.Id);
+    private static int Rnd(int n) => System.Security.Cryptography.RandomNumberGenerator.GetInt32(n);
+
+    /// <summary>bioRole "pit" or "bat" adds the plan 26 bio line (pick screens only; game views stay small).</summary>
+    private static async Task<PlayerOut> Out(PlayService play, PickRef r, string? bioRole = null) =>
+        await play.PersonAsync(r.Id) is { } p
+            ? new PlayerOut(r.Id, r.Year, p.Name, p.Bats, p.Throws, bioRole is null ? "" : await play.BioAsync(r.Id, bioRole))
+            : new PlayerOut(r.Id, r.Year, r.Id);
 
     private static void IssueXsrf(HttpContext ctx, IAntiforgery af)
     {
@@ -364,6 +368,6 @@ public static class ChallengeEndpoints
             game = new GameOut(lineups, outs, ch.Totals!, ch.Winner ?? -1, ch.Notes ?? new List<string>());
         }
         return new ChallengeView(ch.Code, ch.Status.ToString().ToLowerInvariant(), you, ch.CreatorName, ch.OpponentName, ch.ExpiresUtc,
-            canClaim, ch.RematchOf, yourPicks, game, ch.VsCpu);
+            canClaim, ch.RematchOf, yourPicks, game, ch.VsCpu, ch.CpuLevel ?? 1);
     }
 }

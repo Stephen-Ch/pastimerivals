@@ -17,7 +17,8 @@ public interface IMatchupOracle
 {
     Rates? Odds(PickRef batter, PickRef pitcher);
     IReadOnlyList<PickRef> Top50(bool pitchers);
-    IReadOnlyList<PickRef> ComputerPool(bool pitchers) => Top50(pitchers);
+    /// <summary>Plan 26: real-workload seasons for a computer level (1 Random, 2 Good, 3 Hall of Famers, 4 Legends), one list per era.</summary>
+    IReadOnlyList<PickRef>[] RandomPool(bool pitchers, int level);
 }
 
 /// <summary>Pure challenge rules (D17 to D21). Same picks and seed always give the same game.</summary>
@@ -25,6 +26,31 @@ public static class Rules
 {
     public const int Slots = 4;
     public const int MaxExtraRounds = 5;
+    public const int MinLevel = 1, MaxLevel = 4;
+
+    /// <summary>Plan 26: a random era (each era equally likely), then a random season in it; never a taken player.
+    /// After 50 misses, any free season from the pool. Null when the pool has no free season.</summary>
+    public static PickRef? DrawRandom(IReadOnlyList<PickRef>[] eras, ISet<string> taken, Func<int, int> next)
+    {
+        var live = Enumerable.Range(0, eras.Length).Where(e => eras[e].Count > 0).ToList();
+        if (live.Count == 0) return null;
+        for (var i = 0; i < 50; i++)
+        {
+            var era = eras[live[next(live.Count)]];
+            var p = era[next(era.Count)];
+            if (!taken.Contains(p.Id)) return p;
+        }
+        var rest = eras.SelectMany(x => x).Where(p => !taken.Contains(p.Id)).ToList();
+        return rest.Count == 0 ? null : rest[next(rest.Count)];
+    }
+
+    /// <summary>Draws at the level, stepping down a level when that pool has no free season.</summary>
+    public static PickRef? DrawAtLevel(IMatchupOracle oracle, bool pitchers, int level, ISet<string> taken, Func<int, int> next)
+    {
+        for (var l = Math.Clamp(level, MinLevel, MaxLevel); l >= MinLevel; l--)
+            if (DrawRandom(oracle.RandomPool(pitchers, l), taken, next) is { } p) return p;
+        return null;
+    }
 
     public static int Points(Outcome o) => o switch
     {

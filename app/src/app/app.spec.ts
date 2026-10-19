@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { App } from './app';
+import { App, vsFromSearch } from './app';
 
 const probs = { k: 0.3, bb: 0.12, hbp: 0.01, single: 0.12, double: 0.04, triple: 0.005, hr: 0.045, oip: 0.36 };
 const matchup = {
@@ -30,6 +30,12 @@ describe('App', () => {
     await new Promise(r => setTimeout(r, 0));
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
+    // Plan 27: Home first, with the three ways in.
+    expect(el.textContent).toContain('Play the computer');
+    expect(el.textContent).toContain('Challenge a friend');
+    expect(el.textContent).toContain('20 Sunset Rd., Newark, DE 19711');
+    (fixture.componentInstance as any).openPractice();
+    fixture.detectChanges(); await fixture.whenStable();
     expect(el.textContent).toContain('Pedro Martinez');
     expect(el.textContent).toContain('Babe Ruth');
     expect(el.textContent).toContain('Out in play 36%');
@@ -82,6 +88,8 @@ describe('App', () => {
     await new Promise(r => setTimeout(r, 0));
     await fixture.whenStable();
     const app = fixture.componentInstance as any;
+    expect(app.screen()).toBe('home');
+    app.openPractice();
     expect(app.screen()).toBe('matchup');
     app.pending.set({ outcome: 'hr', seed: 'x', engineVersion: '0.1.0' });
     app['enterPlay']();
@@ -94,5 +102,19 @@ describe('App', () => {
     expect(app.overlay()).toBe('details');
     app['onPopState']();
     expect(app.overlay()).toBeNull();
+  });
+
+  it('Back from practice returns Home, and ?vs= picks the game type (plan 27)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await new Promise(r => setTimeout(r, 0));
+    const app = fixture.componentInstance as any;
+    app.openPractice();
+    expect(app.screen()).toBe('matchup');
+    app['onPopState']();
+    expect(app.screen()).toBe('home');
+    expect(vsFromSearch('?vs=cpu')).toBe('cpu');
+    expect(vsFromSearch('?vs=friend')).toBe('friend');
+    expect(vsFromSearch('?vs=x')).toBeNull();
+    expect(vsFromSearch('')).toBeNull();
   });
 });

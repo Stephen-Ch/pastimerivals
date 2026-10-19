@@ -241,6 +241,31 @@ public class ChallengeApiTests
         Assert.True(list[0].GetProperty("vsCpu").GetBoolean());
     }
 
+    [Theory]
+    [InlineData(null, 1)] [InlineData(0, 1)] [InlineData(3, 3)] [InlineData(9, 4)]
+    public async Task Computer_level_is_clamped_and_stored_with_the_game(int? level, int expected)
+    {
+        var f = Factory(NewStore());
+        var c = await Browser(f);
+        object[] pk = ((dynamic)Picks("pit01", "bat01", "bat02", "bat03")).picks;
+        var body = new { picks = pk, level };
+        var r = await c.PostAsJsonAsync("/api/challenges/computer", body);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var j = await r.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(expected, j.GetProperty("view").GetProperty("cpuLevel").GetInt32());
+        var again = await c.GetFromJsonAsync<JsonElement>($"/api/challenges/{j.GetProperty("code").GetString()}");
+        Assert.Equal(expected, again.GetProperty("cpuLevel").GetInt32());
+    }
+
+    [Fact]
+    public async Task Quickpick_and_search_carry_the_bio_line()
+    {
+        var f = Factory(NewStore());
+        var c = await Browser(f);
+        var qp = await c.GetFromJsonAsync<JsonElement>("/api/challenges/quickpick");
+        Assert.All(qp.EnumerateArray(), sl => Assert.StartsWith("2000", sl.GetProperty("choices")[0].GetProperty("bio").GetString()));
+    }
+
     [Fact]
     public async Task Computer_games_do_not_use_up_friend_challenge_limits()
     {

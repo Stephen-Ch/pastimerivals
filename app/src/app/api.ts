@@ -1,6 +1,6 @@
 import { OutcomeKey, Pick } from './logic';
 
-export interface PlayerHit { id: string; name: string; years: string; bats: string; throws: string; hof: boolean; }
+export interface PlayerHit { id: string; name: string; years: string; bats: string; throws: string; hof: boolean; bio?: string; }
 export interface SeasonItem { year: number; teams: string; pa: number; line: string; grade: string; isDefault: boolean; }
 export interface Step {
   outcome: string; batterObserved: number | null; batterShrunk: number; batterLeague: number; batterRatio: number;
@@ -17,6 +17,8 @@ export interface Ratio { label: string; timesLeague: number; }
 export interface Report {
   id: string; name: string; role: 'bat' | 'pit'; year: number; age: number | null; height: string | null; weight: string | null;
   bats: string; throws: string; position: string; places: string[]; line: string; grade: string; era: string; hof: boolean; ratios: Ratio[];
+  /** Plan 26: one-line career bio. */
+  bio?: string;
 }
 export interface SimsResult { n: number; counts: Record<OutcomeKey, number>; seed: string; }
 

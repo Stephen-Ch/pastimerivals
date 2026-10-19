@@ -22,3 +22,10 @@
 .clash { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--surface-1); border: 1px solid var(--error); color: var(--text-primary); font-weight: 600; font-size: .92rem; }
 .actions.even { grid-template-columns: 1fr 1fr; }
 @media (orientation: landscape) and (max-height: 500px) { .actions.even { grid-template-columns: 1fr; } }
+
+/* Plan 26: one-line career bio and the computer level hint. */
+.bio { margin: 4px 0 0; font-size: .85rem; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.level-hint { margin: 2px 0; font-size: .85rem; opacity: .8; }
+
+/* Plan 27: Skip is a small link so it does not compete with Pitch. */
+.actions .skip-link { min-height: 44px; padding: 0 12px; background: none; border: 0; }

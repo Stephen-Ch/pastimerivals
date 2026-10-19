@@ -1,12 +1,12 @@
 <div class="game">
   @switch (step()) {
     @case ('loading') {
-      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Solo play</button></header>
+      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex"><h1 #stepTitle tabindex="-1" class="sr-only">Loading</h1><p class="muted pad" role="status">Loading the game...</p></main>
     }
 
     @case ('home') {
-      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Solo play</button></header>
+      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex">
         <h1 #stepTitle tabindex="-1">Play a game</h1>
         <p class="how">Pick a pitcher and 3 batters from any season. Your batters face their pitcher, then theirs face yours.
@@ -31,7 +31,7 @@
     }
 
     @case ('intro') {
-      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Solo play</button></header>
+      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex">
         <h1 #stepTitle tabindex="-1" class="call">{{ view()?.creatorName }} challenged you</h1>
         <p class="how">Pick a pitcher and 3 batters from any season. You won't see their team until the game.
@@ -60,6 +60,7 @@
             <p class="pname big-name">{{ s.choices[0].name }} <span class="muted">{{ s.choices[0].year }}</span></p>
             <button type="button" class="link small" (click)="openSearch(true)" [disabled]="busy()">Change</button>
           </div>
+          @if (s.choices[0].bio) { <p class="bio" [attr.title]="s.choices[0].bio">{{ s.choices[0].bio }}</p> }
           <p class="note">Backups, used only if your friend picks the same player:</p>
           <div class="chips">
             @for (rank of [1, 2]; track rank) {
@@ -69,7 +70,11 @@
           </div>
         } @else {
           @if (!seasonsFor()) {
-            <input class="search" type="search" [placeholder]="i === 0 ? 'Search pitchers by name' : 'Search batters by name'" autocomplete="off"
+            @if (!query()) {
+              @if (i === 0 && !s) { <p class="how">Pick a pitcher and 3 batters. Walk or single 1 point, double 2, triple 3, homer 4. Most points wins.</p> }
+              @if (!s) { <p class="note">Type a name, or tap Quick pick for a random team.</p> }
+            }
+            <input class="search" type="search" [placeholder]="i === 0 ? 'Pitcher name, like Cy Young' : 'Batter name, like Babe Ruth'" autocomplete="off"
                    [value]="query()" (input)="onQuery($any($event.target).value)" [attr.aria-label]="'Search for ' + slotNames[i]">
             <ul class="list">
               @for (h of hits(); track h.id) {
@@ -111,12 +116,6 @@
             </button></li>
           }
         </ul>
-        <h2 class="sub">Play as</h2>
-        <div class="chips">
-          @for (n of (nickname() && !nickChoices().includes(nickname()!) ? [nickname()!].concat(nickChoices()) : nickChoices()); track n) {
-            <button type="button" class="chip" [class.on]="(nickname() ?? nickChoices()[0]) === n" (click)="chooseName(n)" [attr.aria-pressed]="(nickname() ?? nickChoices()[0]) === n">{{ n }}</button>
-          }
-        </div>
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
       <div class="actions">
@@ -126,7 +125,7 @@
     }
 
     @case ('shared') {
-      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Solo play</button></header>
+      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex">
         <h1 #stepTitle tabindex="-1" class="call">Your challenge is ready</h1>
         <p class="how">Send the link to a friend. When they finish, open the link again to watch the game.</p>
@@ -138,14 +137,15 @@
         }
         @if (note()) { <p class="note" role="status">{{ note() }}</p> }
       </main>
-      <div class="actions">
+      <div class="actions three">
         <button class="primary big" type="button" (click)="shareChallenge()">Send to a friend</button>
         <button type="button" (click)="copy(shareLink())">Copy link</button>
+        <button type="button" (click)="startFresh('cpu')">Play the computer while you wait</button>
       </div>
     }
 
     @case ('waiting') {
-      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Solo play</button><button type="button" class="link" (click)="newChallenge()">New</button></header>
+      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex">
         <h1 #stepTitle tabindex="-1" class="call">Waiting for a friend</h1>
         <p class="note">Expires in {{ view() ? hoursLeft(view()!) : '' }}.</p>
@@ -157,16 +157,17 @@
         }
         @if (note()) { <p class="note" role="status">{{ note() }}</p> }
       </main>
-      <div class="actions">
+      <div class="actions three">
         <button class="primary big" type="button" (click)="shareChallenge()">Send the link again</button>
         <button type="button" (click)="copy(shareLink())">Copy link</button>
+        <button type="button" (click)="startFresh('cpu')">Play the computer while you wait</button>
       </div>
     }
 
     @case ('play') {
       @let sc = score();
       <header class="bar">
-        <button type="button" class="link" (click)="leave()">‹ Solo play</button>
+        <button type="button" class="link" (click)="leave()">‹ Home</button>
         <span class="vs-line">{{ progress() }}</span>
       </header>
       <div class="scoreboard">
@@ -183,6 +184,7 @@
         } @else {
           <section class="result">
             @if (lastCall()) { <p class="outcome-tag" role="status">{{ lastCall() }}</p> }
+            @if (revealed() === 0) { <p class="note">Tap Pitch to see each at-bat.</p> }
             @if (nextAtBat(); as n) {
               <p class="muted">{{ roundLabel(n) }} · {{ sideName(n.battingSide) }} batting</p>
               <p class="call">{{ n.batter.name }} <span class="muted">{{ n.batter.year }}</span></p>
@@ -193,19 +195,25 @@
       </main>
       <div class="actions">
         <button class="primary big" type="button" (click)="pitch()" [disabled]="!!scene() || !nextAtBat() || loadingArt()">{{ loadingArt() ? 'Loading art' : 'Pitch' }}</button>
-        <button type="button" (click)="skipToFinal()">Skip to final</button>
+        <button type="button" class="link small skip-link" (click)="skipToFinal()">Skip to final</button>
       </div>
     }
 
     @case ('final') {
       @let g = game();
-      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Solo play</button><button type="button" class="link" (click)="watchAgain()">Watch again</button></header>
+      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button><button type="button" class="link" (click)="watchAgain()">Watch again</button></header>
       <div class="scoreboard">
         <span class="team-score"><span class="tname">{{ sideName(0) }}</span> <strong>{{ g?.totals?.[0] }}</strong></span>
         <span class="team-score"><strong>{{ g?.totals?.[1] }}</strong> <span class="tname">{{ sideName(1) }}</span></span>
       </div>
       <main class="flex">
         <h1 #stepTitle tabindex="-1" class="call">{{ finalText() }}</h1>
+        @if (view()?.vsCpu && yourSide() === 0) {
+          <p class="level-hint">{{ levelHint() }}</p>
+          @if (!youWon() && gameLevel() > 1) {
+            <button type="button" class="link small" (click)="sameTeamAgain(gameLevel() - 1)" [disabled]="busy()">Try an easier computer</button>
+          }
+        }
         @if (g?.notes?.length) { <p class="note">Both of you picked the same player. The challenger picked first, so a backup stepped in.</p> }
         <ol class="plays">
           @for (a of g?.atBats ?? []; track a.index) {
@@ -222,11 +230,19 @@
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
       @if (view()?.vsCpu && yourSide() === 0) {
-        <div class="actions three">
-          <button class="primary big" type="button" (click)="startPicking('cpu')">Play again</button>
-          <button type="button" (click)="sameTeamAgain()" [disabled]="busy()">Same team again</button>
-          <button type="button" (click)="shareResult()">Share the game</button>
-        </div>
+        @if (youWon() && gameLevel() < 4) {
+          <div class="actions three">
+            <button class="primary big" type="button" (click)="sameTeamAgain(gameLevel() + 1)" [disabled]="busy()">Next: {{ levelNames[gameLevel() + 1] }}</button>
+            <button type="button" (click)="newTeamSameLevel()">New team</button>
+            <button type="button" (click)="shareResult()">Share the game</button>
+          </div>
+        } @else {
+          <div class="actions three">
+            <button class="primary big" type="button" (click)="newTeamSameLevel()">New team</button>
+            <button type="button" (click)="sameTeamAgain()" [disabled]="busy()">Same team again</button>
+            <button type="button" (click)="shareResult()">Share the game</button>
+          </div>
+        }
       } @else {
         <div class="actions three">
           <button class="primary big" type="button" (click)="shareResult()">{{ view()?.you === 'opponent' ? 'Send the result to ' + view()?.creatorName : 'Share the game' }}</button>
@@ -237,14 +253,14 @@
     }
 
     @case ('closed') {
-      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Solo play</button></header>
+      <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex">
         <h1 #stepTitle tabindex="-1" class="call">{{ closedText() }}</h1>
         <p class="how">You can start your own challenge and send it to a friend.</p>
       </main>
       <div class="actions">
         <button class="primary big" type="button" (click)="newChallenge()">{{ view()?.you === 'creator' ? 'Challenge again' : 'Start your own challenge' }}</button>
-        <button type="button" (click)="leave()">Solo play</button>
+        <button type="button" (click)="leave()">Home</button>
       </div>
     }
   }

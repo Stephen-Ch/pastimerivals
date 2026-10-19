@@ -1,5 +1,5 @@
 import { ArtManifest, artFor, pairArt, sheetTone, variantFor } from './art';
-import { ARRIVE_S, ballAt, batterFrames, exitSide, frameAt, LEAD_START_S, pitchRand, pitchTarget, PITCHER_FRAMES, RELEASE_S, SPLIT_LEAD_MS, STRETCH_FRAMES } from './pitch-scene';
+import { ARRIVE_S, ballAt, MITT_FADE_S, MITT_HOLD_S, SPLIT_END_S, batterFrames, exitSide, frameAt, LEAD_START_S, pitchRand, pitchTarget, PITCHER_FRAMES, RELEASE_S, SPLIT_LEAD_MS, STRETCH_FRAMES } from './pitch-scene';
 import { callFor, countFor } from './logic';
 
 const man: ArtManifest = {
@@ -70,28 +70,42 @@ describe('comic art (plan 18)', () => {
     expect(ballAt(2.3, 'foul', 'R', 'R').o).toBe(0);
   });
 
-  it('sends strikes past the batter, just inside his front hip (plan 20)', () => {
+  it('ends every pitch he does not hit over or beside the plate, clear of his body (plan 27)', () => {
+    // Measured from the art (tools/check-ball-path.py): body x 12-60 everywhere, feet out to 77 below y 85.
+    const onBody = (x: number, y: number) => (x >= 12 && x <= 60 && y >= 20 && y <= 100) || (x <= 77 && y >= 85);
     for (const [bats, dir] of [['R', 1], ['L', -1]] as const) {
-      const at = ballAt(ARRIVE_S - 0.001, 'look', 'R', bats);
-      expect(at.x).toBeCloseTo(50 - 12 * dir + 8 * dir, 0);
-      const past = ballAt(ARRIVE_S + 0.2, 'miss', 'R', bats);
-      expect(past.behind).toBe(true);
-      expect(past.y).toBeGreaterThan(60);
+      for (let i = 0; i < 1000; i++) {
+        const r = pitchRand('seed' + i, i % 7);
+        for (const m of ['look', 'miss', 'take'] as const) {
+          const t = pitchTarget(m, bats, r);
+          const x = dir === 1 ? t.x : 100 - t.x;   // compare in right-handed screen space
+          expect(onBody(x, t.y)).toBe(false);
+          expect(x).toBeGreaterThanOrEqual(74); expect(x).toBeLessThanOrEqual(94);
+          if (m === 'look') { expect(x).toBeLessThanOrEqual(84); expect(t.y).toBeGreaterThanOrEqual(46); expect(t.y).toBeLessThanOrEqual(62); }
+          if (m === 'miss') { expect(x).toBeLessThanOrEqual(84); expect(t.y).toBeGreaterThanOrEqual(66); expect(t.y).toBeLessThanOrEqual(70); }
+          if (m === 'take') expect(x > 84 || t.y < 40 || t.y > 68).toBe(true);   // never in the strike box
+        }
+      }
     }
-    expect(ballAt(ARRIVE_S + 0.2, 'hit', 'R', 'R').behind).toBeFalsy();
   });
 
-  it('places pitches from a stable hash: strikes in the zone, balls outside it (plan 21)', () => {
-    expect(pitchRand('abc', 2)).toEqual(pitchRand('abc', 2));
-    for (let i = 0; i < 40; i++) {
-      const r = pitchRand('s' + i, i);
-      for (const v of r) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThan(1); }
-      const s = pitchTarget('look', 'R', r), b = pitchTarget('take', 'R', r);
-      expect(s.x).toBeGreaterThanOrEqual(41); expect(s.x).toBeLessThanOrEqual(51);
-      expect(s.y).toBeGreaterThanOrEqual(50); expect(s.y).toBeLessThanOrEqual(64);
-      const inZone = b.x >= 41 && b.x <= 51 && b.y >= 50 && b.y <= 64;
-      expect(inZone).toBe(false);
+  it('holds the ball in the mitt so the eye can find it, then fades (plan 27)', () => {
+    for (const m of ['look', 'miss', 'take'] as const) {
+      expect(ballAt(ARRIVE_S + 0.01, m, 'R', 'R').o).toBe(1);
+      expect(ballAt(ARRIVE_S + MITT_HOLD_S - 0.01, m, 'R', 'R').o).toBe(1);
+      expect(ballAt(ARRIVE_S + MITT_HOLD_S + MITT_FADE_S + 0.01, m, 'R', 'R').o).toBe(0);
+      expect(ballAt(ARRIVE_S + 0.1, m, 'R', 'R').ring).toBeGreaterThan(0);
+      expect(ballAt(ARRIVE_S + 0.4, m, 'R', 'R').ring).toBeUndefined();
+      expect('behind' in ballAt(ARRIVE_S + 0.2, m, 'R', 'R')).toBe(false);
     }
+    expect(ARRIVE_S + MITT_HOLD_S + MITT_FADE_S).toBeLessThanOrEqual(SPLIT_END_S);
+    expect(frameAt(batterFrames('hit'), ARRIVE_S)).toBe(4);   // contact frame lines up with the ball
+    expect(frameAt(batterFrames('hit'), ARRIVE_S - 0.01)).toBe(3);
+  });
+
+  it('places pitches from a stable hash', () => {
+    expect(pitchRand('abc', 2)).toEqual(pitchRand('abc', 2));
+    for (let i = 0; i < 40; i++) for (const v of pitchRand('s' + i, i)) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThan(1); }
   });
 
   it('sends batted balls to the side the announcer names, the same for lefties', () => {

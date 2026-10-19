@@ -19,6 +19,7 @@ import { Era, figure } from './art';
           <h3>{{ r.name }}</h3>
           <p class="sub">{{ r.year }} · {{ r.position }} · {{ r.role === 'pit' ? 'Throws ' + hand(r.throws) : 'Bats ' + hand(r.bats) }}</p>
           @if (!compact()) { <p class="sub">{{ r.places.join(' / ') || 'Unknown team' }}</p> }
+          @if (!compact() && r.bio) { <p class="sub bio">Career: {{ r.bio }}</p> }
         </div>
       } @else {
         <div class="facts">

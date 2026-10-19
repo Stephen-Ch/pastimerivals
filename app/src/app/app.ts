@@ -3,6 +3,7 @@ import { DomSanitizer } from '@angular/platform-browser';
 import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResult } from './api';
 import { ReportView } from './report';
 import { ChallengeFlow } from './challenge';
+import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
 import { ArtManifest, Era, eraOf, figure, PairArt, pairArt, PlayerArt, preloadImages } from './art';
 import { battingLine, callFor, countFor, explain, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, shareUrl, timesLeague } from './logic';
@@ -15,6 +16,12 @@ export function challengeFromPath(path = typeof location !== 'undefined' ? locat
   const m = /^\/c\/([A-Za-z0-9_-]{1,40})\/?$/.exec(path);
   if (!m) return undefined;
   return m[1] === 'new' ? null : m[1];
+}
+
+/** Plan 27: ?vs=cpu or ?vs=friend on /c/new opens straight at the pitcher pick. */
+export function vsFromSearch(search = typeof location !== 'undefined' ? location.search : ''): 'cpu' | 'friend' | null {
+  const v = new URLSearchParams(search).get('vs');
+  return v === 'cpu' || v === 'friend' ? v : null;
 }
 
 function sessionId(): string {
@@ -108,21 +115,41 @@ export class App {
   protected readonly challenge = signal<string | null | undefined>(challengeFromPath());
   protected readonly challengeKey = signal(0);
 
-  protected openChallenge() {
-    if (this.canHistory()) history.pushState({ pr: 'challenge' }, '', '/c/new');
+  protected readonly challengeVs = signal<'cpu' | 'friend' | null>(vsFromSearch());
+
+  /** Plan 27: from Home. vs null opens "Your games". */
+  protected openChallenge(vs: 'cpu' | 'friend' | null = null) {
+    if (this.canHistory()) history.pushState({ pr: 'challenge' }, '', vs ? `/c/new?vs=${vs}` : '/c/new');
+    this.challengeVs.set(vs);
     this.challengeKey.update(k => k + 1);
     this.challenge.set(null);
   }
 
+  /** Every "Home" link: switches in place (a share link opened cold has no Home behind it in history). */
   protected leaveChallenge() {
     if (this.canHistory()) history.pushState({}, '', '/');
     this.challenge.set(undefined);
+    this.goHome();
+  }
+
+  // ---- Plan 27: Home ----
+  protected readonly myGames = signal(0);
+  private practicePushed = false;
+
+  protected goHome() {
+    this.overlay.set(null); this.pending.set(null);
+    this.screen.set('home');
+    capi.mine().then(m => this.myGames.set(m.length)).catch(() => undefined);
+  }
+
+  protected openPractice() {
+    if (this.canHistory() && !this.practicePushed) { history.pushState({ pr: 'practice' }, ''); this.practicePushed = true; }
     this.screen.set('matchup');
   }
 
   // ---- Plan 23: one screen at a time ----
   protected readonly roles = ['pit', 'bat'] as const;
-  protected readonly screen = signal<'matchup' | 'atbat' | 'result'>('matchup');
+  protected readonly screen = signal<'home' | 'matchup' | 'atbat' | 'result'>('home');
   protected readonly overlay = signal<'details' | 'why' | 'sims' | null>(null);
   protected readonly rate3 = rate3;
   protected readonly simLine = computed(() => { const s = this.sims(); return s ? battingLine(s.counts, s.n) : null; });
@@ -183,11 +210,14 @@ export class App {
     const c = challengeFromPath();
     if (c !== undefined || this.challenge() !== undefined) {
       this.challengeKey.update(k => k + 1);
+      this.challengeVs.set(vsFromSearch());
       this.challenge.set(c);
       if (c !== undefined) return;
+      this.goHome(); return;
     }
     if (this.overlayPushed) { this.overlayPushed = false; this.closeOverlays(); return; }
-    if (this.playPushed) { this.playPushed = false; this.toMatchup(); }
+    if (this.playPushed) { this.playPushed = false; this.toMatchup(); return; }
+    if (this.practicePushed) { this.practicePushed = false; this.goHome(); }
   }
 
   // ---- Plan 18: comic art ----
@@ -236,12 +266,14 @@ export class App {
     api.event('open', this.session);
     const shared = typeof location !== 'undefined' ? parseShare(location.search) : null;
     if (shared) {
+      this.screen.set('matchup');   // plan 27: share links skip Home
       this.batter.set({ id: shared.pick.b, name: shared.pick.b, year: shared.pick.by, line: '' });
       this.pitcher.set({ id: shared.pick.p, name: shared.pick.p, year: shared.pick.py, line: '' });
       api.event('share_open', this.session);
       this.load().then(() => this.throwPitch(shared.seed));
     } else {
       this.load();
+      if (this.challenge() === undefined) capi.mine().then(m => this.myGames.set(m.length)).catch(() => undefined);
     }
   }
 

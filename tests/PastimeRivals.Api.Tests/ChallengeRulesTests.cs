@@ -17,6 +17,10 @@ public sealed class FixedOracle : IMatchupOracle
     }
 
     public IReadOnlyList<PickRef> Top50(bool pitchers) => pitchers ? TopPit : TopBat;
+
+    /// <summary>Plan 26: every level is the top-50 list in the last era.</summary>
+    public IReadOnlyList<PickRef>[] RandomPool(bool pitchers, int level) =>
+        new IReadOnlyList<PickRef>[] { new List<PickRef>(), new List<PickRef>(), new List<PickRef>(), new List<PickRef>(), Top50(pitchers) };
 }
 
 public class ChallengeRulesTests

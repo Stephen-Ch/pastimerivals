@@ -1,15 +1,28 @@
 @if (challenge() !== undefined) {
   @for (k of [challengeKey()]; track k) {
-    <pr-challenge [code]="challenge() ?? null" [manifest]="manifest()" (exit)="leaveChallenge()" />
+    <pr-challenge [code]="challenge() ?? null" [startMode]="challengeVs()" [manifest]="manifest()" (exit)="leaveChallenge()" />
   }
 } @else {
 <div class="game" [class.landscape]="false">
   @switch (screen()) {
+    @case ('home') {
+      <main class="flex home">
+        <h1 #screenTitle tabindex="-1">Pastime Rivals</h1>
+        <p class="home-pitch">Pick a pitcher and 3 batters from any season. Beat the computer or a friend.</p>
+        <p class="how">Walk or single 1 point, double 2, triple 3, homer 4. Most points wins.</p>
+        @if (myGames() > 0) { <button type="button" class="link" (click)="openChallenge()">Your games ({{ myGames() }})</button> }
+      </main>
+      <div class="actions home-actions">
+        <button class="primary big" type="button" (click)="openChallenge('cpu')">Play the computer</button>
+        <button class="big" type="button" (click)="openChallenge('friend')">Challenge a friend</button>
+        <button type="button" (click)="openPractice()">Practice one at-bat</button>
+      </div>
+    }
     @case ('matchup') {
       <header class="bar">
-        <h1 #screenTitle tabindex="-1">Pastime Rivals</h1>
+        <button type="button" class="link" (click)="leaveChallenge()">‹ Home</button>
+        <h1 #screenTitle tabindex="-1" class="sr-only">Practice one at-bat</h1>
         <span class="bar-links">
-          <button type="button" class="link" (click)="openChallenge()">Play a game</button>
           <button type="button" class="link" (click)="openOverlay('details')" [disabled]="!matchup()">Details</button>
         </span>
       </header>

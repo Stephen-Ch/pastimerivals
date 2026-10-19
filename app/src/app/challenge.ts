@@ -13,6 +13,14 @@ type Mode = 'create' | 'accept' | 'rematch' | 'cpu';
 export const SLOT_NAMES = ['Your pitcher', 'Batter 1', 'Batter 2', 'Batter 3'];
 
 /** Plan 24: challenge a friend. One screen at a time (plan 23); the page never scrolls. */
+/** Plan 26 computer levels; index = level (1-4). */
+const LEVEL_NAMES = ['', 'Random players', 'Good players', 'Hall of Famers', 'Legends'];
+const LEVEL_KEY = 'pr_cpu_level';
+function savedLevel(): number {
+  try { const n = Number(localStorage.getItem(LEVEL_KEY)); return n >= 1 && n <= 4 ? Math.floor(n) : 1; } catch { return 1; }
+}
+function saveLevel(n: number) { try { localStorage.setItem(LEVEL_KEY, String(n)); } catch { /* fine */ } }
+
 @Component({
   selector: 'pr-challenge',
   imports: [PitchScene],
@@ -23,6 +31,8 @@ export class ChallengeFlow {
   /** Challenge code from the URL, or null to start a new challenge. */
   readonly code = input<string | null>(null);
   readonly manifest = input<ArtManifest | null>(null);
+  /** Plan 27: /c/new?vs=cpu or ?vs=friend opens straight at the pitcher pick. */
+  readonly startMode = input<'cpu' | 'friend' | null>(null);
   readonly exit = output<void>();
 
   protected readonly slotNames = SLOT_NAMES;
@@ -86,6 +96,17 @@ export class ChallengeFlow {
     const n = side === 0 ? v?.creatorName : v?.vsCpu ? 'The Computer' : v?.opponentName;
     return (n ?? 'Friend') + (this.yourSide() === side ? ' (you)' : '');
   };
+  // ---- Plan 26: computer levels (a ladder: win to face tougher players) ----
+  protected readonly levelNames = LEVEL_NAMES;
+  /** The level of the game on screen (its stored level), not the device's saved level. */
+  protected readonly gameLevel = computed(() => Math.min(4, Math.max(1, this.view()?.cpuLevel ?? 1)));
+  protected readonly youWon = computed(() => { const g = this.game(); return !!g && g.winner !== -1 && g.winner === this.yourSide(); });
+  protected readonly levelHint = computed(() => {
+    const l = this.gameLevel(), name = LEVEL_NAMES[l];
+    if (l === 4) return this.youWon() ? 'You beat the Legends, the top level.' : 'Level 4 of 4: Legends, the top level.';
+    return `Level ${l} of 4: ${name}. ` + (this.youWon() ? 'Next level keeps your team.' : 'Win to face tougher players.');
+  });
+
   protected readonly finalText = computed(() => {
     const g = this.game(), you = this.yourSide();
     if (!g) return '';
@@ -101,9 +122,18 @@ export class ChallengeFlow {
 
   private async start() {
     capi.me().then(m => { this.nickname.set(m.nickname); this.nickChoices.set(m.choices); }).catch(() => undefined);
-    const c = this.code();
+    const c = this.code(), vs = this.startMode();
     if (c) await this.open(c);
+    else if (vs) this.startFresh(vs, false);
     else await this.home();
+  }
+
+  /** Plan 27: a new game straight at the pitcher pick (from Home, "Start your own", or "Play the computer while you wait"). */
+  protected startFresh(vs: 'cpu' | 'friend', push = true) {
+    if (push) { try { history.pushState({ pr: 'challenge' }, '', `/c/new?vs=${vs}`); } catch { /* fine */ } }
+    this.current.set(null); this.view.set(null); this.error.set(null); this.note.set(null);
+    this.mode.set(vs === 'cpu' ? 'cpu' : 'create');
+    this.resetTeam(); this.step.set('pick');
   }
 
   private async home() {
@@ -205,7 +235,7 @@ export class ChallengeFlow {
     if (this.usedIds(slot, rank).has(h.id)) { this.error.set(`${h.name} is already on your team.`); return; }
     if (this.clash()?.ids.has(h.id)) { this.error.set(`Sorry, ${h.name} is playing for ${this.view()?.creatorName ?? 'your friend'}. Choose another.`); return; }
     this.error.set(null);
-    const pick: CPlayer = { id: h.id, year: s.year, name: h.name, bats: h.bats, throws: h.throws };
+    const pick: CPlayer = { id: h.id, year: s.year, name: h.name, bats: h.bats, throws: h.throws, bio: h.bio ?? '' };
     const prev = this.slots()[slot];
     let choices: CPlayer[];
     if (rank === 0) {
@@ -247,7 +277,7 @@ export class ChallengeFlow {
   protected backFromPicking() {
     if (this.mode() === 'accept') this.step.set('intro');
     else if (this.mode() === 'rematch') this.step.set('final');
-    else this.step.set('home');   // create and cpu both start from the games screen
+    else this.leave();   // plan 27: create and cpu go back to Home
   }
 
   protected chooseName(n: string) { this.nickname.set(n); }
@@ -298,8 +328,8 @@ export class ChallengeFlow {
   }
 
   /** Plan 25: the server picks the computer's team and plays the game at once; then the same tap-per-at-bat screens. */
-  private async playComputer(body: ReturnType<typeof toBody>) {
-    const r = await capi.computer(body);
+  private async playComputer(body: ReturnType<typeof toBody>, level = savedLevel()) {
+    const r = await capi.computer({ ...body, level });
     saveKey(r.code, r.key);
     this.current.set(r.code);
     this.view.set(r.view);
@@ -314,15 +344,20 @@ export class ChallengeFlow {
     api.event('cpu_game', session);
   }
 
-  /** Same team against a new computer team. */
-  protected async sameTeamAgain() {
+  /** Same team against a new computer team at a level (default: this game's level). Next and easier also save the new level. */
+  protected async sameTeamAgain(level = this.gameLevel()) {
     const picks = this.view()?.yourPicks;
     if (!picks) return;
+    level = Math.min(4, Math.max(1, level));
+    if (level !== this.gameLevel()) saveLevel(level);
     this.busy.set(true); this.error.set(null);
-    try { await this.playComputer(toBody(picks, this.nickname() ?? undefined)); }
+    try { await this.playComputer(toBody(picks, this.nickname() ?? undefined), level); }
     catch (e) { this.error.set((e as Error).message); }
     finally { this.busy.set(false); }
   }
+
+  /** New team at this game's level. */
+  protected newTeamSameLevel() { saveLevel(this.gameLevel()); this.startPicking('cpu'); }
 
   // ---- Sharing ----
   protected async shareChallenge() {
@@ -414,10 +449,7 @@ export class ChallengeFlow {
 
   protected roundLabel(ab: CAtBat) { return ab.round > 0 ? `Extra round ${ab.round}` : `At-bat ${ab.index + 1}`; }
 
-  protected newChallenge() {
-    try { history.pushState({ pr: 'challenge' }, '', '/c/new'); } catch { /* fine */ }
-    this.home();
-  }
+  protected newChallenge() { this.startFresh('friend'); }
 
   protected openMine(code: string) {
     try { history.pushState({ pr: 'challenge' }, '', `/c/${code}`); } catch { /* fine */ }
