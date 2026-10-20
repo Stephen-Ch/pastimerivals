@@ -290,6 +290,21 @@ public class ChallengeApiTests
     }
 
     [Theory]
+    [InlineData(null, 1)] [InlineData(1, 1)] [InlineData(2, 2)] [InlineData(0, 1)] [InlineData(42, 1)]
+    public async Task Decoration_version_is_stored_with_every_kind_of_game(int? deco, int expected)
+    {
+        var f = Factory(NewStore());
+        var c = await Browser(f);
+        object[] pk = ((dynamic)Picks("pit01", "bat01", "bat02", "bat03")).picks;
+        var cpu = await (await c.PostAsJsonAsync("/api/challenges/computer", new { picks = pk, deco })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(expected, cpu.GetProperty("view").GetProperty("deco").GetInt32());
+        var r = await c.PostAsJsonAsync("/api/challenges", new { picks = pk, deco });
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var code = (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString();
+        Assert.Equal(expected, (await c.GetFromJsonAsync<JsonElement>($"/api/challenges/{code}")).GetProperty("deco").GetInt32());
+    }
+
+    [Theory]
     [InlineData(null, 1)] [InlineData(0, 1)] [InlineData(3, 3)] [InlineData(9, 4)]
     public async Task Computer_level_is_clamped_and_stored_with_the_game(int? level, int expected)
     {

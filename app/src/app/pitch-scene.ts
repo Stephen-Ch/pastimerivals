@@ -1,14 +1,14 @@
 import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { Era, figure, PairArt } from './art';
-import { Call, countFor, OutcomeKey, PITCH_CAPTION, PitchKind, Trajectory } from './logic';
+import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, Trajectory } from './logic';
 
 export type Motion = 'hit' | 'miss' | 'take' | 'hbp' | 'out' | 'look' | 'foul';
 
 /** Which animation plays for the final pitch (plan 10 table; plan 11 adds called strike three). */
-export function motionFor(o: OutcomeKey, finalKind: 'called' | 'swinging' | null = null): Motion {
+export function motionFor(o: OutcomeKey, finalKind: FinalKind | null = null): Motion {
   switch (o) {
-    case 'k': return finalKind === 'called' ? 'look' : 'miss';
+    case 'k': return finalKind === 'called' ? 'look' : 'miss';   // plan 32A: a foul tip draws as a swing and miss here
     case 'bb': return 'take';
     case 'hbp': return 'hbp';
     case 'oip': return 'out';
@@ -111,7 +111,9 @@ function flight(tr: Trajectory, side: number, from: { x: number; y: number }, di
     case 'line': return to(50 + side * 75, 42, 13);
     case 'bloop': return to(50 + side * 40, 8, 7);
     case 'pop': return to(from.x, -10, 4.5);
-    case 'foul': return to(batterX - 10 * dir, -8, 2.5, 1 - u);   // back over his shoulder, away from the camera
+    case 'foul': return side
+      ? to(50 + side * 60, -12, 5)                               // plan 32A: foul out to 3B/LF or 1B/RF, up and toward that side
+      : to(batterX - 10 * dir, -8, 2.5, 1 - u);   // back over his shoulder, away from the camera (catcher, lead-up fouls)
     default: return to(50 + side * 45, -20, 11);                   // fly
   }
 }
@@ -254,6 +256,8 @@ export class PitchScene {
   readonly bats = input<string>('R');
   readonly outcome = input.required<OutcomeKey>();
   readonly seed = input<string>('');
+  /** Plan 32A: decoration version (count and captions). */
+  readonly deco = input<Deco>('1');
   /** Plan 18: comic art for both players, already preloaded; null keeps the drawn figures. */
   readonly art = input<PairArt | null>(null);
   /** Plan 21: the announcer call for the final pitch (trajectory and direction of a batted ball). */
@@ -261,7 +265,7 @@ export class PitchScene {
   readonly done = output<void>();
   private readonly sanitizer = inject(DomSanitizer);
 
-  protected readonly count = computed(() => countFor(this.outcome(), this.seed()));
+  protected readonly count = computed(() => countFor(this.outcome(), this.seed(), this.deco()));
   /** Index into the lead-up pitches; equal to their length means the final pitch. */
   protected readonly step = signal(0);
   protected readonly board = signal<{ balls: number; strikes: number; caption: string }>({ balls: 0, strikes: 0, caption: '' });
@@ -313,6 +317,7 @@ export class PitchScene {
     // Plan 27: the last call clears when this pitch is released; this pitch's call and count show when its ball arrives.
     const lead = final ? null : this.count().leadUp[this.step()];
     let cleared = false, called = false;
+    const fin = final ? finalCaption(this.outcome(), this.count().finalKind, this.deco()) : '';
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: FrameRequestCallback) => setTimeout(() => fn(performance.now()), 16) as unknown as number;
     const tick = () => {
       const t = Math.min(SPLIT_END_S, t0 + ((performance.now() - start) / 1000) * rate);
@@ -322,6 +327,7 @@ export class PitchScene {
       this.dim.set(t >= HANDOFF_S);
       if (!cleared && t >= RELEASE_S) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); }
       if (lead && !called && t >= ARRIVE_S) { called = true; this.board.set({ balls: lead.balls, strikes: lead.strikes, caption: PITCH_CAPTION[lead.kind] }); }
+      if (fin && !called && t >= ARRIVE_S) { called = true; this.board.update(b => ({ ...b, caption: fin })); }
       if (!this.finished && t < SPLIT_END_S) this.raf = raf(tick);
     };
     tick();

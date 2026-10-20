@@ -8,7 +8,7 @@ public sealed record PickChoiceIn(string Id, int Year);
 public sealed record SlotIn(int Slot, List<PickChoiceIn> Choices);
 public sealed record FeedbackIn(string? Vote, string? Where, int? Level, string? Result);
 public sealed record FeedbackReasonsIn(string[]? Reasons);
-public sealed record PicksIn(List<SlotIn> Picks, string? Nickname, string? Turnstile, int? Level = null);
+public sealed record PicksIn(List<SlotIn> Picks, string? Nickname, string? Turnstile, int? Level = null, int? Deco = null);
 public sealed record NicknameIn(string Nickname);
 
 public sealed record PlayerOut(string Id, int Year, string Name, string Bats = "R", string Throws = "R", string Bio = "");
@@ -16,7 +16,7 @@ public sealed record SlotOut(int Slot, IReadOnlyList<PlayerOut> Choices);
 public sealed record AtBatOut(int Index, int Round, int BattingSide, PlayerOut Pitcher, PlayerOut Batter, string Seed, string Outcome, int Points);
 public sealed record GameOut(IReadOnlyList<IReadOnlyList<PlayerOut>> Lineups, IReadOnlyList<AtBatOut> AtBats, int[] Totals, int Winner, IReadOnlyList<string> Notes);
 public sealed record ChallengeView(string Code, string Status, string You, string CreatorName, string? OpponentName, DateTime ExpiresUtc,
-    bool CanClaim, string? RematchOf, IReadOnlyList<SlotOut>? YourPicks, GameOut? Game, bool VsCpu = false, int CpuLevel = 1);
+    bool CanClaim, string? RematchOf, IReadOnlyList<SlotOut>? YourPicks, GameOut? Game, bool VsCpu = false, int CpuLevel = 1, int Deco = 1);
 public sealed record CreatedOut(string Code, string Key);
 
 public static class ChallengeEndpoints
@@ -269,7 +269,7 @@ public static class ChallengeEndpoints
             var code = Identity.NewCode();
             var key = Identity.NewToken();
             // Reserved for the computer, so nobody else can ever claim it.
-            var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, ComputerId, null, null, null, VsCpu: true, CpuLevel: level);
+            var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, ComputerId, null, null, null, VsCpu: true, CpuLevel: level, Deco: DecoOf(body));
             await store.CreateChallengeAsync(ch, ToStored(body.Picks, side: 0), Identity.Hash(key), ipHash);
             var outcome = await store.LockAndResolveAsync(code, ComputerId, ComputerName, cpu, Identity.Hash(Identity.NewToken()), now,
                 all => Rules.Play(new[] { ToSlots(all, 0), ToSlots(all, 1) }, PlayService.NewSeed(), oracle));
@@ -295,6 +295,9 @@ public static class ChallengeEndpoints
             return await Create(body, ctx, store, play, ts, cfg, rematchOf: (code, other));
         });
     }
+
+    /// <summary>Plan 32A: decoration version the creating app used (count and call text). Old apps send none = 1.</summary>
+    internal static int DecoOf(PicksIn body) => body.Deco is { } d && d >= 1 && d <= 9 ? d : 1;
 
     /// <summary>Plan 29: funnel counts never break the request they ride on.</summary>
     private static async Task Funnel(IChallengeStore store, string code, string step, string? notFromIp = null)
@@ -379,7 +382,7 @@ public static class ChallengeEndpoints
         if (body.Nickname is not null && body.Nickname != g.Nickname) { await store.SetNicknameAsync(g.Id, body.Nickname); g = g with { Nickname = body.Nickname }; }
         var code = Identity.NewCode();
         var key = Identity.NewToken();
-        var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, rematchOf?.Other, rematchOf?.Code, null, null);
+        var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, rematchOf?.Other, rematchOf?.Code, null, null, Deco: DecoOf(body));
         await store.CreateChallengeAsync(ch, ToStored(body.Picks, side: 0), Identity.Hash(key), ipHash);
         return Results.Ok(new CreatedOut(code, key));
     }
@@ -475,6 +478,6 @@ public static class ChallengeEndpoints
             game = new GameOut(lineups, outs, ch.Totals!, ch.Winner ?? -1, ch.Notes ?? new List<string>());
         }
         return new ChallengeView(ch.Code, ch.Status.ToString().ToLowerInvariant(), you, ch.CreatorName, ch.OpponentName, ch.ExpiresUtc,
-            canClaim, ch.RematchOf, yourPicks, game, ch.VsCpu, ch.CpuLevel ?? 1);
+            canClaim, ch.RematchOf, yourPicks, game, ch.VsCpu, ch.CpuLevel ?? 1, ch.Deco ?? 1);
     }
 }

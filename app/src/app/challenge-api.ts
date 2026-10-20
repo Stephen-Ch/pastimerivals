@@ -1,3 +1,4 @@
+import { DECORATION_VERSION } from './logic';
 import { OutcomeKey } from './logic';
 
 /** Plan 24: challenge API client. Writes carry the anti-forgery header; private links carry X-Side-Key. */
@@ -12,6 +13,8 @@ export interface CView {
   yourPicks: CSlot[] | null; game: CGame | null; vsCpu: boolean;
   /** Plan 26: computer level 1-4 (1 for old games). */
   cpuLevel?: number;
+  /** Plan 32A: decoration version the game was made with (1 for old games). */
+  deco?: number;
 }
 export interface CMine { code: string; you: 'creator' | 'opponent'; creatorName: string; opponentName: string | null; createdUtc: string; status: string; vsCpu: boolean; }
 export interface CClash { creatorName: string; clashes: { slot: number; id: string; name: string }[]; }
@@ -77,10 +80,10 @@ async function ping(code: string, step: 'sent' | 'picking'): Promise<void> {
   } catch { /* counting is best effort */ }
 }
 
-export interface PickBody { picks: { slot: number; choices: { id: string; year: number }[] }[]; nickname?: string; turnstile?: string; level?: number; }
+export interface PickBody { picks: { slot: number; choices: { id: string; year: number }[] }[]; nickname?: string; turnstile?: string; level?: number; deco?: number; }
 
 export function toBody(slots: CSlot[], nickname?: string): PickBody {
-  return { picks: slots.map(s => ({ slot: s.slot, choices: s.choices.map(c => ({ id: c.id, year: c.year })) })), nickname };
+  return { picks: slots.map(s => ({ slot: s.slot, choices: s.choices.map(c => ({ id: c.id, year: c.year })) })), nickname, deco: Number(DECORATION_VERSION) };
 }
 
 /** Plan 30: feedback vote (returns the row id, or null) and its one-tap reasons. Never throw. */

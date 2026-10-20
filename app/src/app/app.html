@@ -83,7 +83,7 @@
       <main class="flex scene-wrap">
         <h1 #screenTitle tabindex="-1" class="sr-only">At bat</h1>
         @if (pending(); as pr) {
-          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="batterReport()?.bats ?? 'R'" [outcome]="pr.outcome" [seed]="pr.seed" [art]="sceneArt()" [call]="sceneCall()" (done)="sceneDone()" />
+          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [art]="sceneArt()" [call]="sceneCall()" (done)="sceneDone()" />
         }
       </main>
     }
@@ -104,6 +104,7 @@
             <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ countText() }} count</p>
             <button type="button" class="link" (click)="openOverlay('why')">Why this result</button>
             @if (shareNote()) { <p class="note">{{ shareNote() }}</p> }
+            @if (staleApp()) { <button type="button" class="link small" (click)="reload()">Refresh for the latest version</button> }
           </section>
         }
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }

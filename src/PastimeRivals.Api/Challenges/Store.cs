@@ -7,7 +7,7 @@ public enum ChallengeStatus { Open, Resolved, Expired }
 public sealed record Challenge(
     string Code, Guid CreatorId, string CreatorName, Guid? OpponentId, string? OpponentName,
     ChallengeStatus Status, DateTime CreatedUtc, DateTime ExpiresUtc, Guid? RematchFor, string? RematchOf,
-    int[]? Totals, int? Winner, IReadOnlyList<string>? Notes = null, bool VsCpu = false, int? CpuLevel = null);
+    int[]? Totals, int? Winner, IReadOnlyList<string>? Notes = null, bool VsCpu = false, int? CpuLevel = null, int? Deco = null);
 
 public sealed record StoredPick(int Side, int Slot, int Rank, string PlayerId, int Year);
 

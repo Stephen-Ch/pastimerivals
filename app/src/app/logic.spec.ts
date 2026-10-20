@@ -14,8 +14,9 @@ describe('logic', () => {
 
   it('round-trips a share link', () => {
     const url = shareUrl('https://pastimerivals.com', { b: 'ruthb101', by: 1927, p: 'martp001', py: 1999 }, '123', '0.1.0');
-    expect(url).toBe('https://pastimerivals.com/?b=ruthb101&by=1927&p=martp001&py=1999&s=123&v=0.1.0&d=1');
-    expect(parseShare(new URL(url).search)).toEqual({ pick: { b: 'ruthb101', by: 1927, p: 'martp001', py: 1999 }, seed: '123', version: '0.1.0', deco: '1' });
+    expect(url).toBe('https://pastimerivals.com/?b=ruthb101&by=1927&p=martp001&py=1999&s=123&v=0.1.0&d=2');
+    expect(parseShare(new URL(url).search)).toEqual({ pick: { b: 'ruthb101', by: 1927, p: 'martp001', py: 1999 }, seed: '123', version: '0.1.0', deco: '2' });
+    expect(parseShare('?b=x&by=1927&p=y&py=1999&s=1')!.deco).toBe('1');   // old links without d
   });
 
   it('ignores incomplete share links', () => {

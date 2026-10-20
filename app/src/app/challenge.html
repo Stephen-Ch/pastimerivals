@@ -178,8 +178,8 @@
         <h1 #stepTitle tabindex="-1" class="sr-only">Play the game</h1>
         @if (scene(); as s) {
           @for (k of [s.ab.index]; track k) {
-            <pr-pitch-scene [era]="eraOf(s.ab.pitcher.year)" [throws]="s.ab.pitcher.throws" [bats]="s.ab.batter.bats" [outcome]="s.ab.outcome"
-                            [seed]="s.ab.seed" [art]="artFor(s)" [call]="callOf(s.ab)" (done)="sceneDone()" />
+            <pr-pitch-scene [era]="eraOf(s.ab.pitcher.year)" [throws]="s.ab.pitcher.throws" [bats]="hitsFrom(s.ab.batter.bats, s.ab.pitcher.throws)" [outcome]="s.ab.outcome"
+                            [seed]="s.ab.seed" [deco]="deco().deco" [art]="artFor(s)" [call]="callOf(s.ab)" (done)="sceneDone()" />
           }
         } @else {
           <section class="result">
@@ -226,6 +226,7 @@
             <button type="button" class="link small" (click)="copy(privateLink())">Copy my private link</button>
           </div>
         }
+        @if (deco().unknown) { <button type="button" class="link small" (click)="reload()">Refresh for the latest version</button> }
         @if (note()) { <p class="note" role="status">{{ note() }}</p> }
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>

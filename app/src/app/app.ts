@@ -7,7 +7,7 @@ import { Feedback, feedbackDue } from './feedback';
 import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
 import { ArtManifest, Era, eraOf, figure, PairArt, pairArt, PlayerArt, preloadImages } from './art';
-import { battingLine, callFor, countFor, explain, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, shareUrl, timesLeague } from './logic';
+import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
 interface Chosen { id: string; name: string; year: number; line: string; }
@@ -77,7 +77,12 @@ export class App {
   protected readonly pitcherReport = signal<Report | null>(null);
   protected readonly popup = signal<Report | null>(null);
   protected readonly pending = signal<PitchResult | null>(null);
-  protected readonly askFeedback = signal(false);  // result known, animation playing
+  protected readonly askFeedback = signal(false);
+  /** Plan 32A: decoration version of the pitch on screen (a shared link keeps its own; new pitches use the newest). */
+  protected readonly deco = signal<Deco>(DECORATION_VERSION);
+  protected readonly staleApp = signal(false);
+  protected readonly hitsFrom = hitsFrom;
+  protected reload() { location.reload(); }  // result known, animation playing
   private readonly dialog = viewChild<ElementRef<HTMLDialogElement>>('reportDialog');
   private returnFocus: HTMLElement | null = null;
 
@@ -93,7 +98,7 @@ export class App {
   protected readonly countText = computed(() => {
     const r = this.result();
     if (!r) return '';
-    const c = countFor(r.outcome, r.seed);
+    const c = countFor(r.outcome, r.seed, this.deco());
     return `${c.balls}-${c.strikes}`;
   });
 
@@ -101,16 +106,16 @@ export class App {
   protected readonly sceneCall = computed(() => {
     const r = this.pending(), m = this.matchup();
     if (!r || !m) return null;
-    return callFor(r.outcome, r.seed, countFor(r.outcome, r.seed), m.batter.name,
-      this.batterReport()?.bats ?? m.batter.hand, this.pitcherReport()?.throws ?? m.pitcher.hand);
+    return callFor(r.outcome, r.seed, countFor(r.outcome, r.seed, this.deco()), m.batter.name,
+      this.batterReport()?.bats ?? m.batter.hand, this.pitcherReport()?.throws ?? m.pitcher.hand, this.deco(), this.batter()?.year);
   });
 
   /** Announcer line, e.g. "Babe Ruth grounded out to second." For show only (plan 12). */
   protected readonly callText = computed(() => {
     const r = this.result(), m = this.matchup();
     if (!r || !m) return '';
-    return callFor(r.outcome, r.seed, countFor(r.outcome, r.seed), m.batter.name,
-      this.batterReport()?.bats ?? m.batter.hand, this.pitcherReport()?.throws ?? m.pitcher.hand).text;
+    return callFor(r.outcome, r.seed, countFor(r.outcome, r.seed, this.deco()), m.batter.name,
+      this.batterReport()?.bats ?? m.batter.hand, this.pitcherReport()?.throws ?? m.pitcher.hand, this.deco(), this.batter()?.year).text;
   });
 
   protected readonly resultText = computed(() => {
@@ -275,6 +280,8 @@ export class App {
     api.event('open', this.session, sourceFromSearch());
     const shared = typeof location !== 'undefined' ? parseShare(location.search) : null;
     if (shared) {
+      const rd = resolveDeco(shared.deco);
+      this.deco.set(rd.deco); this.staleApp.set(rd.unknown);
       this.screen.set('matchup');   // plan 27: share links skip Home
       this.batter.set({ id: shared.pick.b, name: shared.pick.b, year: shared.pick.by, line: '' });
       this.pitcher.set({ id: shared.pick.p, name: shared.pick.p, year: shared.pick.py, line: '' });
@@ -369,6 +376,7 @@ export class App {
     if (!p) return;
     try {
       this.busy.set(true); this.result.set(null); this.shareNote.set(null);
+      if (!seed) this.deco.set(DECORATION_VERSION);
       const r = await api.pitch(p, seed);
       if (!seed) api.event('pitch', this.session);
       if (this.pair() && !this.artOk()) {
@@ -410,7 +418,7 @@ export class App {
   protected async share() {
     const p = this.pick(), r = this.result(), m = this.matchup();
     if (!p || !r || !m) return;
-    const url = shareUrl(location.origin, p, r.seed, r.engineVersion);
+    const url = shareUrl(location.origin, p, r.seed, r.engineVersion, this.deco());
     const text = `${this.callText()} (${m.batter.name} ${m.batter.year} vs ${m.pitcher.name} ${m.pitcher.year}) Can you beat it?`;
     api.event('share', this.session);
     try {

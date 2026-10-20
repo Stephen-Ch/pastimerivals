@@ -2,7 +2,7 @@ import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, effect, ElementRef, input, output, signal, viewChild } from '@angular/core';
 import { api, PlayerHit, SeasonItem } from './api';
 import { ArtManifest, eraOf, PairArt, pairArt, preloadImages } from './art';
-import { callFor, countFor, label } from './logic';
+import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { PitchScene } from './pitch-scene';
 import {
   CAtBat, capi, ChallengeError, CClash, CMine, CPlayer, CSlot, CView, keyFor, links, saveKey, setWatched, takeKeyFromHash, toBody, watched,
@@ -42,6 +42,10 @@ export class ChallengeFlow {
   protected readonly mode = signal<Mode>('create');
   protected readonly current = signal<string | null>(null);
   protected readonly view = signal<CView | null>(null);
+  /** Plan 32A: the version this game was made with; unknown (newer app made it) = newest known plus a refresh link. */
+  protected readonly deco = computed(() => resolveDeco(this.view()?.deco ?? 1));
+  protected readonly hitsFrom = hitsFrom;
+  protected reload() { location.reload(); }
   protected readonly error = signal<string | null>(null);
   protected readonly busy = signal(false);
   protected readonly note = signal<string | null>(null);
@@ -444,7 +448,8 @@ export class ChallengeFlow {
   }
 
   protected callOf(ab: CAtBat) {
-    return callFor(ab.outcome, ab.seed, countFor(ab.outcome, ab.seed), ab.batter.name, ab.batter.bats, ab.pitcher.throws);
+    const d = this.deco().deco;
+    return callFor(ab.outcome, ab.seed, countFor(ab.outcome, ab.seed, d), ab.batter.name, ab.batter.bats, ab.pitcher.throws, d, ab.batter.year);
   }
 
   protected sceneDone() {

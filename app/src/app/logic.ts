@@ -23,8 +23,8 @@ export function percent(p: number): string {
 
 export interface Pick { b: string; by: number; p: string; py: number; }
 
-export function shareUrl(origin: string, pick: Pick, seed: string, version: string): string {
-  const q = new URLSearchParams({ b: pick.b, by: String(pick.by), p: pick.p, py: String(pick.py), s: seed, v: version, d: DECORATION_VERSION });
+export function shareUrl(origin: string, pick: Pick, seed: string, version: string, deco: Deco = DECORATION_VERSION): string {
+  const q = new URLSearchParams({ b: pick.b, by: String(pick.by), p: pick.p, py: String(pick.py), s: seed, v: version, d: deco });
   return `${origin}/?${q.toString()}`;
 }
 
@@ -57,15 +57,29 @@ export function explain(o: OutcomeKey, step: StepLike, batter: string, pitcher: 
 // Version c1 is frozen. A change adds a new version so old shared links replay the same count.
 export type PitchKind = 'ball' | 'called' | 'swinging' | 'foul';
 export interface CountPitch { kind: PitchKind; balls: number; strikes: number; }
-export interface AtBatCount { leadUp: CountPitch[]; finalKind: 'called' | 'swinging' | null; balls: number; strikes: number; }
+/** Plan 32A: 'tip' = struck out on a foul tip (c2 only). */
+export type FinalKind = 'called' | 'swinging' | 'tip';
+export interface AtBatCount { leadUp: CountPitch[]; finalKind: FinalKind | null; balls: number; strikes: number; }
 
-export const COUNT_VERSION = 'c1';
+/** Plan 32A: decoration versions. 1 = count c1 + call a1 (frozen); 2 = c2 + a2. Travels in share links as d. */
+export type Deco = '1' | '2';
+export const DECORATION_VERSION: Deco = '2';
+const KNOWN_DECO: Deco[] = ['1', '2'];
+/** Missing = 1. Unknown (newer than this app) = replay with the newest known, and say a refresh would help. */
+export function resolveDeco(d: string | number | null | undefined): { deco: Deco; unknown: boolean } {
+  if (d === null || d === undefined || d === '') return { deco: '1', unknown: false };
+  const k = String(d) as Deco;
+  return KNOWN_DECO.includes(k) ? { deco: k, unknown: false } : { deco: DECORATION_VERSION, unknown: true };
+}
+
+export const COUNT_VERSION = 'c1';   // kept for reference: the c1 stream name, frozen
 export const MAX_LEAD_UP = 6;
-export const MAX_FOULS = 2;
+export const MAX_FOULS = 2;          // c1
+export const MAX_FOULS_C2 = 3;       // c2: whole lead-up, any count
 
-function rng(seed: string): () => number {
+function rng(version: string, seed: string): () => number {
   let h = 2166136261;
-  for (const ch of `${COUNT_VERSION}:${seed}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  for (const ch of `${version}:${seed}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
   let a = h >>> 0;
   return () => {   // mulberry32
     a = (a + 0x6d2b79f5) >>> 0;
@@ -76,9 +90,14 @@ function rng(seed: string): () => number {
   };
 }
 
-/** A legal lead-up count that ends in the given result. Same seed, same count. */
-export function countFor(o: OutcomeKey, seed: string): AtBatCount {
-  const r = rng(seed);
+/** A legal lead-up count that ends in the given result. Same seed and version, same count. */
+export function countFor(o: OutcomeKey, seed: string, deco: Deco = '1'): AtBatCount {
+  return deco === '2' ? countC2(o, seed) : countC1(o, seed);
+}
+
+/** Version c1, frozen (plan 11). Do not change: old links and games replay it. */
+function countC1(o: OutcomeKey, seed: string): AtBatCount {
+  const r = rng('c1', seed);
   const int = (n: number) => Math.floor(r() * n);   // 0..n-1
   const balls = o === 'bb' ? 3 : int(4);
   const strikes = o === 'k' ? 2 : int(3);
@@ -112,10 +131,59 @@ export function countFor(o: OutcomeKey, seed: string): AtBatCount {
   };
 }
 
+/** Plan 32A: counts a ball in play comes on. Weights per [balls][strikes]; 3-0 is rare (hitters take 3-0). Estimates. */
+const IN_PLAY_COUNT_WEIGHTS: number[][] = [[12, 9, 6], [9, 9, 8], [5, 7, 9], [0.7, 4, 7]];
+
+/** Version c2 (plan 32A, expert review 33): more fouls, fewer called third strikes, foul-tip strikeouts, rare 3-0 in play. */
+function countC2(o: OutcomeKey, seed: string): AtBatCount {
+  const r = rng('c2', seed);
+  const int = (n: number) => Math.floor(r() * n);
+  let balls: number, strikes: number;
+  if (o === 'bb') { balls = 3; strikes = int(3); }
+  else if (o === 'k') { balls = int(4); strikes = 2; }
+  else if (o === 'hbp') { balls = int(4); strikes = int(3); }   // not the batter's choice, so not weighted
+  else {
+    const total = IN_PLAY_COUNT_WEIGHTS.flat().reduce((x, y) => x + y, 0);
+    let x = r() * total; balls = 0; strikes = 0;
+    outer: for (let bb = 0; bb < 4; bb++) for (let ss = 0; ss < 3; ss++) { x -= IN_PLAY_COUNT_WEIGHTS[bb][ss]; if (x < 0) { balls = bb; strikes = ss; break outer; } }
+  }
+  const kinds: ('b' | 's')[] = [...Array(balls).fill('b'), ...Array(strikes).fill('s')];
+  for (let i = kinds.length - 1; i > 0; i--) { const j = int(i + 1); [kinds[i], kinds[j]] = [kinds[j], kinds[i]]; }
+  let fouls = 0, b = 0, s = 0, extra = 0;
+  const leadUp: CountPitch[] = [];
+  const strikeKind = (): PitchKind => {
+    const x = r();
+    if (x < 0.40 && fouls < MAX_FOULS_C2) { fouls++; return 'foul'; }
+    return x < 0.75 ? 'called' : 'swinging';
+  };
+  for (const k of kinds) {
+    if (k === 'b') b++; else s++;
+    leadUp.push({ kind: k === 'b' ? 'ball' : strikeKind(), balls: b, strikes: s });
+    while (s === 2 && fouls < MAX_FOULS_C2 && kinds.length + extra < MAX_LEAD_UP && r() < 0.35) {
+      extra++; fouls++;
+      leadUp.push({ kind: 'foul', balls: b, strikes: s });
+    }
+  }
+  const last = leadUp.at(-1);
+  let finalKind: FinalKind | null = null;
+  if (o === 'k') { const y = r(); finalKind = y < 0.70 ? 'swinging' : y < 0.93 ? 'called' : 'tip'; }
+  return { leadUp, finalKind, balls: last?.balls ?? 0, strikes: last?.strikes ?? 0 };
+}
+
 export const PITCH_CAPTION: Record<PitchKind, string> = { ball: 'Ball', called: 'Strike', swinging: 'Swing and miss', foul: 'Foul' };
 
+/** Plan 32A: caption for the final pitch, shown when the ball arrives. Version 1 replays keep none (old text stays the same). */
+export function finalCaption(o: OutcomeKey, finalKind: FinalKind | null, deco: Deco): string {
+  if (deco === '1') return '';
+  switch (o) {
+    case 'k': return finalKind === 'called' ? 'Strike three' : finalKind === 'tip' ? 'Struck out on a foul tip' : 'Strike three, swinging';
+    case 'bb': return 'Ball four';
+    case 'hbp': return 'Hit by pitch';
+    default: return '';
+  }
+}
+
 // ---- Plan 12: announcer calls. Decoration only, like the count. Version a1 is frozen. ----
-export const DECORATION_VERSION = '1';   // 1 = count c1 + call a1; travels in share links as d=1
 type Dir = 'pull' | 'center' | 'opp';
 export type Spot = 'left' | 'left-center' | 'center' | 'right-center' | 'right';
 /** Plan 21: how the batted ball travels; the animation reads only this field. */
@@ -146,10 +214,16 @@ export function hitsFrom(bats: string | null | undefined, pitcherThrows: string 
   return 'R';
 }
 
-export interface Call { text: string; type: string; fielder?: string; spot?: Spot; dir?: Dir; trajectory?: Trajectory; }
+export interface Call { text: string; type: string; fielder?: string; spot?: Spot; dir?: Dir; trajectory?: Trajectory; insideTheParkHr?: boolean; }
 
 /** One announcer-style line for the result. The engine only decided the outcome; the rest is for show. */
-export function callFor(o: OutcomeKey, seed: string, count: AtBatCount, batter: string, bats?: string | null, pitcherThrows?: string | null): Call {
+export function callFor(o: OutcomeKey, seed: string, count: AtBatCount, batter: string, bats?: string | null, pitcherThrows?: string | null,
+  deco: Deco = '1', year?: number | null): Call {
+  return deco === '2' ? callA2(o, seed, count, batter, bats, pitcherThrows, year ?? null) : callA1(o, seed, count, batter, bats, pitcherThrows);
+}
+
+/** Version a1, frozen (plan 12/21). Do not change: old links and games replay it. */
+function callA1(o: OutcomeKey, seed: string, count: AtBatCount, batter: string, bats?: string | null, pitcherThrows?: string | null): Call {
   const r = stream('a1', seed);
   const one = <T,>(xs: T[]): T => xs[Math.floor(r() * xs.length)];
   const side = hitsFrom(bats, pitcherThrows);
@@ -205,6 +279,84 @@ export function callFor(o: OutcomeKey, seed: string, count: AtBatCount, batter: 
       }
       if (y < 0.92) {
         const f = one(['1B', '2B', 'SS', '3B']);
+        return { type: 'pop', fielder: f, trajectory: 'pop', text: `${n} popped out to ${FIELD[f]}.` };
+      }
+      const f = pos({ pull: ['3B', 'LF'], center: ['C'], opp: ['1B', 'RF'] });
+      return { type: 'foul', fielder: f, dir, trajectory: 'foul', text: `${n} fouled out to ${FIELD[f]}.` };
+    }
+  }
+}
+
+/** Version a2 (plan 32A, expert review 33). Field names are real fields; fielders match the ball's flight. */
+function callA2(o: OutcomeKey, seed: string, count: AtBatCount, batter: string, bats: string | null | undefined, pitcherThrows: string | null | undefined, year: number | null): Call {
+  const r = stream('a2', seed);
+  const one = <T,>(xs: T[]): T => xs[Math.floor(r() * xs.length)];
+  const side = hitsFrom(bats, pitcherThrows);
+  const x = r();
+  const dir: Dir = x < 0.5 ? 'pull' : x < 0.8 ? 'center' : 'opp';
+  const spotR: Spot = dir === 'pull' ? one<Spot>(['left', 'left-center']) : dir === 'center' ? 'center' : one<Spot>(['right-center', 'right']);
+  const mirror: Record<Spot, Spot> = { left: 'right', 'left-center': 'right-center', center: 'center', 'right-center': 'left-center', right: 'left' };
+  const spot = side === 'R' ? spotR : mirror[spotR];
+  const mirrorPos = (p: string) => side === 'R' ? p : ({ '3B': '1B', '1B': '3B', SS: '2B', '2B': 'SS', LF: 'RF', RF: 'LF' } as Record<string, string>)[p] ?? p;
+  const pos = (byDir: Record<Dir, string[]>) => mirrorPos(one(byDir[dir]));
+  const of = (s: Spot) => (s === 'left' || s === 'left-center' ? 'LF' : s === 'center' ? 'CF' : 'RF');
+  /** Pull or opposite for a spot named in real field terms. */
+  const dirOf = (s: Spot): Dir => s === 'center' ? 'center' : ((s === 'left' || s === 'left-center') === (side === 'R') ? 'pull' : 'opp');
+  const lineSpot = spot === 'left' || spot === 'right';
+  const n = batter;
+  const deadBall = year !== null && year < 1920;
+  switch (o) {
+    case 'k': return { type: 'strikeout', text: count.finalKind === 'tip' ? `${n} struck out on a foul tip.` : `${n} struck out ${count.finalKind === 'called' ? 'looking' : 'swinging'}.` };
+    case 'bb': return { type: 'walk', text: count.balls === 3 && count.strikes === 0 && count.leadUp.length === 3 ? `${n} walked on four pitches.` : `${n} drew a walk.` };
+    case 'hbp': return { type: 'hbp', text: `${n} was hit by a pitch.` };
+    case 'hr': {
+      if (deadBall && r() < 0.5) {   // estimate: many dead-ball home runs stayed in the park
+        const gap = one<Spot>(['left-center', 'center', 'right-center']);
+        return { type: 'hr', spot: gap, dir: dirOf(gap), trajectory: 'line', insideTheParkHr: true,
+          text: `${n} hit an inside-the-park home run to ${gap === 'center' ? 'center' : `the ${gap} gap`}.` };
+      }
+      const t = deadBall ? one([`homered over the fence in ${spot}.`, `drove one over the ${spot}-field fence.`])
+        : one([`homered to ${spot}.`, `drove one deep to ${spot} for a home run.`, `hit it over the wall in ${spot}.`]);
+      return { type: 'hr', spot, dir, trajectory: 'fly', text: `${n} ${t}` };
+    }
+    case 'triple': {
+      const z = r();   // estimates: most triples go to right field or the right-center gap
+      const ts: Spot = z < 0.6 ? one<Spot>(['right-center', 'right']) : z < 0.95 ? one<Spot>(['left-center', 'center']) : 'left';
+      const corner = ts === 'left' || ts === 'right';
+      const tr: Trajectory = corner ? 'line' : r() < 0.5 ? 'line' : 'fly';
+      const where = corner ? `into the ${ts}-field corner` : ts === 'center' ? `over the center fielder's head` : `into the ${ts} gap`;
+      return { type: 'triple', spot: ts, dir: dirOf(ts), trajectory: tr, text: `${n} tripled ${where}.` };
+    }
+    case 'double': {
+      if (lineSpot) return { type: 'double', spot, dir, trajectory: 'line', text: `${n} doubled ${one([`down the ${spot}-field line`, `into the ${spot}-field corner`])}.` };
+      const tr: Trajectory = r() < 0.5 ? 'line' : 'fly';
+      const where = spot === 'center' ? `over the center fielder's head` : `into the ${spot} gap`;
+      return { type: 'double', spot, dir, trajectory: spot === 'center' ? 'fly' : tr, text: `${n} doubled ${where}.` };
+    }
+    case 'single': {
+      const field = spot === 'left-center' ? 'left' : spot === 'right-center' ? 'right' : spot;
+      const opts: [string, Trajectory][] = [
+        [field === 'center' ? 'singled up the middle.' : `grounded a single through the ${field === 'left' ? 'left' : 'right'} side.`, 'ground'],
+        [`lined a single to ${field}.`, 'line'], [`blooped a single into ${field}.`, 'bloop']];
+      const [t, trajectory] = one(opts);
+      return { type: 'single', spot, dir, trajectory, text: `${n} ${t}` };
+    }
+    case 'oip': {
+      const y = r();
+      if (y < 0.42) {
+        const f = pos({ pull: ['3B', 'SS'], center: ['SS', '2B', 'P'], opp: ['2B', '1B'] });
+        return { type: 'ground', fielder: f, dir, trajectory: 'ground', text: `${n} grounded out to ${FIELD[f]}.` };
+      }
+      if (y < 0.70) {
+        const f = of(spot);
+        return { type: 'fly', fielder: f, spot, dir, trajectory: 'fly', text: `${n} flied out to ${r() < 0.25 ? 'deep ' : ''}${FIELD[f]}.` };
+      }
+      if (y < 0.82) {
+        const f = pos({ pull: ['3B', 'SS', 'LF'], center: ['P', 'SS', '2B', 'CF'], opp: ['2B', '1B', 'RF'] });
+        return { type: 'line', fielder: f, dir, trajectory: 'line', text: `${n} lined out to ${FIELD[f]}.` };
+      }
+      if (y < 0.92) {
+        const f = one(['1B', '2B', 'SS', '3B', '3B', '1B', 'C']);
         return { type: 'pop', fielder: f, trajectory: 'pop', text: `${n} popped out to ${FIELD[f]}.` };
       }
       const f = pos({ pull: ['3B', 'LF'], center: ['C'], opp: ['1B', 'RF'] });
