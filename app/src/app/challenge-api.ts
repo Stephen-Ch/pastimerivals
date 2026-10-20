@@ -83,8 +83,21 @@ export function toBody(slots: CSlot[], nickname?: string): PickBody {
   return { picks: slots.map(s => ({ slot: s.slot, choices: s.choices.map(c => ({ id: c.id, year: c.year })) })), nickname };
 }
 
+/** Plan 30: feedback vote (returns the row id, or null) and its one-tap reasons. Never throw. */
+async function postJson(url: string, body: unknown): Promise<Response | null> {
+  try {
+    if (!readCookie('XSRF-TOKEN')) { xsrfReady ??= get<CMe>('/api/me'); await xsrfReady; }
+    return await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': readCookie('XSRF-TOKEN') ?? '' }, body: JSON.stringify(body) });
+  } catch { return null; }
+}
+
 export const capi = {
   funnel: ping,
+  feedback: async (b: { vote: 'up' | 'down'; where: string; level?: number; result?: string }): Promise<string | null> => {
+    const r = await postJson('/api/feedback', b);
+    try { return r?.ok ? ((await r.json()) as { id: string }).id : null; } catch { return null; }
+  },
+  feedbackReasons: async (id: string, reasons: string[]) => { await postJson(`/api/feedback/${encodeURIComponent(id)}`, { reasons }); },
   me: () => get<CMe>('/api/me'),
   setName: (nickname: string) => send<{ nickname: string }>('PUT', '/api/me', { nickname }),
   view: (code: string) => get<CView>(`/api/challenges/${encodeURIComponent(code)}`, code),

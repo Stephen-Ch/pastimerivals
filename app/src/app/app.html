@@ -108,6 +108,7 @@
         }
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
+      @if (askFeedback()) { <pr-feedback where="practice" /> }
       <div class="actions three">
         <button class="primary big" type="button" (click)="throwPitch()" [disabled]="busy()">{{ artWaiting() ? 'Loading art' : 'Pitch again' }}</button>
         <button type="button" (click)="share()">Share</button>

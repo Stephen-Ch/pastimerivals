@@ -103,6 +103,25 @@ public sealed class MemoryChallengeStore : IChallengeStore
         lock (_gate) if (_ch.TryGetValue(code, out var v) && !v.C.VsCpu && (notFromIp is null || v.Ip != notFromIp)) _funnel.Add((code, step));
         return Task.CompletedTask;
     }
+    // Plan 30 feedback, same rules as SQL.
+    private readonly List<(Guid Id, DateTime At, FeedbackRow Row, string Ip, string? Reasons)> _feedback = new();
+    public Task<Guid?> AddFeedbackAsync(FeedbackRow row, string ip, DateTime now, int cap)
+    {
+        lock (_gate)
+        {
+            if (_feedback.Count(f => f.Ip == ip && f.At > now.AddDays(-1)) >= cap) return Task.FromResult<Guid?>(null);
+            var id = Guid.NewGuid(); _feedback.Add((id, now, row, ip, null)); return Task.FromResult<Guid?>(id);
+        }
+    }
+    public Task<bool> SetFeedbackReasonsAsync(Guid id, string reasons, string ip, DateTime now)
+    {
+        lock (_gate)
+        {
+            var i = _feedback.FindIndex(f => f.Id == id && f.Reasons is null && f.Ip == ip && f.At > now.AddHours(-1));
+            if (i < 0) return Task.FromResult(false);
+            _feedback[i] = _feedback[i] with { Reasons = reasons }; return Task.FromResult(true);
+        }
+    }
     public Task<FunnelReport> FunnelReportAsync(DateTime since)
     {
         lock (_gate)
@@ -115,7 +134,10 @@ public sealed class MemoryChallengeStore : IChallengeStore
             var friends = _ch.Values.Select(v => v.C).Where(c => !c.VsCpu).ToList();
             var spread = all.Where(a => !a.VsCpu && a.OpponentId is { } o && friends.Any(b => b.CreatorId == o && b.CreatedUtc > a.CreatedUtc)).Select(a => a.OpponentId).Distinct().Count();
             var cpu = all.Where(c => c.VsCpu).GroupBy(c => c.CreatedUtc.Date).Select(g => (g.Key, g.Count())).ToList();
-            return Task.FromResult(new FunnelReport(days, spread, cpu, new List<(string, int)>()));
+            var votes = _feedback.Where(f => f.At >= since).GroupBy(f => (f.Row.Where, f.Row.Vote, f.Row.Result ?? "-")).Select(g => (g.Key.Item1, g.Key.Item2, g.Key.Item3, g.Count())).ToList();
+            var reasons = _feedback.Where(f => f.At >= since && f.Reasons != null).SelectMany(f => f.Reasons!.Split(',').Select(k => (f.Row.Vote, k)))
+                .GroupBy(x => x).Select(g => (g.Key.Vote, g.Key.k, g.Count())).ToList();
+            return Task.FromResult(new FunnelReport(days, spread, cpu, new List<(string, int)>(), new FeedbackSummary(votes, reasons)));
         }
     }
     public Task<(string Code, int Side)?> SideByKeyHashAsync(string h) { lock (_gate) return Task.FromResult<(string, int)?>(_keys.TryGetValue(h, out var v) ? v : null); }
@@ -363,6 +385,37 @@ public class ChallengeApiTests
         Assert.Equal(0, Count("rel=\"canonical\""));
         var home = await f.CreateClient().GetStringAsync("/");
         Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(home, "property=\"og:image\"").Count);
+    }
+
+    [Fact]
+    public async Task Feedback_takes_one_vote_then_reasons_once_with_a_daily_cap()
+    {
+        var f = Factory(NewStore());
+        var c = await Browser(f);
+        c.DefaultRequestHeaders.Add("X-Test-Ip", "10.0.1.1");
+        var r = await c.PostAsJsonAsync("/api/feedback", new { vote = "up", where = "cpu", level = 2, result = "win" });
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var id = (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync($"/api/feedback/{id}", new { reasons = new[] { "oldtime", "hard" } })).StatusCode);   // mixed sets
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync($"/api/feedback/{id}", new { reasons = new[] { "<b>" } })).StatusCode);
+        var other = await Browser(f);
+        other.DefaultRequestHeaders.Add("X-Test-Ip", "10.0.1.2");
+        Assert.Equal(HttpStatusCode.NotFound, (await other.PostAsJsonAsync($"/api/feedback/{id}", new { reasons = new[] { "quick" } })).StatusCode);   // other address
+        Assert.Equal(HttpStatusCode.NoContent, (await c.PostAsJsonAsync($"/api/feedback/{id}", new { reasons = new[] { "oldtime", "quick" } })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await c.PostAsJsonAsync($"/api/feedback/{id}", new { reasons = new[] { "friends" } })).StatusCode);   // only once
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync("/api/feedback", new { vote = "meh", where = "cpu" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync("/api/feedback", new { vote = "up", where = "cpu", level = 9 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await f.CreateClient().PostAsJsonAsync("/api/feedback", new { vote = "up", where = "cpu" })).StatusCode);   // no anti-forgery header
+        for (var i = 1; i < ChallengeEndpoints.FeedbackPerIpPerDay; i++)
+            Assert.Equal(HttpStatusCode.OK, (await c.PostAsJsonAsync("/api/feedback", new { vote = "down", where = "practice" })).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await c.PostAsJsonAsync("/api/feedback", new { vote = "down", where = "practice" })).StatusCode);
+        var req = new HttpRequestMessage(HttpMethod.Get, "/api/admin/funnel?days=7"); req.Headers.Add("X-Funnel-Key", "test-funnel-key");
+        var res = await f.CreateClient().SendAsync(req);
+        Assert.Equal("nosniff", res.Headers.GetValues("X-Content-Type-Options").Single());
+        var text = await res.Content.ReadAsStringAsync();
+        Assert.Contains("Feedback: 1 yes, 9 no", text);
+        Assert.Contains("up:oldtime 1", text);
+        Assert.Contains("cpu up win 1", text);
     }
 
     [Fact]
@@ -645,7 +698,7 @@ public class ChallengeSqlTests : ChallengeApiTests
         // Each test starts clean so the per-address daily limits do not carry over between runs.
         using var c = new Microsoft.Data.SqlClient.SqlConnection(Cs);
         c.Open();
-        using var cmd = new Microsoft.Data.SqlClient.SqlCommand("DELETE dbo.ch_atbats; DELETE dbo.ch_picks; DELETE dbo.ch_keys; DELETE dbo.ch_challenges; DELETE dbo.ch_guests;", c);
+        using var cmd = new Microsoft.Data.SqlClient.SqlCommand("DELETE dbo.ch_atbats; DELETE dbo.ch_picks; DELETE dbo.ch_keys; DELETE dbo.ch_challenges; DELETE dbo.ch_guests; IF OBJECT_ID('dbo.ch_feedback') IS NOT NULL DELETE dbo.ch_feedback;", c);
         cmd.ExecuteNonQuery();
         return store;
     }

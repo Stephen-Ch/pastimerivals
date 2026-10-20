@@ -6,6 +6,8 @@ namespace PastimeRivals.Api.Challenges;
 
 public sealed record PickChoiceIn(string Id, int Year);
 public sealed record SlotIn(int Slot, List<PickChoiceIn> Choices);
+public sealed record FeedbackIn(string? Vote, string? Where, int? Level, string? Result);
+public sealed record FeedbackReasonsIn(string[]? Reasons);
 public sealed record PicksIn(List<SlotIn> Picks, string? Nickname, string? Turnstile, int? Level = null);
 public sealed record NicknameIn(string Nickname);
 
@@ -148,6 +150,24 @@ public static class ChallengeEndpoints
             return Results.NoContent();
         });
 
+        // Plan 30: one-tap feedback. Fixed choices only (no free text until the age screen and privacy policy exist).
+        write.MapPost("/feedback", async (FeedbackIn body, HttpContext ctx, IChallengeStore store, IConfiguration cfg) =>
+        {
+            if (body.Vote is not ("up" or "down") || body.Where is not ("cpu" or "friend" or "practice")) return Results.BadRequest();
+            if (body.Level is { } lv && (lv < Rules.MinLevel || lv > Rules.MaxLevel)) return Results.BadRequest();
+            if (body.Result is not (null or "win" or "loss" or "draw")) return Results.BadRequest();
+            var id = await store.AddFeedbackAsync(new FeedbackRow(body.Vote, body.Where, body.Where == "cpu" ? body.Level : null, body.Result, EngineInfo.Version),
+                Identity.IpHash(ctx, Salt(cfg)), DateTime.UtcNow, FeedbackPerIpPerDay);
+            return id is null ? Results.StatusCode(StatusCodes.Status429TooManyRequests) : Results.Ok(new { id });
+        });
+        write.MapPost("/feedback/{id:guid}", async (Guid id, FeedbackReasonsIn body, HttpContext ctx, IChallengeStore store, IConfiguration cfg) =>
+        {
+            var keys = (body.Reasons ?? Array.Empty<string>()).Distinct().ToList();
+            if (keys.Count == 0 || keys.Count > 4 || (!keys.All(FeedbackUp.Contains) && !keys.All(FeedbackDown.Contains))) return Results.BadRequest();
+            var ok = await store.SetFeedbackReasonsAsync(id, string.Join(",", keys), Identity.IpHash(ctx, Salt(cfg)), DateTime.UtcNow);
+            return ok ? Results.NoContent() : Results.NotFound();
+        });
+
         // Plan 29: funnel readout, plain text. Hidden (404) unless Funnel:Key is set and given.
         api.MapGet("/admin/funnel", async (int? days, HttpRequest req, IChallengeStore store, IConfiguration cfg) =>
         {
@@ -158,6 +178,7 @@ public static class ChallengeEndpoints
                 return Results.NotFound();
             var n = Math.Clamp(days ?? 30, 1, 365);
             var r = await store.FunnelReportAsync(DateTime.UtcNow.Date.AddDays(1 - n));
+            req.HttpContext.Response.Headers["X-Content-Type-Options"] = "nosniff";
             return Results.Text(FunnelText(r, n), "text/plain; charset=utf-8");
         });
 
@@ -304,8 +325,19 @@ public static class ChallengeEndpoints
         sb.AppendLine($"Spread (friends who played and later made their own challenge): {r.Spread}");
         sb.AppendLine($"Computer games (kept 30 days): {r.Computer.Sum(c => c.Games)}" + (r.Computer.Count > 0 ? " | " + string.Join(", ", r.Computer.Select(c => $"{c.Day:MM-dd} {c.Games}")) : ""));
         sb.AppendLine("App opens by source: " + (r.Sources.Count == 0 ? "none yet" : string.Join(", ", r.Sources.Select(s => $"{s.Source} {s.Opens}"))));
+        if (r.Feedback is { } fb)
+        {
+            int V(string v) => fb.Votes.Where(x => x.Vote == v).Sum(x => x.N);
+            sb.AppendLine($"Feedback: {V("up")} yes, {V("down")} no" + (fb.Votes.Count == 0 ? "" : " | " + string.Join(", ", fb.Votes.Select(x => $"{x.Where} {x.Vote} {x.Result} {x.N}"))));
+            if (fb.Reasons.Count > 0) sb.AppendLine("Reasons: " + string.Join(", ", fb.Reasons.Select(x => $"{x.Vote}:{x.Reason} {x.N}")));
+        }
         return sb.ToString();
     }
+
+    public const int FeedbackPerIpPerDay = 10;
+    /// <summary>Plan 30 reason keys: thumbs up "What do you like?", thumbs down "What would make it better?".</summary>
+    public static readonly HashSet<string> FeedbackUp = new() { "oldtime", "friends", "quick", "animation" };
+    public static readonly HashSet<string> FeedbackDown = new() { "hard", "confusing", "slow", "players" };
 
     private static int Rnd(int n) => System.Security.Cryptography.RandomNumberGenerator.GetInt32(n);
 

@@ -1,3 +1,4 @@
+import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, effect, ElementRef, input, output, signal, viewChild } from '@angular/core';
 import { api, PlayerHit, SeasonItem } from './api';
 import { ArtManifest, eraOf, PairArt, pairArt, preloadImages } from './art';
@@ -23,7 +24,7 @@ function saveLevel(n: number) { try { localStorage.setItem(LEVEL_KEY, String(n))
 
 @Component({
   selector: 'pr-challenge',
-  imports: [PitchScene],
+  imports: [PitchScene, Feedback],
   templateUrl: './challenge.html',
   styleUrls: ['./app.css', './challenge.css'],
 })
@@ -107,6 +108,10 @@ export class ChallengeFlow {
     return `Level ${l} of 4: ${name}. ` + (this.youWon() ? 'Next level keeps your team.' : 'Win to face tougher players.');
   });
 
+  /** Plan 30: asked once on entering the final screen of a player's own finished game (2nd game on), never re-evaluated by the template. */
+  protected readonly askFeedback = signal(false);
+  protected readonly fbResult = computed(() => { const g = this.game(); return !g ? null : g.winner === -1 ? 'draw' : this.youWon() ? 'win' : 'loss'; });
+  private fbChecked: string | null = null;
   protected readonly finalText = computed(() => {
     const g = this.game(), you = this.yourSide();
     if (!g) return '';
@@ -116,6 +121,14 @@ export class ChallengeFlow {
   });
 
   constructor() {
+    effect(() => {
+      const code = this.current();
+      if (this.step() !== 'final') { if (this.askFeedback()) this.askFeedback.set(false); return; }   // shown once only
+      if (!code || this.yourSide() === null) return;
+      if (this.fbChecked === code) return;
+      this.fbChecked = code;
+      this.askFeedback.set(feedbackDue(code, 2));
+    });
     effect(() => { this.step(); this.slotIndex(); this.editRank(); setTimeout(() => this.title()?.nativeElement.focus({ preventScroll: true }), 0); });
     queueMicrotask(() => this.start());
   }

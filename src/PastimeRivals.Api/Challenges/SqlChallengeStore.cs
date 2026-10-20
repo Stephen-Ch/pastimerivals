@@ -24,6 +24,10 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         IF COL_LENGTH('dbo.ch_challenges', 'clash_checks') IS NULL ALTER TABLE dbo.ch_challenges ADD clash_checks TINYINT NOT NULL DEFAULT 0;
         IF COL_LENGTH('dbo.ch_challenges', 'vs_cpu') IS NULL ALTER TABLE dbo.ch_challenges ADD vs_cpu BIT NOT NULL DEFAULT 0;
         IF COL_LENGTH('dbo.ch_challenges', 'cpu_level') IS NULL ALTER TABLE dbo.ch_challenges ADD cpu_level TINYINT NULL;
+        IF OBJECT_ID('dbo.ch_feedback') IS NULL CREATE TABLE dbo.ch_feedback (
+          id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY, at DATETIME2 NOT NULL, vote VARCHAR(4) NOT NULL, where_ VARCHAR(8) NOT NULL, level TINYINT NULL,
+          result VARCHAR(4) NULL, reasons VARCHAR(64) NULL, version VARCHAR(16) NOT NULL, ip_hash CHAR(64) COLLATE Latin1_General_BIN2 NOT NULL);
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_fb_ip') CREATE INDEX ix_fb_ip ON dbo.ch_feedback (ip_hash, at);
         IF OBJECT_ID('dbo.ch_funnel') IS NULL CREATE TABLE dbo.ch_funnel (
           code VARCHAR(24) COLLATE Latin1_General_BIN2 NOT NULL, step VARCHAR(16) NOT NULL, at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(), PRIMARY KEY (code, step));
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ch_creator') CREATE INDEX ix_ch_creator ON dbo.ch_challenges (creator_id, created_utc);
@@ -367,6 +371,44 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         await using (var r = await cmd.ExecuteReaderAsync())
             while (await r.ReadAsync()) sources.Add((r.GetString(0), r.GetInt32(1)));
 
-        return new FunnelReport(days, spread, cpu, sources);
+        var votes = new List<(string, string, string, int)>();
+        await using (var cmd = Cmd(c, "SELECT where_, vote, ISNULL(result, '-'), COUNT(*) FROM dbo.ch_feedback WHERE at >= @s GROUP BY where_, vote, ISNULL(result, '-') ORDER BY 1, 2, 3", null, ("@s", sinceUtc)))
+        await using (var r = await cmd.ExecuteReaderAsync())
+            while (await r.ReadAsync()) votes.Add((r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3)));
+        var reasons = new List<(string, string, int)>();
+        await using (var cmd = Cmd(c, "SELECT vote, reasons FROM dbo.ch_feedback WHERE at >= @s AND reasons IS NOT NULL", null, ("@s", sinceUtc)))
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            var tally = new Dictionary<(string, string), int>();
+            while (await r.ReadAsync())
+                foreach (var k in r.GetString(1).Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    tally[(r.GetString(0), k)] = tally.GetValueOrDefault((r.GetString(0), k)) + 1;
+            reasons.AddRange(tally.OrderBy(t => t.Key.Item1).ThenByDescending(t => t.Value).Select(t => (t.Key.Item1, t.Key.Item2, t.Value)));
+        }
+        return new FunnelReport(days, spread, cpu, sources, new FeedbackSummary(votes, reasons));
+    }
+
+    // ---- Plan 30: feedback ----
+    public async Task<Guid?> AddFeedbackAsync(FeedbackRow row, string ipHash, DateTime nowUtc, int dailyCap)
+    {
+        await using var c = await OpenAsync();
+        await using (var purge = Cmd(c, "DELETE TOP (50) FROM dbo.ch_feedback WHERE at < @b", null, ("@b", nowUtc.AddDays(-180))))
+            await purge.ExecuteNonQueryAsync();
+        var id = Guid.NewGuid();
+        await using var cmd = Cmd(c, """
+            INSERT INTO dbo.ch_feedback (id, at, vote, where_, level, result, version, ip_hash)
+            SELECT @id, @at, @v, @w, @lv, @r, @ver, @ip
+            WHERE (SELECT COUNT(*) FROM dbo.ch_feedback WHERE ip_hash = @ip AND at > @since) < @cap
+            """, null, ("@id", id), ("@at", nowUtc), ("@v", row.Vote), ("@w", row.Where), ("@lv", row.Level), ("@r", row.Result),
+            ("@ver", row.Version), ("@ip", ipHash), ("@since", nowUtc.AddDays(-1)), ("@cap", dailyCap));
+        return await cmd.ExecuteNonQueryAsync() == 1 ? id : null;
+    }
+
+    public async Task<bool> SetFeedbackReasonsAsync(Guid id, string reasons, string ipHash, DateTime nowUtc)
+    {
+        await using var c = await OpenAsync();
+        await using var cmd = Cmd(c, "UPDATE dbo.ch_feedback SET reasons = @rs WHERE id = @id AND reasons IS NULL AND ip_hash = @ip AND at > @after", null,
+            ("@rs", reasons), ("@id", id), ("@ip", ipHash), ("@after", nowUtc.AddHours(-1)));
+        return await cmd.ExecuteNonQueryAsync() == 1;
     }
 }

@@ -229,6 +229,9 @@
         @if (note()) { <p class="note" role="status">{{ note() }}</p> }
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
+      @if (askFeedback()) {
+        <pr-feedback [where]="view()?.vsCpu ? 'cpu' : 'friend'" [level]="view()?.vsCpu ? gameLevel() : null" [result]="fbResult()" />
+      }
       @if (view()?.vsCpu && yourSide() === 0) {
         @if (youWon() && gameLevel() < 4) {
           <div class="actions three">

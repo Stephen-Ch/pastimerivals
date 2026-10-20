@@ -3,6 +3,7 @@ import { DomSanitizer } from '@angular/platform-browser';
 import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResult } from './api';
 import { ReportView } from './report';
 import { ChallengeFlow } from './challenge';
+import { Feedback, feedbackDue } from './feedback';
 import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
 import { ArtManifest, Era, eraOf, figure, PairArt, pairArt, PlayerArt, preloadImages } from './art';
@@ -41,7 +42,7 @@ function sessionId(): string {
 
 @Component({
   selector: 'app-root',
-  imports: [ReportView, PitchScene, ChallengeFlow],
+  imports: [ReportView, PitchScene, ChallengeFlow, Feedback],
   styleUrls: ['./app.css', './sims.css'],
   templateUrl: './app.html',
 })
@@ -75,7 +76,8 @@ export class App {
   protected readonly batterReport = signal<Report | null>(null);
   protected readonly pitcherReport = signal<Report | null>(null);
   protected readonly popup = signal<Report | null>(null);
-  protected readonly pending = signal<PitchResult | null>(null);  // result known, animation playing
+  protected readonly pending = signal<PitchResult | null>(null);
+  protected readonly askFeedback = signal(false);  // result known, animation playing
   private readonly dialog = viewChild<ElementRef<HTMLDialogElement>>('reportDialog');
   private returnFocus: HTMLElement | null = null;
 
@@ -387,6 +389,7 @@ export class App {
     if (!r) return;
     this.pending.set(null);
     this.result.set(r);
+    this.askFeedback.set(feedbackDue('p' + Date.now(), 3));   // plan 30: from the 3rd practice pitch
     this.screen.set('result');
   }
 
