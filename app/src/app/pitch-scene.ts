@@ -279,7 +279,7 @@ export function planPitch(s: PitchSetup): Plan {
   // when the ball is gone (for the word): flight end, or the pitch leaving the catcher's edge
   let exitT = tl.end;
   if (f) exitT = p.tTarget + f.time;
-  else { const v = (ENTER_X - PLATE_X) / PITCH_TIME[p.type]; exitT = p.tPlate + 60 / v; }
+  else { const v = (ENTER_X - PLATE_X) / PITCH_TIME[p.type]; exitT = p.tPlate + 25 / v; }
   return { p, f, tl, r, s, highBall, exitT };
 }
 
@@ -290,7 +290,9 @@ export function frameAt(pl: Plan, t: number): Frame {
   let ball: BallPos = HIDDEN, prev: Pt | null = null;
   if (t >= p.enter && (!f || t < p.tTarget)) {
     const c = pitchAt(p, t);
-    const fade = c.x >= PLATE_X - 40 ? 1 : clamp01((c.x - (PLATE_X - 60)) / 20);   // gone 40-60 units past the plate (no catcher drawn)
+    // Stephen 2026-10-22: pitches seemed to go behind the batter. A pitch he does not hit ends at the plate (gone 25 units
+    // past it), so it never travels across his body toward the unseen catcher. Hit-by-pitch is exempt: it reaches his body.
+    const fade = s.m === 'hbp' || c.x >= PLATE_X ? 1 : clamp01((c.x - (PLATE_X - 25)) / 25);
     if (fade > 0) { ball = { ...c, d: BALL_D, o: fade }; prev = pitchAt(p, Math.max(p.enter, t - 0.03)); }
   } else if (f && t >= p.tTarget) {
     const cur = flightAt(f, p.target, t - p.tTarget);
@@ -300,7 +302,7 @@ export function frameAt(pl: Plan, t: number): Frame {
     // a foul tip carries on past the bat on almost the same line
     const dir = rad(f.angle), v = (ENTER_X - PLATE_X) / PITCH_TIME[p.type], s2 = t - p.tTarget;
     const x = p.target.x + Math.cos(dir) * v * s2, y = p.target.y - Math.sin(dir) * v * s2;
-    const fo = x >= PLATE_X - 40 ? 1 : clamp01((x - (PLATE_X - 60)) / 20);
+    const fo = x >= PLATE_X ? 1 : clamp01((x - (PLATE_X - 25)) / 25);
     ball = fo > 0 ? { x, y, d: BALL_D, o: fo } : HIDDEN;
     prev = { x: p.target.x + Math.cos(dir) * v * Math.max(0, s2 - 0.03), y: p.target.y - Math.sin(dir) * v * Math.max(0, s2 - 0.03) };
   }
