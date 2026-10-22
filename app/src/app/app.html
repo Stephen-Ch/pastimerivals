@@ -20,7 +20,8 @@
     }
     @case ('matchup') {
       <header class="bar">
-        <button type="button" class="link" (click)="leaveChallenge()">‹ Home</button>
+        @if (firstView()) { <button type="button" class="link" (click)="moreWays()">‹ More ways to play</button> }
+        @else { <button type="button" class="link" (click)="leaveChallenge()">‹ Home</button> }
         <h1 #screenTitle tabindex="-1" class="sr-only">Practice one at-bat</h1>
         <span class="bar-links">
           <button type="button" class="link" (click)="openOverlay('details')" [disabled]="!matchup()">Details</button>
@@ -72,7 +73,7 @@
       <div class="actions">
         <button class="primary big" type="button" (click)="throwPitch()" [disabled]="busy() || !matchup() || !pitcherReport() || !batterReport()">{{ artWaiting() ? 'Loading art' : 'Pitch' }}</button>
         <button type="button" (click)="runSims()" [disabled]="busy() || !matchup()">Simulate 1,000</button>
-        <p class="hint">Pitch plays one at-bat. Simulate runs this matchup 1,000 times.</p>
+        <p class="hint">{{ firstView() ? 'Tap Pitch to play this at-bat. Any era, any matchup.' : 'Pitch plays one at-bat. Simulate runs this matchup 1,000 times.' }}</p>
       </div>
     }
     @case ('atbat') {
@@ -83,7 +84,7 @@
       <main class="flex scene-wrap">
         <h1 #screenTitle tabindex="-1" class="sr-only">At bat</h1>
         @if (pending(); as pr) {
-          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [side]="sceneArt()" [call]="sceneCall()" (done)="sceneDone()" />
+          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [side]="sceneArt()" [windup]="sceneWindup()" [call]="sceneCall()" (done)="sceneDone()" />
         }
       </main>
     }
@@ -113,7 +114,8 @@
       <div class="actions three">
         <button class="primary big" type="button" (click)="throwPitch()" [disabled]="busy()">{{ artWaiting() ? 'Loading art' : 'Pitch again' }}</button>
         <button type="button" (click)="share()">Share</button>
-        <button type="button" (click)="goBack()">New matchup</button>
+        @if (firstResult()) { <button type="button" (click)="openChallenge('cpu')">Play a 3-batter game ›</button> }
+        @else { <button type="button" (click)="goBack()">New matchup</button> }
       </div>
     }
   }

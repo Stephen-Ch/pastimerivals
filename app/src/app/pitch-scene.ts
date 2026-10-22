@@ -1,5 +1,5 @@
 import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
-import { Era, SideArt } from './art';
+import { Era, SideArt, WindupArt } from './art';
 import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, Trajectory } from './logic';
 
 // Plan 32C: side-on pitch scene. Batter only, seen from the first-base side (right-handed) or the third-base side
@@ -193,9 +193,12 @@ export function depthFor(call: Call | null, bats: 'L' | 'R'): number {
 
 /** Batter frame at time t. Frames: 0 stance, 1 load, 3 contact, 4 follow, 5 flinch, 6 hit by pitch, 7 drops bat. */
 export function batterFrame(m: Motion, p: Pitch, t: number, isFinal: boolean, highBall: boolean): number {
-  if (t < p.enter - 0.3) return 0;
-  if (t < p.enter) return 1;                       // leg kick before the ball appears
-  if (t < p.enter + 0.06) return 2;                // foot down, hands back as it appears
+  if (p.enter < 0.1) { if (t < p.enter + 0.06) return 2; }   // plan 36: after a windup cut he is already striding
+  else {
+    if (t < p.enter - 0.3) return 0;
+    if (t < p.enter) return 1;                     // leg kick before the ball appears
+    if (t < p.enter + 0.06) return 2;              // foot down, hands back as it appears
+  }
   switch (m) {
     case 'hit': case 'out': case 'foul': case 'tip': case 'miss':
       return t < p.tSwing - 0.03 ? 2 : t < p.tSwing + 0.12 ? 3 : 4;
@@ -212,7 +215,7 @@ export function batterFrame(m: Motion, p: Pitch, t: number, isFinal: boolean, hi
 // ---- Effects ----
 export interface FxLine { x1: number; y1: number; x2: number; y2: number; o: number; }
 export interface FxWord { lines: string[]; x: number; y: number; size: number; rot: number; scale: number; o: number; fill: string; }
-export interface Fx { lines: FxLine[]; burst?: { x: number; y: number; points: string; o: number }; word?: FxWord; shake: number; }
+export interface Fx { lines: FxLine[]; burst?: { x: number; y: number; points: string; o: number }; word?: FxWord; shake: number; smear?: { d: string; o: number }[]; }
 export const FX_NONE: Fx = { lines: [], shake: 0 };
 export const BURST_S = 0.12;   // the contact frame shows from tSwing - 0.03 to tSwing + 0.12
 
@@ -262,11 +265,41 @@ export interface Frame { ball: BallPos; batter: number; fx: Fx; }
 export interface PitchSetup {
   m: Motion; kind: 'ball' | 'strike' | null; isFinal: boolean; outcome: OutcomeKey; era: Era; bats: 'L' | 'R';
   call: Call | null; contact: Pt; seed: string; index: number;
+  /** Plan 36: windup before this pitch (the side view starts with the ball entering). */
+  windup?: boolean;
+  /** Plan 36: bat tip on frame 2 (start of the swing smear), panel units. */
+  tip?: Pt;
 }
 export interface Plan { p: Pitch; f: Flight | null; tl: Timeline; r: number[]; s: PitchSetup; highBall: boolean; exitT: number; }
 
+/** Plan 36: the pitcher's windup (front-view sheet frames: set, hands up, kick, peak, stride, cock, release). */
+export const WINDUP: [number, number][] = [[0, 0.08], [1, 0.08], [2, 0.12], [3, 0.14], [4, 0.08], [5, 0.05], [6, 0.05]];
+export const WINDUP_S = WINDUP.reduce((a, [, d]) => a + d, 0);
+export function windupFrameAt(t: number): number {
+  let acc = 0;
+  for (const [f, d] of WINDUP) { acc += d; if (t < acc) return f; }
+  return 6;
+}
+/** Side-view timeline after a windup cut: the ball is already entering. */
+export function windupTimeline(isFinal: boolean): Timeline {
+  const base = isFinal ? FINAL_TL : LEAD_TL;
+  return { enter: 0.03, end: base.end - (base.enter - 0.03) };
+}
+export const SMEAR_BEFORE = 0.08, SMEAR_AFTER = 0.05;
+/** Comic swing smear: three ink arcs along the barrel's path, from just past the hands to the contact point. */
+export function smearPaths(tip: Pt, c: Pt): string[] {
+  const q = (u: number, a: Pt, k: Pt, b: Pt) => ({ x: (1 - u) * (1 - u) * a.x + 2 * u * (1 - u) * k.x + u * u * b.x, y: (1 - u) * (1 - u) * a.y + 2 * u * (1 - u) * k.y + u * u * b.y });
+  return [-14, 0, 14].map(off => {
+    // the bat comes around level: from behind his back shoulder at bat height to the contact point, bowing slightly up
+    const a = { x: tip.x, y: c.y - 35 + off }, b = { x: c.x, y: c.y + off * 0.6 };
+    const k = { x: (a.x + b.x) / 2, y: Math.min(a.y, b.y) - 28 + off * 0.3 };
+    const s0 = q(0.35, a, k, b), k2 = q(0.7, a, k, b);
+    return `M${s0.x.toFixed(1)} ${s0.y.toFixed(1)} Q${k2.x.toFixed(1)} ${k2.y.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+  });
+}
+
 export function planPitch(s: PitchSetup): Plan {
-  const tl = s.isFinal ? FINAL_TL : LEAD_TL;
+  const tl = s.windup ? windupTimeline(s.isFinal) : s.isFinal ? FINAL_TL : LEAD_TL;
   const r = pitchRand(s.seed, s.index);
   const p = makePitch(s.m, s.kind, r, s.era, s.contact, tl);
   const tr = s.call?.trajectory ?? null;
@@ -307,6 +340,11 @@ export function frameAt(pl: Plan, t: number): Frame {
     prev = { x: p.target.x + Math.cos(dir) * v * Math.max(0, s2 - 0.03), y: p.target.y - Math.sin(dir) * v * Math.max(0, s2 - 0.03) };
   }
   const fx: Fx = { lines: ball.o > 0 && prev && t > p.enter + 0.03 ? trail(ball, prev) : [], shake: 0 };
+  const swing = s.m === 'hit' || s.m === 'out' || s.m === 'foul' || s.m === 'tip' || s.m === 'miss';
+  if (swing && s.tip && t >= p.tSwing - SMEAR_BEFORE && t < p.tSwing + SMEAR_AFTER) {
+    const o = t < p.tSwing ? 0.9 : 0.9 * (1 - (t - p.tSwing) / SMEAR_AFTER);
+    fx.smear = smearPaths(s.tip, s.contact).map(d => ({ d, o }));
+  }
   const tr = s.call?.trajectory ?? null;
   if (solidContact(s.m, tr) && s.isFinal && t >= p.tSwing - 0.03 && t < p.tSwing + BURST_S) {   // exactly while the contact frame shows
     const u = clamp01((t - p.tSwing + 0.03) / (BURST_S + 0.03));
@@ -340,6 +378,7 @@ export function prefersReducedMotion(): boolean {
   selector: 'pr-pitch-scene',
   template: `
     @if (side(); as a) {
+      <div class="stage">
       <div class="side" [class.mirror]="bats() === 'L'" aria-hidden="true">
         <svg class="ground" viewBox="0 0 760 480" preserveAspectRatio="none">
           <path d="M175 474 L305 474 L318 466 L188 466 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width="2"/>
@@ -347,6 +386,7 @@ export function prefersReducedMotion(): boolean {
         <div class="shake" [style.transform]="frame().fx.shake ? 'translateX(' + frame().fx.shake + 'px)' : null">
           <div class="bat" [style.background-image]="'url(' + a.sheet + ')'" [style.--f]="frame().batter"></div>
           <svg class="fx" viewBox="0 0 760 480" preserveAspectRatio="none">
+            @for (sm of frame().fx.smear ?? []; track $index) { <path [attr.d]="sm.d" [attr.opacity]="sm.o" fill="none" stroke="#1d1b19" stroke-width="3.5" stroke-linecap="round"/> }
             @if (frame().fx.burst; as b) { <polygon [attr.points]="b.points" [attr.opacity]="b.o" fill="#ffd23f" stroke="#1d1b19" stroke-width="3" stroke-linejoin="round"/> }
             @for (l of frame().fx.lines; track $index) { <line [attr.x1]="l.x1" [attr.y1]="l.y1" [attr.x2]="l.x2" [attr.y2]="l.y2" [attr.opacity]="l.o" stroke="#1d1b19" stroke-width="3.5" stroke-linecap="round"/> }
             @if (frame().ball.o > 0) { <circle class="ball" [attr.cx]="frame().ball.x" [attr.cy]="frame().ball.y" [attr.r]="frame().ball.d / 2" [attr.opacity]="frame().ball.o" fill="#fbf8f1" stroke="#2b2a28" stroke-width="2.5"/> }
@@ -362,6 +402,10 @@ export function prefersReducedMotion(): boolean {
           </svg>
         }
       </div>
+      @if (windFrame() >= 0 && windup(); as w) {
+        <div class="windup" aria-hidden="true"><div class="pit" [class.mirror]="w.mirror" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windFrame()"></div></div>
+      }
+      </div>
     }
     <div class="under">
       <span class="caption" aria-live="polite"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span>@if (board().caption) { · {{ board().caption }} }</span>
@@ -370,9 +414,16 @@ export function prefersReducedMotion(): boolean {
   `,
   styles: `
     :host { display: block; margin-top: 14px; }
-    .side { position: relative; isolation: isolate; width: 100%; max-width: 560px; margin: 0 auto; aspect-ratio: 760 / 480; overflow: hidden;
+    .stage { position: relative; width: 100%; max-width: 560px; margin: 0 auto; }
+    .windup { position: absolute; inset: 0; z-index: 5; overflow: hidden; border: 1px solid var(--border); border-radius: 14px;
+      background: linear-gradient(#cfd9e3 0 58%, #7d9a5f 58% 100%); }
+    .windup::after { content: ''; position: absolute; left: 25%; right: 25%; bottom: 0; height: 12%; border-radius: 50% 50% 0 0; background: #b48a5a; }
+    .windup .pit { position: absolute; z-index: 1; height: 92%; aspect-ratio: 364 / 480; bottom: 4%; left: 50%; transform: translateX(-50%);
+      background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
+    .windup .pit.mirror { transform: translateX(-50%) scaleX(-1); }
+    .side { position: relative; isolation: isolate; width: 100%; aspect-ratio: 760 / 480; overflow: hidden;
       border: 1px solid var(--border); border-radius: 14px; background: linear-gradient(#cfd9e3 0 52%, #7d9a5f 52% 92%, #b48a5a 92% 100%); }
-    @container (min-height: 1px) { .side { max-width: min(560px, calc((100cqh - 64px) * 760 / 480)); } }
+    @container (min-height: 1px) { .stage { max-width: min(560px, calc((100cqh - 64px) * 760 / 480)); } }
     .side.mirror { transform: scaleX(-1); }
     .side.mirror .words { transform: scaleX(-1); }
     .ground, .fx, .words { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -400,6 +451,9 @@ export class PitchScene {
   readonly deco = input<Deco>('1');
   /** Plan 32C: the batter's side-on sheet, already preloaded; null = text only. */
   readonly side = input<SideArt | null>(null);
+  /** Plan 36: the pitcher's windup sheet (only when the batter's side art shows too). */
+  readonly windup = input<WindupArt | null>(null);
+  protected readonly windFrame = signal(-1);
   /** Plan 21: the announcer call for the final pitch (trajectory and field). */
   readonly call = input<Call | null>(null);
   readonly done = output<void>();
@@ -429,6 +483,11 @@ export class PitchScene {
     if (this.raf) { (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : clearTimeout)(this.raf as never); this.raf = 0; }
   }
 
+  private batTip(): Pt | undefined {
+    const b = this.side()?.frames?.[2]?.batTip;
+    return b ? { x: b[0] - CELL_X0, y: b[1] } : undefined;
+  }
+
   private contactPoint(): Pt {
     const c = this.side()?.frames?.[3]?.contact;
     return c ? { x: c[0] - CELL_X0, y: c[1] } : { x: 372, y: 200 };
@@ -441,13 +500,18 @@ export class PitchScene {
     const kind: 'ball' | 'strike' | null = lead ? (lead.kind === 'ball' ? 'ball' : 'strike') : this.outcome() === 'bb' ? 'ball' : null;
     const bats = this.bats() === 'L' ? 'L' : 'R';
     const plan = planPitch({ m, kind, isFinal: final, outcome: this.outcome(), era: this.era(), bats,
-      call: final ? this.call() : null, contact: this.contactPoint(), seed: this.seed(), index: this.step() });
+      call: final ? this.call() : null, contact: this.contactPoint(), seed: this.seed(), index: this.step(),
+      windup: !!this.windup() && !!this.side() && (this.step() === 0 || final), tip: this.batTip() });
     const fin = final ? finalCaption(this.outcome(), this.count().finalKind, this.deco()) : '';
     let cleared = false, called = false;
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: FrameRequestCallback) => setTimeout(() => fn(performance.now()), 16) as unknown as number;
+    const lead0 = plan.s.windup ? WINDUP_S : 0;
     const start = performance.now();
     const tick = () => {
-      const t = Math.min(plan.tl.end, (performance.now() - start) / 1000);
+      const el = (performance.now() - start) / 1000;
+      if (el < lead0) { this.windFrame.set(windupFrameAt(el)); this.frame.set(frameAt(plan, 0)); if (!this.finished) this.raf = raf(tick); return; }
+      this.windFrame.set(-1);
+      const t = Math.min(plan.tl.end, el - lead0);
       if (this.side()) this.frame.set(frameAt(plan, t));
       if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); }
       if (!called && t >= plan.p.tPlate) {
@@ -464,7 +528,7 @@ export class PitchScene {
   private next() {
     if (this.finished) return;
     const plan = this.runPitch();
-    const ms = plan.tl.end * 1000 + (this.isFinal() ? 0 : 60);
+    const ms = (plan.tl.end + (plan.s.windup ? WINDUP_S : 0)) * 1000 + (this.isFinal() ? 0 : 60);
     if (this.isFinal()) { this.timer = setTimeout(() => this.finish(), ms); return; }
     this.timer = setTimeout(() => {
       const p = this.count().leadUp[this.step()];

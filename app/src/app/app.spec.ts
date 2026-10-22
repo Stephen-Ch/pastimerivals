@@ -17,6 +17,7 @@ const report = (role: 'bat' | 'pit', name: string, year: number) => ({
 
 describe('App', () => {
   beforeEach(async () => {
+    localStorage.setItem('pr_seen', '1');   // plan 36: returning player unless a test says otherwise
     globalThis.fetch = (async (url: string) =>
       new Response(JSON.stringify(
         String(url).includes('/api/matchup') ? matchup
@@ -116,6 +117,19 @@ describe('App', () => {
     expect(vsFromSearch('?vs=friend')).toBe('friend');
     expect(vsFromSearch('?vs=x')).toBeNull();
     expect(vsFromSearch('')).toBeNull();
+  });
+
+  it('opens a new player straight on the ready matchup with More ways to play (plan 36)', async () => {
+    localStorage.removeItem('pr_seen');
+    const fixture = TestBed.createComponent(App);
+    await new Promise(r => setTimeout(r, 0));
+    await fixture.whenStable(); fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('More ways to play');
+    expect(el.textContent).toContain('Tap Pitch to play this at-bat');
+    (Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('More ways to play')) as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Play the computer');
   });
 
   it('reads the visit source from utm_source or ref (plan 29)', () => {

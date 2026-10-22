@@ -8,7 +8,7 @@ public sealed record EventRequest(string Name, string Session, string? Source = 
 
 public static class PlayEndpoints
 {
-    private static readonly HashSet<string> EventNames = new() { "open", "matchup_view", "pitch", "sim1000", "share", "share_open", "art_wrong_look", "art_fallback", "cpu_game", "sim_open" };
+    private static readonly HashSet<string> EventNames = new() { "open", "matchup_view", "pitch", "sim1000", "share", "share_open", "art_wrong_look", "art_fallback", "cpu_game", "sim_open", "first_view" };   // plan 36: first_view
 
     public static void MapPlay(this WebApplication app)
     {

@@ -111,6 +111,9 @@ for p in sorted(glob.glob('art/source/batter/side/*.png')):
         clip = px < 0 or px + arr.shape[1] > CW or py < 0
         sheet.alpha_composite(Image.fromarray(arr), (k * CW + max(px, 0), max(py, 0)), (max(-px, 0), max(-py, 0)))
         fr = {'w': arr.shape[1], 'h': arr.shape[0], 'x': px, 'y': py, 'clipped': bool(clip)}
+        if k == 2:   # plan 36: bat tip while it is still up (start of the swing smear) = highest opaque point
+            ys2, xs2 = np.nonzero(m); i = np.argmin(ys2)
+            fr['batTip'] = [int(xs2[i] + px), int(ys2[i] + py)]
         if k == 3:   # contact: barrel end = rightmost opaque pixel in the upper 60%; contact point a little inside it
             up = m[: int(arr.shape[0] * 0.6)]
             ys2, xs2 = np.nonzero(up); i = np.argmax(xs2)

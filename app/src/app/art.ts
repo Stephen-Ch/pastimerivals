@@ -161,6 +161,22 @@ export function sideArt(m: ArtManifest | null, id: string, year: number): SideAr
   return sheet && frames ? { sheet, frames, lineArt: !tone } : null;
 }
 
+/** Plan 36: the pitcher's front-view windup sheet, only for a researched tone (no guessed tone). Mirrored for lefties. */
+export interface WindupArt { sheet: string; mirror: boolean; }
+export function windupArt(m: ArtManifest | null, id: string, era: Era, throws: string): WindupArt | null {
+  const tone = m?.tones?.[id];
+  if (!m || !tone) return null;
+  const sheet = m.sheets[`pitcher/${era}/${sheetTone(tone)}`];
+  return sheet ? { sheet, mirror: throws === 'L' } : null;
+}
+
+/** Plan 36: first visit = no seen flag and no share or challenge link. Storage that is missing or fails counts as seen. */
+export const SEEN_KEY = 'pr_seen';
+export function isFirstVisit(hasLink: boolean, storage: Pick<Storage, 'getItem'> | null): boolean {
+  if (hasLink || !storage) return false;
+  try { return storage.getItem(SEEN_KEY) === null; } catch { return false; }
+}
+
 /** Loads and decodes images before a pitch so frames never show blank. Resolves false on any failure. */
 export function preloadImages(urls: string[]): Promise<boolean> {
   return Promise.all(urls.map(u => new Promise<boolean>(res => {

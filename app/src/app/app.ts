@@ -6,7 +6,7 @@ import { ChallengeFlow } from './challenge';
 import { Feedback, feedbackDue } from './feedback';
 import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
-import { ArtManifest, Era, eraOf, figure, PairArt, pairArt, PlayerArt, preloadImages, SideArt, sideArt } from './art';
+import { ArtManifest, Era, eraOf, figure, isFirstVisit, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, WindupArt, windupArt } from './art';
 import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
@@ -150,6 +150,9 @@ export class App {
   protected readonly myGames = signal(0);
   private practicePushed = false;
 
+  /** Plan 36: from the first view, Home switches in place (no history entry, so Back behaves). */
+  protected moreWays() { this.firstView.set(false); this.goHome(); }
+
   protected goHome() {
     this.overlay.set(null); this.pending.set(null);
     this.screen.set('home');
@@ -246,6 +249,18 @@ export class App {
   private artReady: Promise<boolean> = Promise.resolve(false);
   protected readonly artWaiting = signal(false);
   protected readonly sceneArt = signal<SideArt | null>(null);
+  /** Plan 36: pitcher windup before the first and final pitch (both or neither with the batter's side art). */
+  protected readonly sceneWindup = signal<WindupArt | null>(null);
+  protected readonly windup = computed<WindupArt | null>(() => {
+    const p = this.pitcherReport();
+    return p ? windupArt(this.manifest(), p.id, eraOf(p.year), p.throws) : null;
+  });
+  private readonly windupOk = signal(false);
+  private windupReady: Promise<boolean> = Promise.resolve(false);
+  /** Plan 36: new players land on a ready matchup; the first result offers a 3-batter game. */
+  protected readonly firstView = signal(false);
+  protected readonly firstResult = signal(false);
+  private storage(): Storage | null { try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch { return null; } }
   /** Plan 32C: the batter's side-on sheet for the scene (only this one image is needed to animate). */
   protected readonly side = computed<SideArt | null>(() => {
     const b = this.batterReport();
@@ -290,6 +305,12 @@ export class App {
       if (!s) { this.sideReady = Promise.resolve(false); return; }
       this.sideReady = preloadImages([s.sheet]).then(ok => { if (this.side() === s) this.sideOk.set(ok); return ok; });
     });
+    effect(() => {
+      const w = this.windup();
+      this.windupOk.set(false);
+      if (!w) { this.windupReady = Promise.resolve(false); return; }
+      this.windupReady = preloadImages([w.sheet]).then(ok => { if (this.windup() === w) this.windupOk.set(ok); return ok; });
+    });
     api.event('open', this.session, sourceFromSearch());
     const shared = typeof location !== 'undefined' ? parseShare(location.search) : null;
     if (shared) {
@@ -303,6 +324,11 @@ export class App {
     } else {
       this.load();
       if (this.challenge() === undefined) capi.mine().then(m => this.myGames.set(m.length)).catch(() => undefined);
+      if (this.challenge() === undefined && isFirstVisit(false, this.storage())) {
+        this.firstView.set(true);
+        this.screen.set('matchup');
+        api.event('first_view', this.session);
+      }
     }
   }
 
@@ -395,10 +421,15 @@ export class App {
       if (this.side() && !this.sideOk()) {
         // Wait up to 3 s for the batter's sheet; otherwise this pitch shows text only (never swap mid-pitch).
         this.artWaiting.set(true);
-        await Promise.race([this.sideReady, new Promise(res => setTimeout(res, 3000))]);
+        await Promise.race([Promise.all([this.sideReady, this.windupReady]), new Promise(res => setTimeout(res, 3000))]);
         this.artWaiting.set(false);
       }
       this.sceneArt.set(this.sideOk() ? this.side() : null);
+      this.sceneWindup.set(this.sideOk() && this.windupOk() ? this.windup() : null);   // both or neither
+      if (!seed && this.firstView()) {
+        try { this.storage()?.setItem(SEEN_KEY, '1'); } catch { /* private mode: fine */ }
+        this.firstView.set(false); this.firstResult.set(true);
+      } else this.firstResult.set(false);
       this.pending.set(r);   // the scene plays, then sceneDone() reveals the result
       this.enterPlay();
     } catch (e) { this.error.set((e as Error).message); this.toMatchup(); }

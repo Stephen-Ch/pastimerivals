@@ -27,7 +27,11 @@
      "h": 387,
      "x": 108,
      "y": 83,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      118,
+      83
+     ]
     },
     {
      "w": 251,
@@ -97,7 +101,11 @@
      "h": 369,
      "x": 86,
      "y": 101,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      94,
+      101
+     ]
     },
     {
      "w": 255,
@@ -167,7 +175,11 @@
      "h": 380,
      "x": 87,
      "y": 90,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      99,
+      91
+     ]
     },
     {
      "w": 264,
@@ -237,7 +249,11 @@
      "h": 377,
      "x": 88,
      "y": 93,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      103,
+      93
+     ]
     },
     {
      "w": 265,
@@ -307,7 +323,11 @@
      "h": 388,
      "x": 91,
      "y": 82,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      114,
+      82
+     ]
     },
     {
      "w": 243,
@@ -377,7 +397,11 @@
      "h": 389,
      "x": 89,
      "y": 81,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      112,
+      81
+     ]
     },
     {
      "w": 242,
@@ -447,7 +471,11 @@
      "h": 381,
      "x": 88,
      "y": 89,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      108,
+      89
+     ]
     },
     {
      "w": 254,
@@ -517,7 +545,11 @@
      "h": 368,
      "x": 86,
      "y": 102,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      95,
+      102
+     ]
     },
     {
      "w": 260,
@@ -587,7 +619,11 @@
      "h": 369,
      "x": 86,
      "y": 101,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      94,
+      101
+     ]
     },
     {
      "w": 255,
@@ -657,7 +693,11 @@
      "h": 377,
      "x": 88,
      "y": 93,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      103,
+      93
+     ]
     },
     {
      "w": 265,
@@ -727,7 +767,11 @@
      "h": 389,
      "x": 89,
      "y": 81,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      112,
+      81
+     ]
     },
     {
      "w": 242,
@@ -797,7 +841,11 @@
      "h": 368,
      "x": 86,
      "y": 102,
-     "clipped": false
+     "clipped": false,
+     "batTip": [
+      95,
+      102
+     ]
     },
     {
      "w": 260,
