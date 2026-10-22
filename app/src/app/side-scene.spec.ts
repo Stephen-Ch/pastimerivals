@@ -145,9 +145,11 @@ describe('side-on scene (plan 32C)', () => {
     }
   });
 
-  it('ends a pitch he does not hit at the plate, and lets a hit-by-pitch reach him', () => {
+  it('carries a pitch he does not hit off the catcher\'s edge, and lets a hit-by-pitch reach him', () => {
     const take = planPitch({ m: 'take', kind: 'strike', isFinal: false, outcome: 'single', era: '1990-2025', bats: 'R', call: null, contact: C, seed: 'e', index: 0 });
-    for (let t = 0; t < LEAD_TL.end; t += 0.005) { const f = frameAt(take, t); if (f.ball.o > 0) expect(f.ball.x).toBeGreaterThan(PLATE_X - 25); }
+    let minX = 999;
+    for (let t = 0; t < LEAD_TL.end; t += 0.005) { const f = frameAt(take, t); if (f.ball.o > 0) { expect(f.ball.o).toBe(1); minX = Math.min(minX, f.ball.x); } }
+    expect(minX).toBeLessThan(10);   // reaches the catcher's edge at full strength
     const hbp = planPitch({ m: 'hbp', kind: null, isFinal: true, outcome: 'hbp', era: '1990-2025', bats: 'R', call: null, contact: C, seed: 'e', index: 0 });
     expect(frameAt(hbp, hbp.p.tTarget - 0.005).ball.o).toBe(1);
   });

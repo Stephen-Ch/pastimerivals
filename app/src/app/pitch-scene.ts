@@ -279,7 +279,7 @@ export function planPitch(s: PitchSetup): Plan {
   // when the ball is gone (for the word): flight end, or the pitch leaving the catcher's edge
   let exitT = tl.end;
   if (f) exitT = p.tTarget + f.time;
-  else { const v = (ENTER_X - PLATE_X) / PITCH_TIME[p.type]; exitT = p.tPlate + 25 / v; }
+  else { const v = (ENTER_X - PLATE_X) / PITCH_TIME[p.type]; exitT = p.tPlate + (PLATE_X + 30) / v; }
   return { p, f, tl, r, s, highBall, exitT };
 }
 
@@ -290,9 +290,9 @@ export function frameAt(pl: Plan, t: number): Frame {
   let ball: BallPos = HIDDEN, prev: Pt | null = null;
   if (t >= p.enter && (!f || t < p.tTarget)) {
     const c = pitchAt(p, t);
-    // Stephen 2026-10-22: pitches seemed to go behind the batter. A pitch he does not hit ends at the plate (gone 25 units
-    // past it), so it never travels across his body toward the unseen catcher. Hit-by-pitch is exempt: it reaches his body.
-    const fade = s.m === 'hbp' || c.x >= PLATE_X ? 1 : clamp01((c.x - (PLATE_X - 25)) / 25);
+    // Stephen 2026-10-22: a pitch he does not hit carries on in front of him and leaves the screen on the catcher's side
+    // (drawn over him: it crosses the plate, nearer the camera than he is). No fade part way across his body.
+    const fade = c.x > -20 ? 1 : 0;
     if (fade > 0) { ball = { ...c, d: BALL_D, o: fade }; prev = pitchAt(p, Math.max(p.enter, t - 0.03)); }
   } else if (f && t >= p.tTarget) {
     const cur = flightAt(f, p.target, t - p.tTarget);
@@ -302,7 +302,7 @@ export function frameAt(pl: Plan, t: number): Frame {
     // a foul tip carries on past the bat on almost the same line
     const dir = rad(f.angle), v = (ENTER_X - PLATE_X) / PITCH_TIME[p.type], s2 = t - p.tTarget;
     const x = p.target.x + Math.cos(dir) * v * s2, y = p.target.y - Math.sin(dir) * v * s2;
-    const fo = x >= PLATE_X ? 1 : clamp01((x - (PLATE_X - 25)) / 25);
+    const fo = x > -20 ? 1 : 0;
     ball = fo > 0 ? { x, y, d: BALL_D, o: fo } : HIDDEN;
     prev = { x: p.target.x + Math.cos(dir) * v * Math.max(0, s2 - 0.03), y: p.target.y - Math.sin(dir) * v * Math.max(0, s2 - 0.03) };
   }
