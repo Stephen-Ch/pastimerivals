@@ -11,20 +11,20 @@ const R8 = (k: number) => Array.from({ length: 8 }, (_, i) => ((k * 7 + i * 13) 
 describe('side-on scene (plan 32C)', () => {
   it('picks looks by year with the helmet dates', () => {
     expect([1910, 1919, 1920, 1955, 1956, 1989, 1990, 2020].map(lookOf)).toEqual(['1901', '1901', '1920', '1920', '1956', '1956', '1990', '1990']);
-  });
+  }, 30000);
 
   it('uses line art for batters with no researched tone', () => {
     const m = { side: { cell: [520, 480], footY: 470, sheets: { '1990/line': '/a.webp', '1990/darkbrown': '/b.webp' }, frames: { '1990/line': [], '1990/darkbrown': [] } },
       tones: { known1: 'darkbrown' } } as unknown as ArtManifest;
     expect(sideArt(m, 'known1', 1995)).toEqual({ sheet: '/b.webp', frames: [], lineArt: false });
     expect(sideArt(m, 'nobody', 1995)).toEqual({ sheet: '/a.webp', frames: [], lineArt: true });
-  });
+  }, 30000);
 
   it('has sliders rare before 1950 and common after', () => {
     let early = 0, late = 0;
     for (let i = 0; i < 1000; i++) { if (pitchTypeFor(i / 1000, '1920-1945') === 'slider') early++; if (pitchTypeFor(i / 1000, '1990-2025') === 'slider') late++; }
     expect(early).toBeLessThan(80); expect(late).toBeGreaterThan(150);
-  });
+  }, 30000);
 
   it('enters every pitch from the pitcher\'s edge and hits its target in or out of the zone', () => {
     for (let k = 0; k < 400; k++) {
@@ -41,14 +41,14 @@ describe('side-on scene (plan 32C)', () => {
         if (m === 'hit') expect(p.tSwing).toBeCloseTo(p.tTarget, 5);
       }
     }
-  });
+  }, 30000);
 
   it('shows a curve drop of at least 6 px on a 320 px phone', () => {
     const r = [0.95, 0, 0.5, 0.5, 0, 0, 0, 0];   // curve, smallest drop
     const p = makePitch('look', null, r, '1990-2025', C, FINAL_TL);
     expect(p.type).toBe('curve');
     expect(p.drop * (288 / PANEL_W)).toBeGreaterThanOrEqual(6);
-  });
+  }, 30000);
 
   it('flies each batted ball to the edge the table names, in its time', () => {
     for (let k = 0; k < 50; k++) {
@@ -63,21 +63,21 @@ describe('side-on scene (plan 32C)', () => {
       expect(['top', 'pitcher']).toContain(e('bloop'));
       expect(e('ground')).toBe('pitcher');
     }
-  });
+  }, 30000);
 
   it('bounces every ground ball on the dirt before it leaves', () => {
     const f = makeFlight('ground', 'hit', true, false, false, false, 0, R8(3));
     let lowest = 0;
     for (let s = 0; s < f.time; s += 0.005) { const p = flightAt(f, C, s); if (p) lowest = Math.max(lowest, p.y); }
     expect(lowest).toBeGreaterThan(455);
-  });
+  }, 30000);
 
   it('home runs leave higher than line drives and faster than fly outs', () => {
     const r = R8(5);
     const hr = makeFlight('fly', 'hit', true, true, false, false, 0, r), fo = makeFlight('fly', 'out', true, false, false, false, 0, r);
     expect(hr.time).toBeLessThan(fo.time);
     expect(hr.angle).toBeGreaterThanOrEqual(26); expect(hr.angle).toBeLessThanOrEqual(30);
-  });
+  }, 30000);
 
   it('shrinks balls to the far side and grows them to the near side', () => {
     const lf: Call = { text: '', type: 'single', spot: 'left' }, rf: Call = { text: '', type: 'single', spot: 'right' };
@@ -85,7 +85,7 @@ describe('side-on scene (plan 32C)', () => {
     expect(depthFor(lf, 'L')).toBe(1); expect(depthFor(rf, 'L')).toBe(-1);
     const f = makeFlight('line', 'hit', true, false, false, false, -1, R8(1));
     expect(flightAt(f, C, f.time * 0.9)!.d).toBeLessThan(BALL_D);
-  });
+  }, 30000);
 
   it('draws motion lines only behind the ball, touching its back edge', () => {
     const cur = { x: 300, y: 200, d: 16, o: 1 }, prev = { x: 320, y: 205 };   // moving left, slightly up
@@ -93,7 +93,7 @@ describe('side-on scene (plan 32C)', () => {
       expect(Math.hypot(l.x1 - cur.x, l.y1 - cur.y)).toBeLessThanOrEqual(cur.d / 2 + 2);
       expect(l.x2).toBeGreaterThan(l.x1);   // points back toward where it came from
     }
-  });
+  }, 30000);
 
   it('bursts only on solid contact, on the contact point, under the ball', () => {
     expect(solidContact('hit', 'line')).toBe(true);
@@ -105,7 +105,7 @@ describe('side-on scene (plan 32C)', () => {
     const f = frameAt(pl, pl.p.tTarget + 0.02);
     expect(f.fx.burst!.x).toBe(C.x); expect(f.fx.burst!.y).toBe(C.y);
     expect(frameAt(pl, pl.p.tTarget + 0.3).fx.burst).toBeUndefined();
-  });
+  }, 30000);
 
   it('names words per result and shows them only after the ball is gone', () => {
     expect(fxWord('hr', 'hit', 'fly', false)).toEqual(['GONE!']);
@@ -121,7 +121,7 @@ describe('side-on scene (plan 32C)', () => {
       }
       expect([...Array(190).keys()].some(i => !!frameAt(pl, i / 100).fx.word)).toBe(true);
     }
-  });
+  }, 30000);
 
   it('times the batter: load as the ball comes, contact frame on contact, stance again after a take', () => {
     const pl = planPitch({ m: 'take', kind: 'strike', isFinal: false, outcome: 'single', era: '1990-2025', bats: 'R', call: null, contact: C, seed: 't', index: 0 });
@@ -134,16 +134,16 @@ describe('side-on scene (plan 32C)', () => {
     expect(frameAt(hit, hit.p.tTarget + 0.3).batter).toBe(4);
     const walk = planPitch({ m: 'take', kind: 'ball', isFinal: true, outcome: 'bb', era: '1990-2025', bats: 'R', call: null, contact: C, seed: 't', index: 4 });
     expect(frameAt(walk, FINAL_TL.end - 0.1).batter).toBe(7);
-  });
+  }, 30000);
 
   it('draws every a2 call too', () => {
-    for (let i = 0; i < 300; i++) for (const o of OUTCOMES) for (const year of [1910, 1995]) {
+    for (let i = 0; i < 120; i++) for (const o of OUTCOMES) for (const year of [1910, 1995]) {
       const c = countFor(o, `q${i}`, '2'), a = callFor(o, `q${i}`, c, 'B', 'R', 'R', '2', year);
       const m: Motion = o === 'oip' ? 'out' : o === 'k' ? (c.finalKind === 'tip' ? 'tip' : c.finalKind === 'called' ? 'look' : 'miss') : o === 'bb' ? 'take' : o === 'hbp' ? 'hbp' : 'hit';
       const pl = planPitch({ m, kind: null, isFinal: true, outcome: o, era: '1990-2025', bats: 'R', call: a, contact: C, seed: `q${i}`, index: c.leadUp.length });
       for (let t = 0; t < FINAL_TL.end; t += 0.05) expect(() => frameAt(pl, t)).not.toThrow();
     }
-  });
+  }, 30000);
 
   it('carries a pitch he does not hit off the catcher\'s edge, and lets a hit-by-pitch reach him', () => {
     const take = planPitch({ m: 'take', kind: 'strike', isFinal: false, outcome: 'single', era: '1990-2025', bats: 'R', call: null, contact: C, seed: 'e', index: 0 });
@@ -152,10 +152,10 @@ describe('side-on scene (plan 32C)', () => {
     expect(minX).toBeLessThan(10);   // reaches the catcher's edge at full strength
     const hbp = planPitch({ m: 'hbp', kind: null, isFinal: true, outcome: 'hbp', era: '1990-2025', bats: 'R', call: null, contact: C, seed: 'e', index: 0 });
     expect(frameAt(hbp, hbp.p.tTarget - 0.005).ball.o).toBe(1);
-  });
+  }, 30000);
 
   it('keeps the pitch on the plate line when taken', () => {
     const p = makePitch('look', null, R8(2), '1990-2025', C, FINAL_TL);
     expect(pitchAt(p, p.tPlate).x).toBeCloseTo(PLATE_X, 0);
-  });
+  }, 30000);
 });

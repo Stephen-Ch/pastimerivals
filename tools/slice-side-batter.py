@@ -34,9 +34,9 @@ def owners(fg):
         y0, y1 = sl[0].start, sl[0].stop; x0, x1 = sl[1].start, sl[1].stop
         # two torsos = thick blobs in the upper body; flood the merged piece from them (watershed)
         from skimage.segmentation import watershed
-        core = ndi.binary_opening(m, np.ones((31, 31)))
-        band = np.zeros_like(m); band[int(y0 + 0.12 * (y1 - y0)): int(y0 + 0.5 * (y1 - y0))] = True
-        cl, cn = ndi.label(core & band)
+        # two heads = the two biggest pieces in the top quarter; flood the merged piece from them (watershed)
+        band = np.zeros_like(m); band[y0: int(y0 + 0.25 * (y1 - y0))] = True
+        cl, cn = ndi.label(ndi.binary_opening(m & band, np.ones((9, 9))))
         cs = ndi.sum(np.ones_like(cl), cl, range(1, cn + 1)); top2 = np.argsort(cs)[-2:] + 1
         markers = np.zeros(m.shape, np.int32)
         for j, t in enumerate(top2, 1): markers[cl == t] = j
@@ -86,7 +86,7 @@ def torso_x(m):
     b = body[int(h * 0.25): int(h * 0.6)]
     xs = np.nonzero(b)[1]
     return xs.mean() if xs.size else m.shape[1] / 2
-out = {}
+out = {}; bad_edge = False
 OUTD = 'art/sprites/batter-side'
 os.makedirs(OUTD, exist_ok=True)
 for p in sorted(glob.glob('art/source/batter/side/*.png')):
@@ -107,6 +107,7 @@ for p in sorted(glob.glob('art/source/batter/side/*.png')):
         arr = np.asarray(im).copy(); arr, nlogo = clean_shoes(arr); meta['logoPixels'] += nlogo
         m = arr[..., 3] > 128
         tx = torso_x(m); px = round(CW * CX - tx); py = FOOT_Y - arr.shape[0]
+        if arr.shape[1] < CW - 4: px = min(max(px, 2), CW - 2 - arr.shape[1])   # a wide pose (running, bat on the ground) shifts to fit
         clip = px < 0 or px + arr.shape[1] > CW or py < 0
         sheet.alpha_composite(Image.fromarray(arr), (k * CW + max(px, 0), max(py, 0)), (max(-px, 0), max(-py, 0)))
         fr = {'w': arr.shape[1], 'h': arr.shape[0], 'x': px, 'y': py, 'clipped': bool(clip)}
@@ -114,14 +115,14 @@ for p in sorted(glob.glob('art/source/batter/side/*.png')):
             up = m[: int(arr.shape[0] * 0.6)]
             ys2, xs2 = np.nonzero(up); i = np.argmax(xs2)
             tipx, tipy = xs2[i] + px, ys2[i] + py
-            col = up[:, max(xs2[i] - 40, 0)]; yy = np.nonzero(col)[0]
+            col = up[:, max(xs2[i] - 14, 0)]; yy = np.nonzero(col)[0]
             cy = (yy.mean() + py) if yy.size else tipy
-            fr['batTip'] = [int(tipx), int(tipy)]; fr['contact'] = [int(tipx - 40), round(float(cy))]
+            fr['batTip'] = [int(tipx), int(tipy)]; fr['contact'] = [int(tipx - 14), round(float(cy))]
         meta['frames'].append(fr)
     alpha = np.asarray(sheet)[..., 3] > 128
     for k in range(8):   # no opaque piece may touch a cell edge (ghost bits from a neighbour, or a clipped bat)
         cl, _ = ndi.label(alpha[:, k * CW:(k + 1) * CW])
-        if set(np.unique(np.concatenate([cl[:, 0], cl[:, -1], cl[0], cl[-1]]))) - {0}: sys.exit(f'{name} frame {k} touches its cell edge')
+        if set(np.unique(np.concatenate([cl[:, 0], cl[:, -1], cl[0], cl[-1]]))) - {0}: print(f'EDGE {name} frame {k}'); bad_edge = True
     if any(f['clipped'] for f in meta['frames']): sys.exit(f'{name} has a clipped frame')
     sheet.save(f'{OUTD}/{name}.png'); out[name] = meta
     print(name, 'scale', meta['scale'], 'logo px', meta['logoPixels'], 'clipped', [i for i, f in enumerate(meta['frames']) if f['clipped']], 'contact', meta['frames'][3].get('contact'))

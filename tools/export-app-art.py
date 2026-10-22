@@ -55,8 +55,12 @@ def main():
         for tone in SHEET_TONES + ('line',):   # line = pen-and-ink sheet for batters with no researched tone
             p = f'art/sprites/batter-side/{look}-{tone}.png'
             if not os.path.exists(p): errors.append(f'missing {p}'); continue
-            url, n = save_hashed(Image.open(p).convert('RGBA'), f'side-{look}-{tone}', 80); total += n
-            if n > 200_000: errors.append(f'too big {p} {n}')
+            for q in (80, 72, 64):   # stay under 200 KB per sheet (busy white uniforms need a lower quality)
+                url, n = save_hashed(Image.open(p).convert('RGBA'), f'side-{look}-{tone}', q)
+                if n < 200_000: break
+                os.remove(os.path.join(OUT, url.rsplit('/', 1)[1]))
+            total += n
+            if n >= 200_000: errors.append(f'too big {p} {n}')
             side['sheets'][f'{look}/{tone}'] = url
             side['frames'][f'{look}/{tone}'] = sm['sheets'][f'{look}-{tone}']['frames']
     man['side'] = side

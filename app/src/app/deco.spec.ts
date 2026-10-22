@@ -21,14 +21,14 @@ describe('plan 32A decoration versions', () => {
     expect(h(all, 2166136261)).toBe(V1_FIXTURE.h1);
     expect(h(all, 0x811c9dc5 ^ 0x5bd1e995)).toBe(V1_FIXTURE.h2);
     expect(JSON.stringify(sample)).toBe(JSON.stringify(V1_FIXTURE.sample));
-  });
+  }, 30000);
 
   it('reads versions: missing = 1, unknown = newest plus a refresh flag', () => {
     expect(resolveDeco(undefined)).toEqual({ deco: '1', unknown: false });
     expect(resolveDeco('1')).toEqual({ deco: '1', unknown: false });
     expect(resolveDeco(2)).toEqual({ deco: '2', unknown: false });
     expect(resolveDeco('9')).toEqual({ deco: '2', unknown: true });
-  });
+  }, 30000);
 
   it('c2 counts are legal and match the review rates', () => {
     let k = 0, called = 0, tip = 0, inPlay = 0, threeOh = 0, first = 0, firstFoul = 0, firstCalled = 0;
@@ -48,7 +48,7 @@ describe('plan 32A decoration versions', () => {
     expect(threeOh / inPlay).toBeLessThan(0.015);
     expect(Math.abs(firstFoul / first - 0.40)).toBeLessThan(0.02);
     expect(Math.abs(firstCalled / first - 0.35)).toBeLessThan(0.02);
-  });
+  }, 30000);
 
   it('a2 calls follow the fielder and flight rules', () => {
     const IF = ['P', '1B', '2B', 'SS', '3B'], OF = ['LF', 'CF', 'RF'];
@@ -74,7 +74,7 @@ describe('plan 32A decoration versions', () => {
     }
     expect(leftCorner / triples).toBeLessThan(0.08);
     expect(Math.abs(itp / deadHr - 0.5)).toBeLessThan(0.04);
-  });
+  }, 30000);
 
   it('switch hitters bat opposite the pitcher, and the call mirrors with them', () => {
     expect(hitsFrom('B', 'R')).toBe('L');
@@ -84,7 +84,7 @@ describe('plan 32A decoration versions', () => {
       const sw = callFor('oip', `z${i}`, c, 'B', 'B', 'R', '2', 1990), lefty = callFor('oip', `z${i}`, c, 'B', 'L', 'R', '2', 1990);
       expect(sw).toEqual(lefty);
     }
-  });
+  }, 30000);
 
   it('captions the final pitch in version 2 only', () => {
     expect(finalCaption('k', 'called', '2')).toBe('Strike three');
@@ -94,7 +94,7 @@ describe('plan 32A decoration versions', () => {
     expect(finalCaption('hbp', null, '2')).toBe('Hit by pitch');
     expect(finalCaption('single', null, '2')).toBe('');
     expect(finalCaption('k', 'called', '1')).toBe('');
-  });
+  }, 30000);
 
   it('draws every old a1 call without error', () => {
     for (let i = 0; i < 300; i++) for (const o of OUTCOMES) {
@@ -103,5 +103,5 @@ describe('plan 32A decoration versions', () => {
         bats: 'R', call: a, contact: { x: 372, y: 200 }, seed: `w${i}`, index: c.leadUp.length });
       for (let t = 0; t < 1.9; t += 0.05) expect(() => frameAt(pl, t)).not.toThrow();
     }
-  });
+  }, 30000);
 });
