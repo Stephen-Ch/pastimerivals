@@ -83,7 +83,7 @@
       <main class="flex scene-wrap">
         <h1 #screenTitle tabindex="-1" class="sr-only">At bat</h1>
         @if (pending(); as pr) {
-          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [art]="sceneArt()" [call]="sceneCall()" (done)="sceneDone()" />
+          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [side]="sceneArt()" [call]="sceneCall()" (done)="sceneDone()" />
         }
       </main>
     }

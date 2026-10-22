@@ -1,6 +1,6 @@
 import { callFor, countFor, finalCaption, hitsFrom, OUTCOMES, resolveDeco } from './logic';
 import { V1_FIXTURE } from './logic-v1-fixture';
-import { ballAt, ARRIVE_S, SPLIT_END_S } from './pitch-scene';
+import { frameAt, planPitch } from './pitch-scene';
 
 const h = (s: string, off: number) => { let x = off >>> 0; for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619) >>> 0; } return x.toString(16); };
 
@@ -96,14 +96,12 @@ describe('plan 32A decoration versions', () => {
     expect(finalCaption('k', 'called', '1')).toBe('');
   });
 
-  it('draws foul outs toward their fielder, and old a1 calls without error', () => {
-    const third = ballAt(SPLIT_END_S - 0.05, 'out', 'R', 'R', [0.5, 0.5, 0.5], 'foul', 1);
-    const first = ballAt(SPLIT_END_S - 0.05, 'out', 'R', 'R', [0.5, 0.5, 0.5], 'foul', -1);
-    expect(third.x).toBeGreaterThan(80); expect(first.x).toBeLessThan(20);
-    expect(third.y).toBeLessThan(0);
+  it('draws every old a1 call without error', () => {
     for (let i = 0; i < 300; i++) for (const o of OUTCOMES) {
       const c = countFor(o, `w${i}`, '1'), a = callFor(o, `w${i}`, c, 'B', 'R', 'R', '1');
-      expect(() => ballAt(ARRIVE_S + 0.3, o === 'oip' ? 'out' : 'hit', 'R', 'R', [0.5, 0.5, 0.5], a.trajectory ?? null, 1)).not.toThrow();
+      const pl = planPitch({ m: o === 'oip' ? 'out' : o === 'k' ? 'miss' : o === 'bb' ? 'take' : o === 'hbp' ? 'hbp' : 'hit', kind: null, isFinal: true, outcome: o, era: '1990-2025',
+        bats: 'R', call: a, contact: { x: 372, y: 200 }, seed: `w${i}`, index: c.leadUp.length });
+      for (let t = 0; t < 1.9; t += 0.05) expect(() => frameAt(pl, t)).not.toThrow();
     }
   });
 });

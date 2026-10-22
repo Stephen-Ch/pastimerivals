@@ -1,14 +1,17 @@
 import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
-import { DomSanitizer } from '@angular/platform-browser';
-import { Era, figure, PairArt } from './art';
+import { Era, SideArt } from './art';
 import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, Trajectory } from './logic';
 
-export type Motion = 'hit' | 'miss' | 'take' | 'hbp' | 'out' | 'look' | 'foul';
+// Plan 32C: side-on pitch scene. Batter only, seen from the first-base side (right-handed) or the third-base side
+// (left-handed: the whole panel is mirrored). Units are panel units: 760 x 480, x grows toward the pitcher.
+// Cell units of the art (520 x 480) map to panel units by x - 60. Rules: planning/33-MOTION-PHYSICS-REVIEW.md.
 
-/** Which animation plays for the final pitch (plan 10 table; plan 11 adds called strike three). */
+export type Motion = 'hit' | 'miss' | 'take' | 'hbp' | 'out' | 'look' | 'foul' | 'tip';
+
+/** Which animation plays for the final pitch. */
 export function motionFor(o: OutcomeKey, finalKind: FinalKind | null = null): Motion {
   switch (o) {
-    case 'k': return finalKind === 'called' ? 'look' : 'miss';   // plan 32A: a foul tip draws as a swing and miss here
+    case 'k': return finalKind === 'called' ? 'look' : finalKind === 'tip' ? 'tip' : 'miss';
     case 'bb': return 'take';
     case 'hbp': return 'hbp';
     case 'oip': return 'out';
@@ -21,277 +24,402 @@ export function leadMotion(k: PitchKind): Motion {
   return k === 'ball' ? 'take' : k === 'called' ? 'look' : k === 'swinging' ? 'miss' : 'foul';
 }
 
-export const SCENE_MS = 1600;
-export const LEAD_SPEED = 0.6;   // lead-up pitches play at 60% of the full length
-export const LEAD_MS = Math.round(SCENE_MS * LEAD_SPEED) + 150;
+export const PANEL_W = 760, PANEL_H = 480, CELL_X0 = 60, FOOT_Y = 470;
+export const PLATE_X = 240;            // plate centre (cell x 300)
+export const ENTER_X = 770;            // just past the pitcher's edge
+export const BALL_D = 16;              // a baseball is about 18 units at this scale; drawn a touch smaller
+/** Strike zone at the plate (knee hollow to mid-chest) and the bat line on the contact frame. */
+export const ZONE_TOP = 205, ZONE_BOTTOM = 360;
 
-/** Plan 19 split scene timeline (seconds at full speed). Pitcher: set, hands up, kick, peak, stride, cock, release, follow. */
-export const PITCHER_FRAMES: [number, number][] = [[0, 0], [0.25, 1], [0.45, 2], [0.6, 3], [0.75, 4], [0.9, 5], [1.05, 6], [1.2, 7]];
-export const RELEASE_S = 1.05;
-export const HANDOFF_S = 1.15;   // ball leaves the pitcher panel, enters the batter panel
-export const ARRIVE_S = 1.5;     // ball reaches the plate; contact frame shows here (plan 27: 0.35 s flight, was 0.25)
-export const SPLIT_END_S = 2.2;   // plan 27: was 2.4 (hit flights end by 2.15)
-export const LEAD_START_S = 0.6;  // lead-up pitches come from the stretch: set, short leg lift, stride
-/** Plan 21: stretch delivery for lead-up pitches (set, kick, stride, cock, release, follow). */
-export const STRETCH_FRAMES: [number, number][] = [[0, 0], [0.66, 2], [0.75, 4], [0.9, 5], [1.05, 6], [1.2, 7]];
-export const LEAD_DURATION = 0.8; // lead-up pitches take 80% of the remaining time
-export const SPLIT_MS = SPLIT_END_S * 1000;
-export const SPLIT_LEAD_MS = Math.round((SPLIT_END_S - LEAD_START_S) * LEAD_DURATION * 1000) + 150;
+export type PitchType = 'fast' | 'slider' | 'change' | 'curve';
+/** Seconds from the pitcher's edge to the plate (curve about 1.25 x the fastball). */
+export const PITCH_TIME: Record<PitchType, number> = { fast: 0.30, slider: 0.33, change: 0.36, curve: 0.375 };
+/** Visible drop in the last third, units [min, max]. */
+const DROP: Record<PitchType, [number, number]> = { fast: [0, 6], slider: [15, 25], change: [20, 30], curve: [35, 50] };
+/** Downward angle of the straight part, degrees [min, max]. */
+const ANGLE: Record<PitchType, [number, number]> = { fast: [4, 6], slider: [6, 8], change: [7, 9], curve: [8, 11] };
 
-/** Batter frames by motion. Stance, load, stride, swing, contact, follow, take, bail. */
-export function batterFrames(m: Motion): [number, number][] {
-  switch (m) {
-    case 'hit': case 'out': case 'foul': return [[0, 0], [1.1, 1], [1.3, 2], [1.4, 3], [ARRIVE_S, 4], [1.65, 5]];
-    case 'miss': return [[0, 0], [1.1, 1], [1.3, 2], [1.4, 3], [1.55, 5]];
-    case 'take': return [[0, 0], [ARRIVE_S, 6]];
-    case 'look': return [[0, 0]];   // called strike: he never moves (the take frame draws its own ball)
-    case 'hbp': return [[0, 0], [ARRIVE_S, 7]];
-  }
+/** Timeline of one pitch (seconds). Lead-up pitches use a short version. */
+export interface Timeline { enter: number; end: number; }
+export const FINAL_TL: Timeline = { enter: 0.5, end: 1.9 };
+export const LEAD_TL: Timeline = { enter: 0.2, end: 0.95 };
+
+function stream(prefix: string, seed: string): () => number {
+  let h = 2166136261;
+  for (const ch of `${prefix}:${seed}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  let a = h >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
-
-export function frameAt(table: [number, number][], t: number): number {
-  let f = table[0][1];
-  for (const [s, x] of table) if (t >= s) f = x;
-  return f;
-}
-
-/** ring: 0..1 progress of the mitt "pop" after a pitch he does not hit (plan 27). */
-export interface BallPos { panel: 'pit' | 'bat' | null; x: number; y: number; d: number; o: number; ring?: number; }
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
 const clamp01 = (u: number) => Math.max(0, Math.min(1, u));
+const rad = (d: number) => (d * Math.PI) / 180;
 
-/** Stable 0..1 numbers for a pitch (plan 21): same seed and pitch index always give the same location. */
-export function pitchRand(seed: string, index: number): [number, number, number] {
-  let h = 2166136261;
-  for (const c of `${seed}:${index}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
-  const next = () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0) % 10000) / 10000;
-  return [next(), next(), next()];
+/** Decoration-only random numbers for one pitch (stream p1; never touches counts or calls). */
+export function pitchRand(seed: string, index: number): number[] {
+  const r = stream('p1', `${seed}:${index}`);
+  return Array.from({ length: 8 }, () => r());
 }
 
-/** Screen side a batted ball leaves toward, seen from the pitcher: left field is the viewer's right (+1). */
-export function exitSide(call: Call | null): number {
-  if (!call) return 0;
-  const bySpot: Record<string, number> = { left: 1, 'left-center': 0.5, center: 0, 'right-center': -0.5, right: -1 };
-  if (call.spot) return bySpot[call.spot];
-  const byFielder: Record<string, number> = { '3B': 1, SS: 0.5, LF: 1, '2B': -0.5, '1B': -1, RF: -1, P: 0, C: 0, CF: 0 };
-  return byFielder[call.fielder ?? ''] ?? 0;
+/** Pitch type by the pitcher's era (sliders rare before 1950). */
+export function pitchTypeFor(rnd: number, era: Era): PitchType {
+  const early = era === '1901-1919' || era === '1920-1945';
+  if (early) return rnd < 0.68 ? 'fast' : rnd < 0.73 ? 'slider' : rnd < 0.86 ? 'change' : 'curve';
+  return rnd < 0.55 ? 'fast' : rnd < 0.75 ? 'slider' : rnd < 0.88 ? 'change' : 'curve';
 }
 
-/** Plan 27: the plate sits beside the batter (centre 79% for a right-handed batter as drawn; mirrored for lefties). */
-export const PLATE_OFFSET = 29;
-
-/** Where the pitch crosses the plate, in % of the batter panel (screen space).
- *  Plan 27: every pitch he does not hit passes over or beside the plate, clear of his body
- *  (checked against the art by tools/check-ball-path.py; keep the boxes in step with it). */
-export function pitchTarget(m: Motion, bats: string, rand: [number, number, number]): { x: number; y: number } {
-  const dir = bats === 'L' ? -1 : 1;
-  const batterX = 50 - 12 * dir, plateX = 50 + PLATE_OFFSET * dir;
-  const [a, b, c] = rand;
+export interface Pt { x: number; y: number; }
+/** Where the pitch crosses the plate, by what happens to it. */
+export function pitchTarget(m: Motion, kind: 'ball' | 'strike' | null, r: number[], contact: Pt): Pt {
   switch (m) {
-    case 'hit': case 'out': case 'foul': return { x: 50 + 15 * dir, y: 55 };   // the art's bat meets it here
-    case 'hbp': return { x: batterX + 4 * dir, y: 50 };
-    case 'look': return { x: plateX + (-5 + a * 10) * dir, y: 46 + b * 16 };   // over the plate, chest to knees
-    case 'miss': return { x: plateX + (-5 + a * 10) * dir, y: 66 + b * 4 };    // over the plate, under the bat line
-    case 'take': {                                                              // a ball: wide, high or low
-      if (c < 0.45) return { x: plateX + (9 + a * 6) * dir, y: 48 + b * 14 };
-      if (c < 0.7) return { x: plateX + (-5 + a * 10) * dir, y: 32 + b * 4 };
-      return { x: plateX + (-3 + a * 10) * dir, y: 70 + b * 3 };
-    }
+    case 'hit': case 'out': case 'foul': case 'tip': return contact;
+    case 'miss': return r[2] < 0.35 ? { x: PLATE_X, y: lerp(135, 165, r[3]) } : { x: PLATE_X, y: lerp(305, 345, r[3]) };
+    case 'hbp': return r[2] < 0.5 ? { x: 190, y: 195 } : { x: 205, y: 300 };   // front shoulder or front hip
+    case 'look': return { x: PLATE_X, y: lerp(ZONE_TOP + 12, ZONE_BOTTOM - 12, r[3]) };
+    default: return kind === 'strike' ? { x: PLATE_X, y: lerp(ZONE_TOP + 12, ZONE_BOTTOM - 12, r[3]) }
+      : r[2] < 0.05 ? { x: PLATE_X, y: lerp(110, 130, r[3]) }                    // rare one up at the head
+      : r[2] < 0.5 ? { x: PLATE_X, y: lerp(175, 198, r[3]) }                     // most high balls just above the zone
+      : r[2] < 0.9 ? { x: PLATE_X, y: lerp(368, 395, r[3]) } : { x: PLATE_X, y: lerp(420, 440, r[3]) };   // just below the knee, a few in the dirt
   }
 }
 
-/** Ball after contact, by trajectory. Things heading to the outfield come toward the camera (behind the pitcher) and grow. */
-function flight(tr: Trajectory, side: number, from: { x: number; y: number }, dir: number, batterX: number, u: number): BallPos {
-  const e = 1 - (1 - u) * (1 - u);
-  const to = (x: number, y: number, d: number, o = 1): BallPos => ({ panel: 'bat', x: lerp(from.x, x, e), y: lerp(from.y, y, e), d: lerp(4.5, d, e), o });
+export interface Pitch { type: PitchType; target: Pt; start: Pt; drop: number; tPlate: number; tTarget: number; tSwing: number; enter: number; }
+/** The pitch path, worked back from its target; start clamped to y 20 or lower so it always enters from the side. */
+export function makePitch(m: Motion, kind: 'ball' | 'strike' | null, r: number[], era: Era, contact: Pt, tl: Timeline): Pitch {
+  const type = pitchTypeFor(r[0], era);
+  const target = pitchTarget(m, kind, r, contact);
+  const drop = lerp(DROP[type][0], DROP[type][1], r[4]);
+  let ang = lerp(ANGLE[type][0], ANGLE[type][1], r[5]);
+  const dx = ENTER_X - target.x;
+  let sy = target.y - dx * Math.tan(rad(ang)) - drop;
+  if (sy < 20) { ang = Math.max(0, Math.atan((target.y - drop - 20) / dx) * 180 / Math.PI); sy = target.y - dx * Math.tan(rad(ang)) - drop; }
+  const speed = (ENTER_X - PLATE_X) / PITCH_TIME[type];
+  return { type, target, start: { x: ENTER_X, y: sy }, drop, tPlate: tl.enter + PITCH_TIME[type], tTarget: tl.enter + dx / speed,
+    tSwing: tl.enter + (ENTER_X - contact.x) / speed, enter: tl.enter };
+}
+
+/** Ball on the incoming path at time t (may run past the target toward the catcher's edge). */
+export function pitchAt(p: Pitch, t: number): Pt {
+  const dur = p.tTarget - p.enter;
+  const u = (t - p.enter) / dur;                       // 0 at entry, 1 at target, >1 beyond
+  const x = lerp(p.start.x, p.target.x, u);
+  const lineY = lerp(p.start.y, p.target.y - p.drop, u);
+  const late = clamp01((u - 2 / 3) * 3);               // drop shows in the last third, keeps going after
+  const dropNow = p.drop * (u <= 1 ? late * late : 1 + (u - 1) * 2);
+  return { x, y: lineY + dropNow };
+}
+
+export interface BallPos { x: number; y: number; d: number; o: number; }
+const HIDDEN: BallPos = { x: 0, y: 0, d: 0, o: 0 };
+
+/** Flight after contact, by trajectory. Angles up from flat toward the pitcher; 90+ = up and back. */
+export interface Flight { kind: Trajectory | 'tip' | 'leadFoul' | 'hbpDrop'; angle: number; time: number; bounceX?: number; depth: number; }
+export function makeFlight(tr: Trajectory | null, m: Motion, isFinal: boolean, hr: boolean, itp: boolean, deep: boolean, depth: number, r: number[]): Flight {
+  const a = (lo: number, hi: number) => lerp(lo, hi, r[6]);
+  if (m === 'tip') return { kind: 'tip', angle: 180 + a(3, 6), time: 0.3, depth: 0 };
+  if (!isFinal && m === 'foul') return r[7] < 0.6 ? { kind: 'leadFoul', angle: a(120, 155), time: 0.3, depth: 0 } : { kind: 'leadFoul', angle: 180 - a(2, 6), time: 0.3, depth: 0 };
   switch (tr) {
-    case 'ground': return u < 0.35
-      ? { panel: 'bat', x: lerp(from.x, from.x + side * 6, u / 0.35), y: lerp(from.y, 88, u / 0.35), d: 5, o: 1 }
-      : { panel: 'bat', x: lerp(from.x + side * 6, 50 + side * 70, (u - 0.35) / 0.65), y: lerp(88, 97, (u - 0.35) / 0.65), d: lerp(5, 11, (u - 0.35) / 0.65), o: 1 };
-    case 'line': return to(50 + side * 75, 42, 13);
-    case 'bloop': return to(50 + side * 40, 8, 7);
-    case 'pop': return to(from.x, -10, 4.5);
-    case 'foul': return side
-      ? to(50 + side * 60, -12, 5)                               // plan 32A: foul out to 3B/LF or 1B/RF, up and toward that side
-      : to(batterX - 10 * dir, -8, 2.5, 1 - u);   // back over his shoulder, away from the camera (catcher, lead-up fouls)
-    default: return to(50 + side * 45, -20, 11);                   // fly
+    case 'ground': return { kind: 'ground', angle: -20, time: 0.3, bounceX: lerp(500, 580, r[7]), depth };
+    case 'line': return itp ? { kind: 'line', angle: a(12, 18), time: 0.3, depth } : { kind: 'line', angle: a(10, 22), time: 0.3, depth };
+    case 'bloop': return { kind: 'bloop', angle: a(25, 35), time: 0.4, depth };
+    case 'pop': return { kind: 'pop', angle: a(60, 80), time: 0.4, depth };
+    case 'foul': return { kind: 'foul', angle: depth === 0 ? a(95, 120) : a(50, 75), time: 0.4, depth };
+    default:
+      if (hr) return { kind: 'fly', angle: a(26, 30), time: 0.25, depth };
+      if (deep) return { kind: 'fly', angle: a(30, 38), time: 0.3, depth };   // doubles and triples in the air
+      return { kind: 'fly', angle: a(40, 50), time: 0.35, depth };
   }
 }
 
-/** Where the ball is at scene time t, in % of the panel (x, y, diameter d as % of panel width, opacity o).
- *  Screen space: never mirrored. dir = side of the plate (+1 right for a right-handed batter seen from the mound). */
-export function ballAt(t: number, m: Motion, throws: string, bats: string, rand: [number, number, number] = [0.5, 0.5, 0.5], tr: Trajectory | null = null, side = 0): BallPos {
-  const none: BallPos = { panel: null, x: 0, y: 0, d: 0, o: 0 };
-  if (t < HANDOFF_S) return none;   // the release frame draws the ball in the pitcher's hand
-  const dir = bats === 'L' ? -1 : 1;
-  const batterX = 50 - 12 * dir;
-  const startX = 50 + (throws === 'L' ? -10 : 10);
-  const end = pitchTarget(m, bats, rand);
-  if (t < ARRIVE_S) {  // from behind the pitcher (bottom) toward the plate, shrinking
-    const u = clamp01((t - HANDOFF_S) / (ARRIVE_S - HANDOFF_S)), e = u * u;
-    return { panel: 'bat', x: lerp(startX, end.x, e), y: lerp(104, end.y, e), d: lerp(16, 4.5, e), o: 1 };
+/** Ball after contact at s seconds past contact. Returns null once it has left the panel. */
+export function flightAt(f: Flight, from: Pt, s: number): BallPos | null {
+  if (s < 0) return null;
+  const grow = (u: number) => BALL_D * (1 + f.depth * 0.3 * u);   // depth -1 far side shrinks, +1 near side grows
+  const u = s / f.time;
+  if (f.kind === 'ground') {
+    const bx = f.bounceX ?? 540, t1 = 0.4;   // 40% of the time to reach the dirt, the rest skimming out
+    if (u <= t1) { const v = u / t1; return { x: lerp(from.x, bx, v), y: lerp(from.y, FOOT_Y - BALL_D / 2, v * v), d: grow(u), o: 1 }; }
+    const v = (u - t1) / (1 - t1);
+    const x = lerp(bx, PANEL_W + 30, v);
+    const hop = Math.sin(Math.min(1, v * 1.6) * Math.PI) * 26;   // one low hop after the bounce
+    const p = { x, y: FOOT_Y - BALL_D / 2 - hop, d: grow(u), o: 1 };
+    return x > PANEL_W + 20 ? null : p;
   }
+  if (f.kind === 'bloop') {
+    const vx = (PANEL_W + 30 - from.x) / f.time, vy = Math.tan(rad(f.angle)) * vx, g = (2 * vy) / (f.time * 0.75);
+    const p = { x: from.x + vx * s, y: from.y - vy * s + 0.5 * g * s * s, d: grow(u), o: 1 };
+    return p.x > PANEL_W + 20 ? null : p;
+  }
+  if (f.kind === 'hbpDrop') {
+    const v = clamp01(u);
+    return u > 1 ? null : { x: from.x - 60 * v, y: lerp(from.y, FOOT_Y - BALL_D / 2, Math.min(1, v * 1.6)), d: BALL_D, o: 1 - Math.max(0, v - 0.6) / 0.4 };
+  }
+  // straight lines: speed set so the ball reaches the edge it is aimed at in the stated time
+  const dx = Math.cos(rad(f.angle)), dy = -Math.sin(rad(f.angle));
+  const toX = dx > 1e-6 ? (PANEL_W + 30 - from.x) / dx : dx < -1e-6 ? (-30 - from.x) / dx : Infinity;
+  const toY = dy < -1e-6 ? (-30 - from.y) / dy : dy > 1e-6 ? (FOOT_Y - from.y) / dy : Infinity;
+  const dist = Math.min(toX, toY);
+  const v = dist / f.time;
+  const p = { x: from.x + dx * v * s, y: from.y + dy * v * s, d: grow(u), o: 1 };
+  return s > f.time ? null : p;
+}
+
+/** Which edge a finished flight left by: 'pitcher', 'catcher', 'top' or 'dirt'. */
+export function exitEdge(f: Flight, from: Pt): string {
+  let last: BallPos | null = null;
+  for (let s = 0; s <= f.time + 0.001; s += 0.005) { const p = flightAt(f, from, s); if (p) last = p; }
+  if (!last) return 'none';
+  if (last.y < 20) return 'top';
+  if (last.x > PANEL_W - 30) return 'pitcher';
+  if (last.x < 30) return 'catcher';
+  return 'dirt';
+}
+
+/** Depth cue for a fair or foul ball: +1 near side of the field (grows), -1 far side (shrinks), 0 none. */
+export function depthFor(call: Call | null, bats: 'L' | 'R'): number {
+  if (!call) return 0;
+  const leftField = call.spot ? call.spot === 'left' || call.spot === 'left-center' : call.fielder ? ['3B', 'LF', 'SS'].includes(call.fielder) : null;
+  const rightField = call.spot ? call.spot === 'right' || call.spot === 'right-center' : call.fielder ? ['1B', 'RF', '2B'].includes(call.fielder) : null;
+  if (!leftField && !rightField) return 0;
+  // camera on the first-base side for a right-handed batter: left field is far
+  const far = bats === 'R' ? !!leftField : !!rightField;
+  return far ? -1 : 1;
+}
+
+/** Batter frame at time t. Frames: 0 stance, 1 load, 3 contact, 4 follow, 5 flinch, 6 hit by pitch, 7 drops bat. */
+export function batterFrame(m: Motion, p: Pitch, t: number, isFinal: boolean, highBall: boolean): number {
+  if (t < p.enter - 0.3) return 0;
+  if (t < p.enter) return 1;                       // leg kick before the ball appears
+  if (t < p.enter + 0.06) return 2;                // foot down, hands back as it appears
   switch (m) {
-    case 'hit': case 'out': case 'foul': {
-      const HIDE = 0.1;   // the contact frame draws its own ball for a moment
-      if (t < ARRIVE_S + HIDE) return { panel: 'bat', x: end.x, y: end.y, d: 4.5, o: 0 };
-      const dur = tr === 'line' ? 0.4 : 0.55;
-      return flight(tr ?? (m === 'foul' ? 'foul' : 'fly'), side, end, dir, batterX, clamp01((t - ARRIVE_S - HIDE) / dur));
-    }
-    case 'miss': case 'look': case 'take': {   // plan 27: into the catcher's mitt beside him, held so the eye can find it
-      const s = t - ARRIVE_S;
-      const v = clamp01(s / MITT_DRIFT_S);
-      const o = s < MITT_HOLD_S ? 1 : 1 - clamp01((s - MITT_HOLD_S) / MITT_FADE_S);
-      return { panel: 'bat', x: end.x, y: end.y - 1.5 * v, d: lerp(4.5, 4, v), o, ring: s <= MITT_RING_S ? s / MITT_RING_S : undefined };
-    }
-    default: {                   // hbp: hits him, drops and fades (the bail frame's own ball was removed)
-      const v = clamp01((t - ARRIVE_S) / 0.4);
-      return { panel: 'bat', x: end.x + 3 * dir * v, y: end.y + 12 * v, d: 4.5, o: 1 - v };
+    case 'hit': case 'out': case 'foul': case 'tip': case 'miss':
+      return t < p.tSwing - 0.03 ? 2 : t < p.tSwing + 0.12 ? 3 : 4;
+    case 'hbp':
+      return t < p.tTarget ? 2 : !isFinal || t < p.tTarget + 0.45 ? 6 : 7;
+    default: {   // take, look
+      if (t < p.tPlate + 0.08) return 2;
+      if (isFinal && m === 'take') return t < p.tPlate + 0.45 ? (highBall ? 5 : 0) : 7;   // ball four: drops the bat
+      return highBall && t < p.tPlate + 0.4 ? 5 : 0;
     }
   }
 }
 
-/** Plan 27 mitt timing after arrival (seconds): settle, stay fully visible until HOLD, fade; ring pops at the start. */
-export const MITT_DRIFT_S = 0.15, MITT_HOLD_S = 0.5, MITT_FADE_S = 0.15, MITT_RING_S = 0.25;
+// ---- Effects ----
+export interface FxLine { x1: number; y1: number; x2: number; y2: number; o: number; }
+export interface FxWord { lines: string[]; x: number; y: number; size: number; rot: number; scale: number; o: number; fill: string; }
+export interface Fx { lines: FxLine[]; burst?: { x: number; y: number; points: string; o: number }; word?: FxWord; shake: number; }
+export const FX_NONE: Fx = { lines: [], shake: 0 };
+export const BURST_S = 0.12;   // the contact frame shows from tSwing - 0.03 to tSwing + 0.12
+
+/** The word for the final pitch, or null (outs and bloop singles get none). */
+export function fxWord(o: OutcomeKey, m: Motion, tr: Trajectory | null, itp: boolean): string[] | null {
+  switch (o) {
+    case 'k': return m === 'look' ? ['STRIKE', 'THREE!'] : ['WHIFF!'];
+    case 'bb': return ['BALL FOUR'];
+    case 'hbp': return ['OUCH!'];
+    case 'hr': return itp ? ['CRACK!'] : ['GONE!'];
+    case 'oip': return null;
+    default: return tr === 'bloop' ? null : ['CRACK!'];
+  }
+}
+
+/** Solid contact gets the starburst: hits except bloops, outs except pops; never fouls or tips. */
+export function solidContact(m: Motion, tr: Trajectory | null): boolean {
+  if (m === 'hit') return tr !== 'bloop';
+  if (m === 'out') return tr !== 'pop' && tr !== 'foul';
+  return false;
+}
+
+export function starPoints(cx: number, cy: number, r: number): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 24; i++) {
+    const a = (Math.PI * 2 * i) / 24 - Math.PI / 2, rr = i % 2 ? r * 0.42 : r * (i % 4 ? 0.8 : 1);
+    pts.push(`${(cx + Math.cos(a) * rr).toFixed(1)},${(cy + Math.sin(a) * rr).toFixed(1)}`);
+  }
+  return pts.join(' ');
+}
+
+/** Ink lines behind the ball: start at its back edge and point back along its path (plan 31 v2.3 style). */
+export function trail(cur: BallPos, prev: Pt, o = 1): FxLine[] {
+  const dx = cur.x - prev.x, dy = cur.y - prev.y, len = Math.hypot(dx, dy);
+  if (len < 0.5 || cur.o <= 0) return [];
+  const vx = dx / len, vy = dy / len, nx = -vy, ny = vx, r = cur.d / 2;
+  return [-0.6, 0, 0.6].map(k => {
+    const back = Math.sqrt(1 - k * k) * r;
+    const l = Math.min(60, Math.max(22, r * 3.2)) * (k === 0 ? 1 : 0.75);
+    const sx = cur.x - vx * (back + 1.5) + nx * r * k, sy = cur.y - vy * (back + 1.5) + ny * r * k;
+    return { x1: sx, y1: sy, x2: sx - vx * l, y2: sy - vy * l, o };
+  });
+}
+
+// ---- The whole pitch on one clock ----
+export interface Frame { ball: BallPos; batter: number; fx: Fx; }
+export interface PitchSetup {
+  m: Motion; kind: 'ball' | 'strike' | null; isFinal: boolean; outcome: OutcomeKey; era: Era; bats: 'L' | 'R';
+  call: Call | null; contact: Pt; seed: string; index: number;
+}
+export interface Plan { p: Pitch; f: Flight | null; tl: Timeline; r: number[]; s: PitchSetup; highBall: boolean; exitT: number; }
+
+export function planPitch(s: PitchSetup): Plan {
+  const tl = s.isFinal ? FINAL_TL : LEAD_TL;
+  const r = pitchRand(s.seed, s.index);
+  const p = makePitch(s.m, s.kind, r, s.era, s.contact, tl);
+  const tr = s.call?.trajectory ?? null;
+  let f: Flight | null = null;
+  if (s.m === 'hit' || s.m === 'out' || s.m === 'foul' || s.m === 'tip') {
+    const deep = s.outcome === 'double' || s.outcome === 'triple';
+    f = makeFlight(tr, s.m, s.isFinal, s.outcome === 'hr', !!s.call?.insideTheParkHr, deep, depthFor(s.call, s.bats), r);
+  } else if (s.m === 'hbp') f = { kind: 'hbpDrop', angle: 0, time: 0.5, depth: 0 };
+  const highBall = (s.m === 'take' || s.m === 'look') && p.target.y < 140;   // flinch only at a pitch up at the head
+  // when the ball is gone (for the word): flight end, or the pitch leaving the catcher's edge
+  let exitT = tl.end;
+  if (f) exitT = p.tTarget + f.time;
+  else { const v = (ENTER_X - PLATE_X) / PITCH_TIME[p.type]; exitT = p.tPlate + 60 / v; }
+  return { p, f, tl, r, s, highBall, exitT };
+}
+
+export function frameAt(pl: Plan, t: number): Frame {
+  const { p, f, s } = pl;
+  const batter = batterFrame(s.m, p, t, s.isFinal, pl.highBall);
+  if (t >= pl.tl.end) return { ball: HIDDEN, batter, fx: FX_NONE };
+  let ball: BallPos = HIDDEN, prev: Pt | null = null;
+  if (t >= p.enter && (!f || t < p.tTarget)) {
+    const c = pitchAt(p, t);
+    const fade = c.x >= PLATE_X - 40 ? 1 : clamp01((c.x - (PLATE_X - 60)) / 20);   // gone 40-60 units past the plate (no catcher drawn)
+    if (fade > 0) { ball = { ...c, d: BALL_D, o: fade }; prev = pitchAt(p, Math.max(p.enter, t - 0.03)); }
+  } else if (f && t >= p.tTarget) {
+    const cur = flightAt(f, p.target, t - p.tTarget);
+    if (cur) { ball = cur; prev = flightAt(f, p.target, Math.max(0, t - p.tTarget - 0.03)) ?? p.target; }
+  }
+  if (f?.kind === 'tip' && t >= p.tTarget) {
+    // a foul tip carries on past the bat on almost the same line
+    const dir = rad(f.angle), v = (ENTER_X - PLATE_X) / PITCH_TIME[p.type], s2 = t - p.tTarget;
+    const x = p.target.x + Math.cos(dir) * v * s2, y = p.target.y - Math.sin(dir) * v * s2;
+    const fo = x >= PLATE_X - 40 ? 1 : clamp01((x - (PLATE_X - 60)) / 20);
+    ball = fo > 0 ? { x, y, d: BALL_D, o: fo } : HIDDEN;
+    prev = { x: p.target.x + Math.cos(dir) * v * Math.max(0, s2 - 0.03), y: p.target.y - Math.sin(dir) * v * Math.max(0, s2 - 0.03) };
+  }
+  const fx: Fx = { lines: ball.o > 0 && prev && t > p.enter + 0.03 ? trail(ball, prev) : [], shake: 0 };
+  const tr = s.call?.trajectory ?? null;
+  if (solidContact(s.m, tr) && s.isFinal && t >= p.tSwing - 0.03 && t < p.tSwing + BURST_S) {   // exactly while the contact frame shows
+    const u = clamp01((t - p.tSwing + 0.03) / (BURST_S + 0.03));
+    fx.burst = { x: p.target.x, y: p.target.y, points: starPoints(p.target.x, p.target.y, 44 + 14 * Math.min(1, u * 3)), o: 1 };
+  }
+  const words = s.isFinal ? fxWord(s.outcome, s.m, tr, !!s.call?.insideTheParkHr) : null;
+  const w0 = Math.max(p.tTarget + 0.2, pl.exitT + 0.02);
+  if (words && t >= w0 && w0 < pl.tl.end - 0.15) {
+    const u = (t - w0) / 0.15;
+    const longest = Math.max(...words.map(x => x.length));
+    const size = Math.min(s.outcome === 'hr' ? 72 : 62, 290 / (longest * 0.66));
+    fx.word = {
+      lines: words, x: 175, y: words.length > 1 ? 385 : 418, size, rot: (pl.r[1] - 0.5) * 8,
+      scale: u < 0.6 ? 0.6 + (u / 0.6) * 0.55 : u < 1 ? 1.15 - ((u - 0.6) / 0.4) * 0.15 : 1,
+      o: t > pl.tl.end - 0.2 ? Math.max(0, (pl.tl.end - t) / 0.2) : 1, fill: s.outcome === 'hr' && !s.call?.insideTheParkHr ? '#ffd23f' : '#ffffff',
+    };
+  }
+  if ((s.outcome === 'hr' && s.m === 'hit') || s.m === 'hbp') {
+    const u = (t - p.tTarget) / 0.2;
+    if (u >= 0 && u < 1 && s.isFinal) fx.shake = Math.round(3 * Math.sin(u * Math.PI * 4) * (1 - u) * 100) / 100;
+  }
+  return { ball, batter, fx };
+}
 
 export function prefersReducedMotion(): boolean {
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
 
-/** Batter's-eye view of the whole at-bat: a short count for show, then the real result. */
+/** Side-on view of the whole at-bat: a short count for show, then the real result. */
 @Component({
   selector: 'pr-pitch-scene',
   template: `
-    @for (k of [step()]; track k) {
-      @if (art(); as a) {
-        <div class="split" [class.dim]="dim()">
-          <div class="panel ppanel">
-            <div class="spr" [class.mirror]="a.pit.mirror" [style.background-image]="'url(' + a.pit.sheet + ')'" [style.--f]="pFrame()" aria-hidden="true"></div>
-            @if (ball().panel === 'pit') { <span class="sball" [style.left.%]="ball().x" [style.top.%]="ball().y" [style.width.%]="ball().d" [style.opacity]="ball().o"></span> }
-          </div>
-          <div class="panel bpanel">
-            <div class="field" [class.mirror]="a.bat.mirror">
-              <svg class="plate" viewBox="0 0 20 8" aria-hidden="true"><path d="M1 1 L19 1 L19 4 L10 7.5 L1 4 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width=".8"/></svg>
-              <div class="spr" [style.background-image]="'url(' + a.bat.sheet + ')'" [style.--f]="bFrame()" aria-hidden="true"></div>
-            </div>
-            @if (ball().panel === 'bat') { <span class="sball" [style.left.%]="ball().x" [style.top.%]="ball().y" [style.width.%]="ball().d" [style.opacity]="ball().o"></span> }
-            @if (ball().ring !== undefined) { <span class="ring" [style.left.%]="ball().x" [style.top.%]="ball().y" [style.--r]="ball().ring"></span> }
-            <div class="board"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span></div>
-          </div>
-        </div>
-      } @else {
-      <div class="scene" [class]="'scene m-' + motion()" [style.--k]="speed()">
-        <svg viewBox="0 0 300 190" width="100%" height="100%" aria-hidden="true">
-          <defs>
-            <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#cfd9e3"/><stop offset="1" stop-color="#e9e3d2"/></linearGradient>
-          </defs>
-          <rect width="300" height="190" fill="url(#sky)"/>
-          <path d="M0 110 Q150 90 300 110 L300 190 L0 190 Z" fill="#7d9a5f"/>
-          <ellipse cx="150" cy="112" rx="34" ry="7" fill="#b48a5a"/>
-          <g class="pitcher" [innerHTML]="pitcher()"></g>
-          <g class="ball-path"><circle class="ball" cx="152" cy="84" r="2.2" fill="#fbf8f1" stroke="#2b2a28" stroke-width="1.2" vector-effect="non-scaling-stroke"/></g>
-          <g [attr.transform]="bats() === 'L' ? 'translate(300 0) scale(-1 1)' : null"><g class="bat"><line x1="40" y1="200" x2="150" y2="150" stroke="#8a6a44" stroke-width="9" stroke-linecap="round"/></g></g>
+    @if (side(); as a) {
+      <div class="side" [class.mirror]="bats() === 'L'" aria-hidden="true">
+        <svg class="ground" viewBox="0 0 760 480" preserveAspectRatio="none">
+          <path d="M175 474 L305 474 L318 466 L188 466 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width="2"/>
         </svg>
-        <div class="board"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span></div>
+        <div class="shake" [style.transform]="frame().fx.shake ? 'translateX(' + frame().fx.shake + 'px)' : null">
+          <div class="bat" [style.background-image]="'url(' + a.sheet + ')'" [style.--f]="frame().batter"></div>
+          <svg class="fx" viewBox="0 0 760 480" preserveAspectRatio="none">
+            @if (frame().fx.burst; as b) { <polygon [attr.points]="b.points" [attr.opacity]="b.o" fill="#ffd23f" stroke="#1d1b19" stroke-width="3" stroke-linejoin="round"/> }
+            @for (l of frame().fx.lines; track $index) { <line [attr.x1]="l.x1" [attr.y1]="l.y1" [attr.x2]="l.x2" [attr.y2]="l.y2" [attr.opacity]="l.o" stroke="#1d1b19" stroke-width="3.5" stroke-linecap="round"/> }
+            @if (frame().ball.o > 0) { <circle class="ball" [attr.cx]="frame().ball.x" [attr.cy]="frame().ball.y" [attr.r]="frame().ball.d / 2" [attr.opacity]="frame().ball.o" fill="#fbf8f1" stroke="#2b2a28" stroke-width="2.5"/> }
+          </svg>
+        </div>
+        @if (frame().fx.word; as w) {
+          <svg class="words" viewBox="0 0 760 480" preserveAspectRatio="none">
+            <g class="word" [attr.transform]="'translate(' + (bats() === 'L' ? 760 - w.x : w.x) + ' ' + w.y + ') rotate(' + w.rot + ') scale(' + w.scale + ')'" [attr.opacity]="w.o">
+              <text text-anchor="middle" [attr.font-size]="w.size" [attr.fill]="w.fill" [attr.stroke-width]="w.size * 0.16">
+                @for (line of w.lines; track $index) { <tspan x="0" [attr.dy]="$index === 0 ? (w.lines.length > 1 ? -w.size * 0.15 : w.size * 0.35) : w.size * 0.95">{{ line }}</tspan> }
+              </text>
+            </g>
+          </svg>
+        }
       </div>
-      }
     }
     <div class="under">
-      <span class="caption" aria-live="polite">{{ board().caption }}</span>
+      <span class="caption" aria-live="polite"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span>@if (board().caption) { · {{ board().caption }} }</span>
       <button type="button" class="skip" (click)="finish()">Skip to result</button>
     </div>
   `,
   styles: `
     :host { display: block; margin-top: 14px; }
-    .scene { position: relative; width: 100%; aspect-ratio: 300 / 190; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
-    .board { position: absolute; top: 8px; right: 8px; background: #23312a; color: #f4efe2; border-radius: 8px; padding: 4px 10px; font: 600 1rem/1.2 ui-monospace, monospace; }
+    .side { position: relative; isolation: isolate; width: 100%; max-width: 560px; margin: 0 auto; aspect-ratio: 760 / 480; overflow: hidden;
+      border: 1px solid var(--border); border-radius: 14px; background: linear-gradient(#cfd9e3 0 52%, #7d9a5f 52% 92%, #b48a5a 92% 100%); }
+    @container (min-height: 1px) { .side { max-width: min(560px, calc((100cqh - 64px) * 760 / 480)); } }
+    .side.mirror { transform: scaleX(-1); }
+    .side.mirror .words { transform: scaleX(-1); }
+    .ground, .fx, .words { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .ground { z-index: 0; } .fx { z-index: 2; } .words { z-index: 3; }
+    .shake { position: absolute; inset: 0; }
+    .bat { position: absolute; z-index: 1; top: 0; height: 100%; left: calc(-60 / 760 * 100%); width: calc(520 / 760 * 100%);
+      background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
+    .words text { font-style: italic; font-weight: 900; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; letter-spacing: -.02em;
+      stroke: #1d1b19; stroke-linejoin: round; paint-order: stroke; }
     .under { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
     .caption { font-weight: 600; min-height: 1.2em; }
+    .count { font: 600 1rem/1.2 ui-monospace, monospace; }
     .skip { font: inherit; font-size: .9rem; cursor: pointer; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); padding: 10px 16px; min-height: 44px; }
-    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; max-width: min(460px, 75vh); margin: 0 auto; }
-    @container (min-height: 1px) { .split { max-width: min(460px, calc((100cqh - 64px) * 4 / 3)); } }
-    .panel { position: relative; isolation: isolate; aspect-ratio: 2 / 3; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; transition: opacity .2s; }
-    .ppanel { background: linear-gradient(#cfd9e3 0 58%, #7d9a5f 58% 100%); }
-    .ppanel::after { content: ''; position: absolute; left: 10%; right: 10%; bottom: 0; height: 12%; border-radius: 50% 50% 0 0; background: #b48a5a; }
-    .bpanel { background: linear-gradient(#c9d3c0 0 55%, #7d9a5f 55% 82%, #b48a5a 82% 100%); }
-    .split.dim .ppanel { opacity: .55; }
-    .field { position: absolute; inset: 0; z-index: 1; }
-    .field.mirror { transform: scaleX(-1); }
-    .plate { position: absolute; left: 71%; width: 16%; bottom: 4%; }   /* plan 27: beside the batter, centre 50% + PLATE_OFFSET */
-    .spr { position: absolute; z-index: 1; height: 90%; aspect-ratio: 364 / 480; bottom: 3%; left: 50%; transform: translateX(-50%);
-      background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
-    .spr.mirror { transform: translateX(-50%) scaleX(-1); }
-    .bpanel .spr { left: 38%; }
-    .sball { position: absolute; z-index: 2; aspect-ratio: 1; border-radius: 50%; background: #fbf8f1; border: 1.5px solid #2b2a28; transform: translate(-50%, -50%); }
-    .ring { position: absolute; z-index: 2; width: 6%; aspect-ratio: 1; border-radius: 50%; border: 2px solid #fbf8f1; pointer-events: none;
-      transform: translate(-50%, -50%) scale(calc(1 + var(--r, 0) * 1.4)); opacity: calc(.9 - var(--r, 0) * .9); }
-    .pitcher { animation: windup calc(.55s * var(--k, 1)) ease-in-out both; transform-origin: 150px 112px; }
-    .ball-path { transform-box: view-box; }
-    .ball { transform-box: fill-box; transform-origin: center; opacity: 0; }
-    .bat { transform-origin: 40px 200px; transform: rotate(-38deg); }
-    .m-hit .ball  { animation: approach calc(.55s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-in forwards, fly-out calc(.55s * var(--k, 1)) calc(1.05s * var(--k, 1)) ease-out forwards; }
-    .m-out .ball  { animation: approach calc(.55s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-in forwards, fly-short calc(.5s * var(--k, 1)) calc(1.05s * var(--k, 1)) ease-out forwards; }
-    .m-miss .ball, .m-look .ball { animation: approach calc(.55s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-in forwards, past calc(.3s * var(--k, 1)) calc(1.05s * var(--k, 1)) ease-in forwards; }
-    .m-foul .ball { animation: approach calc(.55s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-in forwards, foul-back calc(.45s * var(--k, 1)) calc(1.05s * var(--k, 1)) ease-out forwards; }
-    .m-take .ball { animation: wide calc(.7s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-in forwards; }
-    .m-hbp .ball  { animation: inside calc(.6s * var(--k, 1)) calc(.5s * var(--k, 1)) ease-in forwards; }
-    .m-hit .bat, .m-out .bat, .m-miss .bat, .m-foul .bat { animation: swing calc(.25s * var(--k, 1)) calc(.9s * var(--k, 1)) ease-out forwards; }
-    .m-hbp svg { animation: shake .3s calc(1.05s * var(--k, 1)); }
-    @keyframes windup { 0% { transform: translateY(0) } 40% { transform: translateY(-3px) rotate(-6deg) } 100% { transform: none } }
-    @keyframes approach { 0% { opacity: 1; transform: translate(0, 0) scale(1) } 100% { opacity: 1; transform: translate(0, 46px) scale(13) } }
-    @keyframes fly-out { 0% { opacity: 1; transform: translate(0, 46px) scale(13) } 100% { opacity: 1; transform: translate(90px, -70px) scale(.6) } }
-    @keyframes fly-short { 0% { opacity: 1; transform: translate(0, 46px) scale(13) } 100% { opacity: 1; transform: translate(-60px, 30px) scale(1.2) } }
-    @keyframes foul-back { 0% { opacity: 1; transform: translate(0, 46px) scale(13) } 100% { opacity: 0; transform: translate(-70px, -120px) scale(20) } }
-    @keyframes past { 0% { opacity: 1; transform: translate(0, 46px) scale(13) } 100% { opacity: 0; transform: translate(0, 90px) scale(26) } }
-    @keyframes wide { 0% { opacity: 1; transform: translate(0, 0) scale(1) } 100% { opacity: 1; transform: translate(95px, 40px) scale(12) } }
-    @keyframes inside { 0% { opacity: 1; transform: translate(0, 0) scale(1) } 100% { opacity: 1; transform: translate(-85px, 70px) scale(16) } }
-    @keyframes swing { from { transform: rotate(-38deg) } to { transform: rotate(32deg) } }
-    @keyframes shake { 0%, 100% { transform: none } 25% { transform: translateX(-4px) } 75% { transform: translateX(4px) } }
   `,
 })
 export class PitchScene {
+  /** Pitcher's era (pitch types). */
   readonly era = input.required<Era>();
   readonly throws = input<string>('R');
-  /** Left-handed batters swing from the other side of the screen. */
+  /** Side the batter hits from this at-bat (pass hitsFrom()). Left-handed batters mirror the whole panel. */
   readonly bats = input<string>('R');
   readonly outcome = input.required<OutcomeKey>();
   readonly seed = input<string>('');
   /** Plan 32A: decoration version (count and captions). */
   readonly deco = input<Deco>('1');
-  /** Plan 18: comic art for both players, already preloaded; null keeps the drawn figures. */
-  readonly art = input<PairArt | null>(null);
-  /** Plan 21: the announcer call for the final pitch (trajectory and direction of a batted ball). */
+  /** Plan 32C: the batter's side-on sheet, already preloaded; null = text only. */
+  readonly side = input<SideArt | null>(null);
+  /** Plan 21: the announcer call for the final pitch (trajectory and field). */
   readonly call = input<Call | null>(null);
   readonly done = output<void>();
-  private readonly sanitizer = inject(DomSanitizer);
 
   protected readonly count = computed(() => countFor(this.outcome(), this.seed(), this.deco()));
   /** Index into the lead-up pitches; equal to their length means the final pitch. */
   protected readonly step = signal(0);
   protected readonly board = signal<{ balls: number; strikes: number; caption: string }>({ balls: 0, strikes: 0, caption: '' });
-
-  protected readonly pFrame = signal(0);
-  protected readonly bFrame = signal(0);
-  protected readonly ball = signal<BallPos>({ panel: null, x: 0, y: 0, d: 0, o: 0 });
-  protected readonly dim = signal(false);
-  private raf = 0;
+  protected readonly frame = signal<Frame>({ ball: HIDDEN, batter: 0, fx: FX_NONE });
 
   protected readonly isFinal = computed(() => this.step() >= this.count().leadUp.length);
   protected readonly motion = computed<Motion>(() => {
     const c = this.count();
     return this.isFinal() ? motionFor(this.outcome(), c.finalKind) : leadMotion(c.leadUp[this.step()].kind);
   });
-  protected readonly speed = computed(() => (this.isFinal() ? 1 : LEAD_SPEED));
-  // Small pitcher on the mound, drawn with the same era figure as the scouting report.
-  protected readonly pitcher = computed(() => this.sanitizer.bypassSecurityTrustHtml(
-    figure(this.era(), 'pit', this.throws()).replace('<svg ', '<svg x="133" y="62" width="38" height="51" ')));
 
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private raf = 0;
   private finished = false;
 
   constructor() {
     inject(DestroyRef).onDestroy(() => { clearTimeout(this.timer); this.clearFrames(); });
-    // Start after inputs are bound; reduced motion goes straight to the result (deferred, never during render).
     this.timer = setTimeout(() => (prefersReducedMotion() ? this.finish() : this.next()), 0);
   }
 
@@ -299,53 +427,49 @@ export class PitchScene {
     if (this.raf) { (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : clearTimeout)(this.raf as never); this.raf = 0; }
   }
 
-  /** One clock per pitch (plan 19): both sprites and the ball are read from the same elapsed time. */
-  private runFrames() {
+  private contactPoint(): Pt {
+    const c = this.side()?.frames?.[3]?.contact;
+    return c ? { x: c[0] - CELL_X0, y: c[1] } : { x: 372, y: 200 };
+  }
+
+  private runPitch(): Plan {
     this.clearFrames();
-    const a = this.art();
-    if (!a) return;
     const final = this.isFinal(), m = this.motion();
-    const t0 = final ? 0 : LEAD_START_S, rate = final ? 1 : 1 / LEAD_DURATION;
-    const ptable = final ? PITCHER_FRAMES : STRETCH_FRAMES;
-    const rand = pitchRand(this.seed(), this.step());
-    const c = final ? this.call() : null;
-    const tr: Trajectory | null = final ? (c?.trajectory ?? null) : m === 'foul' ? 'foul' : null;
-    const side = exitSide(c);
-    const throws = this.throws(), bats = this.bats() === 'L' ? 'L' : 'R';
-    const start = performance.now();
-    const frames = batterFrames(m);
-    // Plan 27: the last call clears when this pitch is released; this pitch's call and count show when its ball arrives.
     const lead = final ? null : this.count().leadUp[this.step()];
-    let cleared = false, called = false;
+    const kind: 'ball' | 'strike' | null = lead ? (lead.kind === 'ball' ? 'ball' : 'strike') : this.outcome() === 'bb' ? 'ball' : null;
+    const bats = this.bats() === 'L' ? 'L' : 'R';
+    const plan = planPitch({ m, kind, isFinal: final, outcome: this.outcome(), era: this.era(), bats,
+      call: final ? this.call() : null, contact: this.contactPoint(), seed: this.seed(), index: this.step() });
     const fin = final ? finalCaption(this.outcome(), this.count().finalKind, this.deco()) : '';
+    let cleared = false, called = false;
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: FrameRequestCallback) => setTimeout(() => fn(performance.now()), 16) as unknown as number;
+    const start = performance.now();
     const tick = () => {
-      const t = Math.min(SPLIT_END_S, t0 + ((performance.now() - start) / 1000) * rate);
-      this.pFrame.set(frameAt(ptable, t));
-      this.bFrame.set(frameAt(frames, t));
-      this.ball.set(ballAt(t, m, throws, bats, rand, tr, side));
-      this.dim.set(t >= HANDOFF_S);
-      if (!cleared && t >= RELEASE_S) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); }
-      if (lead && !called && t >= ARRIVE_S) { called = true; this.board.set({ balls: lead.balls, strikes: lead.strikes, caption: PITCH_CAPTION[lead.kind] }); }
-      if (fin && !called && t >= ARRIVE_S) { called = true; this.board.update(b => ({ ...b, caption: fin })); }
-      if (!this.finished && t < SPLIT_END_S) this.raf = raf(tick);
+      const t = Math.min(plan.tl.end, (performance.now() - start) / 1000);
+      if (this.side()) this.frame.set(frameAt(plan, t));
+      if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); }
+      if (!called && t >= plan.p.tPlate) {
+        called = true;
+        if (lead) this.board.set({ balls: lead.balls, strikes: lead.strikes, caption: PITCH_CAPTION[lead.kind] });
+        else if (fin) this.board.update(b => ({ ...b, caption: fin }));
+      }
+      if (!this.finished && t < plan.tl.end) this.raf = raf(tick);
     };
     tick();
+    return plan;
   }
 
   private next() {
     if (this.finished) return;
-    this.runFrames();
-    const sprite = !!this.art();
-    if (this.isFinal()) { this.timer = setTimeout(() => this.finish(), sprite ? SPLIT_MS : SCENE_MS); return; }
+    const plan = this.runPitch();
+    const ms = plan.tl.end * 1000 + (this.isFinal() ? 0 : 60);
+    if (this.isFinal()) { this.timer = setTimeout(() => this.finish(), ms); return; }
     this.timer = setTimeout(() => {
       const p = this.count().leadUp[this.step()];
-      // The art scene sets the call at arrival (runFrames); the drawn fallback sets it here, as before.
-      if (!sprite) this.board.set({ balls: p.balls, strikes: p.strikes, caption: PITCH_CAPTION[p.kind] });
-      else this.board.set({ balls: p.balls, strikes: p.strikes, caption: this.board().caption });
+      this.board.set({ balls: p.balls, strikes: p.strikes, caption: this.board().caption || PITCH_CAPTION[p.kind] });
       this.step.update(i => i + 1);
       this.next();
-    }, sprite ? SPLIT_LEAD_MS : LEAD_MS);
+    }, ms);
   }
 
   /** Ends the scene once, whether by timer or the Skip button. */

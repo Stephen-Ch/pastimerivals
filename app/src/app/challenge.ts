@@ -1,7 +1,7 @@
 import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, effect, ElementRef, input, output, signal, viewChild } from '@angular/core';
 import { api, PlayerHit, SeasonItem } from './api';
-import { ArtManifest, eraOf, PairArt, pairArt, preloadImages } from './art';
+import { ArtManifest, eraOf, preloadImages, SideArt, sideArt } from './art';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { PitchScene } from './pitch-scene';
 import {
@@ -85,7 +85,7 @@ export class ChallengeFlow {
 
   // Playing out a resolved game, one tap per at-bat.
   protected readonly revealed = signal(0);
-  protected readonly scene = signal<{ ab: CAtBat; art: PairArt | null } | null>(null);
+  protected readonly scene = signal<{ ab: CAtBat; art: SideArt | null } | null>(null);
   protected readonly lastCall = signal<string | null>(null);
 
   protected readonly game = computed(() => this.view()?.game ?? null);
@@ -434,12 +434,11 @@ export class ChallengeFlow {
     if (!ab || this.scene() || this.loadingArt()) return;
     const token = ++this.pitchToken;
     const m = this.manifest();
-    const art = pairArt(m, { id: ab.pitcher.id, era: eraOf(ab.pitcher.year), hand: ab.pitcher.throws },
-      { id: ab.batter.id, era: eraOf(ab.batter.year), hand: ab.batter.bats === 'L' ? 'L' : 'R' });
+    const art = sideArt(m, ab.batter.id, ab.batter.year);
     let ok = false;
     if (art) {
       this.loadingArt.set(true);
-      ok = await Promise.race([preloadImages([art.pit.sheet, art.bat.sheet]), new Promise<boolean>(res => setTimeout(() => res(false), 3000))]);
+      ok = await Promise.race([preloadImages([art.sheet]), new Promise<boolean>(res => setTimeout(() => res(false), 3000))]);
       this.loadingArt.set(false);
     }
     // Skip, Watch again or leaving during the wait cancels this pitch.
@@ -473,7 +472,7 @@ export class ChallengeFlow {
 
   protected eraOf = eraOf;
 
-  protected artFor(s: { ab: CAtBat; art: PairArt | null }) { return s.art; }
+  protected artFor(s: { ab: CAtBat; art: SideArt | null }) { return s.art; }
 
   /** "2 of 6" during the regular at-bats; "Extra round 1" after, so the counter never hints at a tie. */
   protected readonly progress = computed(() => {

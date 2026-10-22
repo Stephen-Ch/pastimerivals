@@ -6,7 +6,7 @@ import { ChallengeFlow } from './challenge';
 import { Feedback, feedbackDue } from './feedback';
 import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
-import { ArtManifest, Era, eraOf, figure, PairArt, pairArt, PlayerArt, preloadImages } from './art';
+import { ArtManifest, Era, eraOf, figure, PairArt, pairArt, PlayerArt, preloadImages, SideArt, sideArt } from './art';
 import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
@@ -245,7 +245,14 @@ export class App {
   private readonly artOk = signal(false);
   private artReady: Promise<boolean> = Promise.resolve(false);
   protected readonly artWaiting = signal(false);
-  protected readonly sceneArt = signal<PairArt | null>(null);
+  protected readonly sceneArt = signal<SideArt | null>(null);
+  /** Plan 32C: the batter's side-on sheet for the scene (only this one image is needed to animate). */
+  protected readonly side = computed<SideArt | null>(() => {
+    const b = this.batterReport();
+    return b ? sideArt(this.manifest(), b.id, b.year) : null;
+  });
+  private readonly sideOk = signal(false);
+  private sideReady: Promise<boolean> = Promise.resolve(false);
 
   protected cardFor(r: { id: string; role: string }): PlayerArt | null {
     const a = this.pair();
@@ -272,10 +279,16 @@ export class App {
       const a = this.pair();
       this.artOk.set(false);
       if (!a) { this.artReady = Promise.resolve(false); return; }
-      this.artReady = preloadImages([a.pit.sheet, a.bat.sheet, a.pit.card, a.bat.card]).then(ok => {
+      this.artReady = preloadImages([a.pit.card, a.bat.card]).then(ok => {
         if (this.pair() === a) this.artOk.set(ok);
         return ok;
       });
+    });
+    effect(() => {
+      const s = this.side();
+      this.sideOk.set(false);
+      if (!s) { this.sideReady = Promise.resolve(false); return; }
+      this.sideReady = preloadImages([s.sheet]).then(ok => { if (this.side() === s) this.sideOk.set(ok); return ok; });
     });
     api.event('open', this.session, sourceFromSearch());
     const shared = typeof location !== 'undefined' ? parseShare(location.search) : null;
@@ -379,13 +392,13 @@ export class App {
       if (!seed) this.deco.set(DECORATION_VERSION);
       const r = await api.pitch(p, seed);
       if (!seed) api.event('pitch', this.session);
-      if (this.pair() && !this.artOk()) {
-        // Wait up to 3 s for the art; otherwise this pitch uses the drawn figures (never swap mid-pitch).
+      if (this.side() && !this.sideOk()) {
+        // Wait up to 3 s for the batter's sheet; otherwise this pitch shows text only (never swap mid-pitch).
         this.artWaiting.set(true);
-        await Promise.race([this.artReady, new Promise(res => setTimeout(res, 3000))]);
+        await Promise.race([this.sideReady, new Promise(res => setTimeout(res, 3000))]);
         this.artWaiting.set(false);
       }
-      this.sceneArt.set(this.artOk() ? this.pair() : null);
+      this.sceneArt.set(this.sideOk() ? this.side() : null);
       this.pending.set(r);   // the scene plays, then sceneDone() reveals the result
       this.enterPlay();
     } catch (e) { this.error.set((e as Error).message); this.toMatchup(); }

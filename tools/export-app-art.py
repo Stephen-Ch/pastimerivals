@@ -48,6 +48,18 @@ def main():
                     if not os.path.exists(c): errors.append(f'missing {c}'); continue
                     url, n = save_hashed(Image.open(c).convert('RGB'), f'card-{role}-{short}-{tone}-{v}', 82); total += n
                     man['cards'][f'{role}/{era}/{tone}/{v}'] = url
+    # Plan 32B: side-on batter sheets, added beside the old ones (the live scene keeps the old keys until 32C)
+    sm = json.load(open('art/sprites/batter-side/side-meta.json'))
+    side = {'cell': sm['cell'], 'footY': sm['footY'], 'sheets': {}, 'frames': {}}
+    for look in ('1901', '1920', '1956', '1990'):
+        for tone in SHEET_TONES + ('line',):   # line = pen-and-ink sheet for batters with no researched tone
+            p = f'art/sprites/batter-side/{look}-{tone}.png'
+            if not os.path.exists(p): errors.append(f'missing {p}'); continue
+            url, n = save_hashed(Image.open(p).convert('RGBA'), f'side-{look}-{tone}', 80); total += n
+            if n > 200_000: errors.append(f'too big {p} {n}')
+            side['sheets'][f'{look}/{tone}'] = url
+            side['frames'][f'{look}/{tone}'] = sm['sheets'][f'{look}-{tone}']['frames']
+    man['side'] = side
     json.dump(man, open('app/public/art-manifest.json', 'w'), separators=(',', ':'))
     print(f"sheets {len(man['sheets'])}, cards {len(man['cards'])}, tones {len(man['tones'])}, art bytes {total}")
     if errors: print('ERRORS', errors); sys.exit(1)

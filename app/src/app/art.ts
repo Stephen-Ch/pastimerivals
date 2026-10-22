@@ -107,6 +107,8 @@ export interface ArtManifest {
   sheets: Record<string, string>;   // 'pitcher/<era>/<tone>' -> url
   cards: Record<string, string>;    // 'pitcher/<era>/<tone>/<a|b>' -> url
   tones: Record<string, Tone>;      // player id -> researched tone
+  /** Plan 32B: side-on batter sheets. */
+  side?: { cell: [number, number]; footY: number; sheets: Record<string, string>; frames: Record<string, SideFrame[]> };
 }
 
 export interface PlayerArt { sheet: string; card: string; mirror: boolean; }
@@ -140,6 +142,23 @@ export function pairArt(m: ArtManifest | null, pit: { id: string; era: Era; hand
   const p = artFor(m, pit.id, 'pit', pit.era, pit.hand);
   const b = artFor(m, bat.id, 'bat', bat.era, bat.hand);
   return p && b ? { pit: p, bat: b } : null;
+}
+
+/** Plan 32B/32C: side-on batter art. Look by the batter's year (helmet rules: NL 1956, AL 1958, all 1970, flap 1983). */
+export type SideLook = '1901' | '1920' | '1956' | '1990';
+export interface SideFrame { w: number; h: number; x: number; y: number; clipped: boolean; batTip?: [number, number]; contact?: [number, number]; }
+export interface SideArt { sheet: string; frames: SideFrame[]; lineArt: boolean; }
+export function lookOf(year: number): SideLook {
+  return year < 1920 ? '1901' : year < 1956 ? '1920' : year < 1990 ? '1956' : '1990';
+}
+/** The batter's sheet. No researched tone: the pen-and-ink sheet (every fill white), so no skin tone is shown or guessed. */
+export function sideArt(m: ArtManifest | null, id: string, year: number): SideArt | null {
+  if (!m?.side) return null;
+  const tone = m.tones?.[id];
+  const t: SheetTone | 'line' = tone ? sheetTone(tone) : 'line';
+  const key = `${lookOf(year)}/${t}`;
+  const sheet = m.side.sheets[key], frames = m.side.frames[key];
+  return sheet && frames ? { sheet, frames, lineArt: !tone } : null;
 }
 
 /** Loads and decodes images before a pitch so frames never show blank. Resolves false on any failure. */
