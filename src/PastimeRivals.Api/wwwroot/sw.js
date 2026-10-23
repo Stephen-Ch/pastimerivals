@@ -1,5 +1,5 @@
 // App-shell cache. Network first for pages so new deploys show up; API requests are never cached.
-const CACHE = 'pr-shell-v1';
+const CACHE = 'pr-shell-v2';   // plan 39: drop pages stored by older builds
 const ART = 'pr-art-v1';   // plan 18: art file names carry a content hash, so cache-first is safe
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
