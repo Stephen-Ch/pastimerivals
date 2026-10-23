@@ -16,7 +16,7 @@ public sealed record PlayerOut(string Id, int Year, string Name, string Bats = "
 public sealed record SlotOut(int Slot, IReadOnlyList<PlayerOut> Choices);
 public sealed record AtBatOut(int Index, int Round, int BattingSide, PlayerOut Pitcher, PlayerOut Batter, string Seed, string Outcome, int Points,
     int? Inning = null, int? Spot = null, int? OutsBefore = null, int? OutsAfter = null, string?[]? BasesBefore = null, string?[]? BasesAfter = null,
-    string? OutType = null, IReadOnlyList<string>? Scored = null);
+    string? OutType = null, IReadOnlyList<string>? Scored = null, IReadOnlyList<string>? RunnersOut = null, bool? DoublePlay = null, bool? SacFly = null);
 public sealed record GameOut(IReadOnlyList<IReadOnlyList<PlayerOut>> Lineups, IReadOnlyList<AtBatOut> AtBats, int[] Totals, int Winner, IReadOnlyList<string> Notes,
     int[][]? LineScore = null, int? Innings = null, IReadOnlyList<IReadOnlyList<string>>? LineupSources = null);
 /// <summary>Plan 38: the game's era rules (shown before the game too: the friend needs to know 8 or 9 batters).</summary>
@@ -569,7 +569,8 @@ public static class ChallengeEndpoints
             {
                 var n = a.Inn;
                 outs.Add(new AtBatOut(a.Index, a.Round, a.BattingSide, await Named(a.Pitcher), await Named(a.Batter), a.Seed.ToString(), a.Outcome.ToString().ToLowerInvariant(), a.Points,
-                    n?.Inning, n?.Spot, n?.OutsBefore, n?.OutsAfter, n?.BasesBefore, n?.BasesAfter, n is null || n.OutType == OutType.None ? null : n.OutType.ToString().ToLowerInvariant(), n?.Scored));
+                    n?.Inning, n?.Spot, n?.OutsBefore, n?.OutsAfter, n?.BasesBefore, n?.BasesAfter, n is null || n.OutType == OutType.None ? null : n.OutType.ToString().ToLowerInvariant(), n?.Scored,
+                    n is null ? null : n.RunnersOut ?? Array.Empty<string>(), n?.DoublePlay, n?.SacFly));
             }
             if (ch.Mode == Rules.Inning && ch.Inning is { } inn)
             {

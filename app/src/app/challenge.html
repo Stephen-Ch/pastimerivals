@@ -9,15 +9,15 @@
       <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex">
         <h1 #stepTitle tabindex="-1">Play a game</h1>
-        <p class="how">Pick a pitcher and 3 batters from any season. Your batters face their pitcher, then theirs face yours.
-          Walk or single 1 point, double 2, triple 3, homer 4. Most points wins.</p>
+        <p class="how">Pick a pitcher and a batting order from any season. One inning: your hitters bat until 3 outs, then theirs. Most runs wins.</p>
+        <button type="button" class="link small how-link" (click)="showHow.set(true)">How the sim works</button>
         @if (mine().length) {
           <h2 class="sub">Your games</h2>
           <ul class="list">
             @for (m of mine(); track m.code) {
               <li><button type="button" class="row-btn" (click)="openMine(m.code)">
                 <span>{{ m.vsCpu ? 'You vs the Computer' : m.you === 'creator' ? 'You vs ' + (m.opponentName ?? 'waiting for a friend') : m.creatorName + ' vs you' }}
-                  <span class="muted"> · {{ m.status === 'resolved' ? 'played' : m.status }}</span></span><span class="chev" aria-hidden="true">›</span>
+                  <span class="muted"> · {{ m.status === 'resolved' ? 'played' : m.status }}@if (m.mode !== 'inning') { · classic game }</span></span><span class="chev" aria-hidden="true">›</span>
               </button></li>
             }
           </ul>
@@ -34,8 +34,14 @@
       <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex">
         <h1 #stepTitle tabindex="-1" class="call">{{ view()?.creatorName }} challenged you</h1>
-        <p class="how">Pick a pitcher and 3 batters from any season. You won't see their team until the game.
-          Your batters face their pitcher, then theirs face yours. Walk or single 1 point, double 2, triple 3, homer 4.</p>
+        @if (inning()) {
+          <p class="how">Pick a pitcher and a batting order from any season. You won't see their team until the game.
+            One inning: their hitters bat until 3 outs, then yours. Most runs wins.</p>
+          <p class="note">{{ rulesLine() }}</p>
+        } @else {
+          <p class="how">Pick a pitcher and 3 batters from any season. You won't see their team until the game.
+            Your batters face their pitcher, then theirs face yours. Walk or single 1 point, double 2, triple 3, homer 4.</p>
+        }
         <p class="note">Expires in {{ view() ? hoursLeft(view()!) : '' }}.</p>
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
@@ -50,10 +56,10 @@
       @let s = slots()[i];
       <header class="bar">
         <button type="button" class="link" (click)="prevSlot()" [disabled]="busy()">‹ Back</button>
-        <span class="vs-line">{{ i + 1 }} of 4</span>
+        <span class="vs-line">@if (inning()) { {{ i === 0 ? 'Pitcher' : i + ' of ' + batters() }} } @else { {{ i + 1 }} of 4 }</span>
       </header>
       <main class="flex">
-        <h1 #stepTitle tabindex="-1">{{ slotNames[i] }}@if (editRank() > 0) { <span class="muted">: backup {{ editRank() }}</span> }</h1>
+        <h1 #stepTitle tabindex="-1">{{ inning() ? inningRows[i] : slotNames[i] }}@if (editRank() > 0) { <span class="muted">: backup {{ editRank() }}</span> }</h1>
         @for (t of clashText(); track t) { <p class="clash" role="alert">{{ t }}</p> }
         @if (s && !searching()) {
           <div class="chosen">
@@ -71,7 +77,7 @@
         } @else {
           @if (!seasonsFor()) {
             @if (!query()) {
-              @if (i === 0 && !s) { <p class="how">Pick a pitcher and 3 batters. Walk or single 1 point, double 2, triple 3, homer 4. Most points wins.</p> }
+              @if (i === 0 && !s && !inning()) { <p class="how">Pick a pitcher and 3 batters. Walk or single 1 point, double 2, triple 3, homer 4. Most points wins.</p> }
               @if (!s) { <p class="note">Type a name, or tap Quick pick for a random team.</p> }
             }
             <input class="search" type="search" [placeholder]="i === 0 ? 'Pitcher name, like Cy Young' : 'Batter name, like Babe Ruth'" autocomplete="off"
@@ -99,15 +105,32 @@
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
       <div class="actions">
-        <button class="primary big" type="button" (click)="nextSlot()" [disabled]="!s || busy() || clashOpen().includes(i)">{{ clash() ? (clashOpen().length ? 'Next' : 'Review team') : (i < 3 ? 'Next' : 'Review team') }}</button>
+        <button class="primary big" type="button" (click)="nextSlot()" [disabled]="!s || busy() || clashOpen().includes(i)">{{ clash() ? (clashOpen().length ? 'Next' : 'Review team') : inning() ? 'Next' : (i < 3 ? 'Next' : 'Review team') }}</button>
         <button type="button" (click)="quickPick()" [disabled]="busy()">Quick pick</button>
       </div>
     }
 
     @case ('review') {
-      <header class="bar"><button type="button" class="link" (click)="goSlot(3)">‹ Back</button></header>
+      <header class="bar"><button type="button" class="link" (click)="inning() ? backFromPicking() : goSlot(3)">‹ Back</button></header>
       <main class="flex">
         <h1 #stepTitle tabindex="-1">Your team</h1>
+        @if (inning()) {
+          <p class="note rules-line" role="status">{{ rulesLine() }}</p>
+          @for (t of clashText(); track t) { <p class="clash" role="alert">{{ t }}</p> }
+          @if (flipNote()) { <p class="note">{{ flipNote() }}</p> }
+          <ul class="list lineup">
+            @for (row of slots().slice(0, batters() + 1); track $index) {
+              <li><button type="button" class="row-btn" (click)="goSlot($index)" [disabled]="busy()">
+                <span><span class="muted">{{ $index === 0 ? 'Pitcher' : ordinal($index) }}</span> {{ row ? row.choices[0].name + ' ' + row.choices[0].year : '' }}</span>
+                <span class="link-text" aria-hidden="true">{{ row ? 'Change' : 'Add' }}</span>
+              </button></li>
+            }
+            @if (batters() === 8) {
+              <li class="pitcher-bats"><span class="muted">9th</span> {{ slots()[0]?.choices?.[0]?.name ?? 'Your pitcher' }} <span class="muted">(pitcher bats)</span></li>
+            }
+          </ul>
+          @if (sittingOut(); as so) { <p class="note">Sitting out: {{ so.choices[0].name }} {{ so.choices[0].year }}</p> }
+        } @else {
         <ul class="list">
           @for (s of slots(); track $index) {
             <li><button type="button" class="row-btn" (click)="goSlot($index)">
@@ -116,6 +139,7 @@
             </button></li>
           }
         </ul>
+        }
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
       <div class="actions">
@@ -152,7 +176,7 @@
         @if (view()?.yourPicks; as picks) {
           <h2 class="sub">Your team</h2>
           <ul class="team">
-            @for (s of picks; track s.slot) { <li><span class="muted">{{ s.slot === 0 ? 'Pitcher' : 'Batter ' + s.slot }}</span> {{ s.choices[0].name }} {{ s.choices[0].year }}</li> }
+            @for (s of picks; track s.slot) { <li><span class="muted">{{ s.slot === 0 ? 'Pitcher' : view()?.mode === 'inning' ? ordinal(s.slot) : 'Batter ' + s.slot }}</span> {{ s.choices[0].name }} {{ s.choices[0].year }}</li> }
           </ul>
         }
         @if (note()) { <p class="note" role="status">{{ note() }}</p> }
@@ -168,10 +192,21 @@
       @let sc = score();
       <header class="bar">
         <button type="button" class="link" (click)="leave()">‹ Home</button>
-        <span class="vs-line">{{ progress() }}</span>
+        <span class="vs-line">{{ isInningGame() ? inningProgress() : progress() }}</span>
       </header>
       <div class="scoreboard">
         <span class="team-score"><span class="tname">{{ sideName(0) }}</span> <strong>{{ sc[0] }}</strong></span>
+        @if (isInningGame()) {
+          @let dm = diamond();
+          <span class="state" [attr.aria-label]="dm.outs + ' out, ' + (dm.bases[0] ? 'runner on first ' : '') + (dm.bases[1] ? 'runner on second ' : '') + (dm.bases[2] ? 'runner on third' : '')">
+            <svg class="diamond" viewBox="0 0 44 30" aria-hidden="true">
+              <polygon points="34,10 40,16 34,22 28,16" [class.on]="!!dm.bases[0]" />
+              <polygon points="22,2 28,8 22,14 16,8" [class.on]="!!dm.bases[1]" />
+              <polygon points="10,10 16,16 10,22 4,16" [class.on]="!!dm.bases[2]" />
+            </svg>
+            <span class="outs" aria-hidden="true">@for (o of [0, 1, 2]; track o) { <i [class.on]="o < dm.outs"></i> }</span>
+          </span>
+        }
         <span class="team-score"><strong>{{ sc[1] }}</strong> <span class="tname">{{ sideName(1) }}</span></span>
       </div>
       <main class="flex scene-wrap">
@@ -184,9 +219,11 @@
         } @else {
           <section class="result">
             @if (lastCall()) { <p class="outcome-tag" role="status">{{ lastCall() }}</p> }
+            @if (baseText()) { <p class="base-line">{{ baseText() }}</p> }
+            @if (halfCard()) { <p class="half-card">{{ halfCard() }}</p> }
             @if (revealed() === 0) { <p class="note">Tap Pitch to see each at-bat.</p> }
             @if (nextAtBat(); as n) {
-              <p class="muted">{{ roundLabel(n) }} · {{ sideName(n.battingSide) }} batting</p>
+              <p class="muted">{{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) : roundLabel(n) }} · {{ sideName(n.battingSide) }} batting</p>
               <p class="call">{{ n.batter.name }} <span class="muted">{{ n.batter.year }}</span></p>
               <p class="how">vs {{ n.pitcher.name }} {{ n.pitcher.year }}</p>
             }
@@ -214,12 +251,36 @@
             <button type="button" class="link small" (click)="sameTeamAgain(gameLevel() - 1)" [disabled]="busy()">Try an easier computer</button>
           }
         }
+        @if (isInningGame() && g) {
+          <table class="linescore" aria-label="Line score">
+            <thead><tr><th></th>@for (n of lineInnings(); track n) { <th>{{ n }}</th> }<th>R</th></tr></thead>
+            <tbody>
+              @for (sd of [1, 0]; track sd) {
+                <tr><th class="tname">{{ sideName(sd) }}</th>@for (n of lineInnings(); track n) { <td>{{ g.lineScore?.[sd]?.[n - 1] ?? 'x' }}</td> }<td><strong>{{ g.totals[sd] }}</strong></td></tr>
+              }
+            </tbody>
+          </table>
+          @if (g.notes.some(isClashNote)) { <p class="note">Both of you picked the same player. The challenger picked first, so a backup stepped in.</p> }
+          @if (g.notes.includes(capNote)) { <p class="note">{{ capNote }}</p> }
+          <div class="plays-card">
+            @for (h of halvesList(); track h.label) {
+              <p class="half-head">{{ h.label }}</p>
+              <ol class="plays">
+                @for (a of h.plays; track a.index) {
+                  <li>{{ a.batter.name }}: <strong>{{ shortLabel(a) }}</strong>@if (a.points) { , {{ a.points }} {{ a.points === 1 ? 'run' : 'runs' }} }</li>
+                }
+              </ol>
+            }
+          </div>
+          <button type="button" class="link small how-link" (click)="showHow.set(true)">How the sim works</button>
+        } @else {
         @if (g?.notes?.length) { <p class="note">Both of you picked the same player. The challenger picked first, so a backup stepped in.</p> }
         <ol class="plays">
           @for (a of g?.atBats ?? []; track a.index) {
             <li><span class="muted">{{ a.round > 0 ? 'Extra ' + a.round : '' }}</span> {{ a.batter.name }} vs {{ a.pitcher.name }}: <strong>{{ label(a.outcome) }}</strong>@if (a.points) { +{{ a.points }} }</li>
           }
         </ol>
+        }
         @if (privateLink() && view()?.you === 'opponent') {
           <div class="private">
             <p class="note"><strong>Only for you, don't share.</strong> Opens your side of this game on any phone.</p>
@@ -231,7 +292,7 @@
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
       @if (askFeedback()) {
-        <pr-feedback [where]="view()?.vsCpu ? 'cpu' : 'friend'" [level]="view()?.vsCpu ? gameLevel() : null" [result]="fbResult()" />
+        <pr-feedback [where]="view()?.vsCpu ? 'cpu' : 'friend'" [level]="view()?.vsCpu ? gameLevel() : null" [result]="fbResult()" [mode]="view()?.mode ?? 'classic'" />
       }
       @if (view()?.vsCpu && yourSide() === 0) {
         @if (youWon() && gameLevel() < 4) {
@@ -260,7 +321,8 @@
       <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex">
         <h1 #stepTitle tabindex="-1" class="call">{{ closedText() }}</h1>
-        <p class="how">You can start your own challenge and send it to a friend.</p>
+        @if (updateNeeded()) { <button type="button" class="primary" (click)="reload()">Refresh</button> }
+        @else { <p class="how">You can start your own challenge and send it to a friend.</p> }
       </main>
       <div class="actions">
         <button class="primary big" type="button" (click)="newChallenge()">{{ view()?.you === 'creator' ? 'Challenge again' : 'Start your own challenge' }}</button>
@@ -268,5 +330,6 @@
       </div>
     }
   }
+  @if (showHow()) { <pr-how-sim (close)="showHow.set(false)" /> }
   <footer class="notice">The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.</footer>
 </div>

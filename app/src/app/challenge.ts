@@ -3,15 +3,19 @@ import { Component, computed, effect, ElementRef, input, output, signal, viewChi
 import { api, PlayerHit, SeasonItem } from './api';
 import { ArtManifest, eraOf, preloadImages, SideArt, sideArt } from './art';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
+import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
 import { PitchScene } from './pitch-scene';
+import { HowSim } from './how-sim';
 import {
-  CAtBat, capi, ChallengeError, CClash, CMine, CPlayer, CSlot, CView, keyFor, links, saveKey, setWatched, takeKeyFromHash, toBody, watched,
+  CAtBat, capi, CEra, ChallengeError, CClash, CMine, CPlayer, CSlot, CView, GameMode, keyFor, links, saveKey, setWatched, takeKeyFromHash, toBody, watched,
 } from './challenge-api';
 
 type Step = 'loading' | 'home' | 'intro' | 'pick' | 'review' | 'shared' | 'waiting' | 'play' | 'final' | 'closed';
 type Mode = 'create' | 'accept' | 'rematch' | 'cpu';
 
 export const SLOT_NAMES = ['Your pitcher', 'Batter 1', 'Batter 2', 'Batter 3'];
+/** Plan 38: inning team rows (pitcher, then the batting order). */
+export const INNING_ROWS = ['Your pitcher', ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `Batting ${ordinal(n)}`)];
 
 /** Plan 24: challenge a friend. One screen at a time (plan 23); the page never scrolls. */
 /** Plan 26 computer levels; index = level (1-4). */
@@ -24,7 +28,7 @@ function saveLevel(n: number) { try { localStorage.setItem(LEVEL_KEY, String(n))
 
 @Component({
   selector: 'pr-challenge',
-  imports: [PitchScene, Feedback],
+  imports: [PitchScene, Feedback, HowSim],
   templateUrl: './challenge.html',
   styleUrls: ['./app.css', './challenge.css'],
 })
@@ -37,6 +41,38 @@ export class ChallengeFlow {
   readonly exit = output<void>();
 
   protected readonly slotNames = SLOT_NAMES;
+  protected readonly inningRows = INNING_ROWS;
+  protected readonly ordinal = ordinal;
+  protected readonly halfLabel = halfLabel;
+  protected readonly isClashNote = isClashNote;
+  protected readonly capNote = CAP_NOTE;
+  protected readonly shortName = shortName;
+
+  // ---- Plan 38: inning mode ----
+  /** Mode of the team being picked (or the game on screen). New games are inning games. */
+  protected readonly gameMode = signal<GameMode>('inning');
+  protected readonly inning = computed(() => this.gameMode() === 'inning');
+  /** The side picking is the home side (its picks set the rules): new games, computer games, rematches. */
+  protected readonly isHome = computed(() => this.mode() !== 'accept');
+  /** Era answer for the home side (from /era), or the friend's fixed era (from the game). */
+  protected readonly era = signal<CEra | null>(null);
+  private readonly eraKey = signal('');
+  protected readonly eraLoading = signal(false);
+  private eraToken = 0;
+  protected readonly sittingOut = signal<CSlot | null>(null);
+  protected readonly flipNote = signal<string | null>(null);
+  protected readonly updateNeeded = signal(false);
+  protected readonly showHow = signal(false);
+  /** Batters this team needs: 3 classic; inning 9 with the DH, 8 when the pitcher bats (9 until the rules are known). */
+  protected readonly batters = computed(() => !this.inning() ? 3 : (this.isHome() ? this.era()?.batters : this.view()?.era?.batters) ?? 9);
+  protected readonly rulesLine = computed(() => {
+    if (!this.inning()) return '';
+    if (this.isHome() && !this.slots()[0]) return 'Pick a pitcher to see the rules.';
+    if (this.eraLoading()) return 'Checking the rules...';
+    const e = this.isHome() ? this.era() : this.view()?.era;
+    if (!e) return 'Rules follow your newest player.';
+    return `Rules: ${e.dh ? 'designated hitter on' : 'pitchers bat'}${e.runnerOnSecond ? ' · Extra innings start with a runner on second' : ''}`;
+  });
   protected readonly label = label;
   protected readonly step = signal<Step>('loading');
   protected readonly mode = signal<Mode>('create');
@@ -65,7 +101,12 @@ export class ChallengeFlow {
   protected readonly seasonsLoading = signal(false);
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
   private searchToken = 0;
-  protected readonly teamDone = computed(() => this.slots().every(s => !!s));
+  protected readonly teamDone = computed(() => {
+    const n = this.batters(), rows = this.slots().slice(0, n + 1);
+    if (!rows.every(s => !!s)) return false;
+    if (this.inning() && this.isHome()) return !this.eraLoading() && this.eraKey() === rowsKey(this.slots(), n);
+    return true;
+  });
   /** D26: players the challenger already has (told once, at Lock team). They cannot be picked again. */
   protected readonly clash = signal<{ text: string[]; ids: Set<string>; slots: number[] } | null>(null);
   /** Only the clash messages for slots that still hold a taken player. */
@@ -119,6 +160,7 @@ export class ChallengeFlow {
   protected readonly finalText = computed(() => {
     const g = this.game(), you = this.yourSide();
     if (!g) return '';
+    if (this.view()?.mode === 'inning') return inningResult(g, you, s => this.sideName(s).replace(' (you)', ''));
     if (g.winner === -1) return 'A draw after 5 extra rounds';
     if (you === null) return `${this.sideName(g.winner)} wins`;
     return g.winner === you ? 'You win!' : 'You lose';
@@ -150,7 +192,8 @@ export class ChallengeFlow {
     if (push) { try { history.pushState({ pr: 'challenge' }, '', `/c/new?vs=${vs}`); } catch { /* fine */ } }
     this.current.set(null); this.view.set(null); this.error.set(null); this.note.set(null);
     this.mode.set(vs === 'cpu' ? 'cpu' : 'create');
-    this.resetTeam(); this.step.set('pick');
+    this.gameMode.set('inning');
+    this.resetTeam(); this.step.set('review');
   }
 
   private async home() {
@@ -170,13 +213,13 @@ export class ChallengeFlow {
       this.privateLink.set(v.you === 'visitor' ? null : l.private);
       if (v.status === 'resolved') {
         this.revealed.set(Math.min(watched(code), v.game?.atBats.length ?? 0));
-        this.lastCall.set(null);
+        this.lastCall.set(null); this.lastPlay.set(null);
         this.step.set(this.revealed() >= (v.game?.atBats.length ?? 0) ? 'final' : 'play');
       } else if (v.you === 'creator') {
         this.step.set(v.status === 'expired' ? 'closed' : 'waiting');
         if (v.status === 'expired') this.closedText.set('Nobody took this challenge in time.');
       } else if (v.canClaim) {
-        this.mode.set('accept'); this.resetTeam(); this.step.set('intro');
+        this.mode.set('accept'); this.gameMode.set(v.mode ?? 'classic'); this.resetTeam(); this.step.set('intro');
       } else {
         this.closedText.set(v.status === 'expired' ? 'This challenge expired.'
           : v.rematchOf && !v.opponentName ? 'This rematch is for someone else.' : 'Someone already took this challenge.');
@@ -191,17 +234,31 @@ export class ChallengeFlow {
   // ---- Picking ----
   private resetTeam() {
     this.clash.set(null);
-    this.slots.set([null, null, null, null]); this.slotIndex.set(0); this.editRank.set(0); this.openSearch();
+    this.slots.set(Array(this.inning() ? 10 : 4).fill(null)); this.slotIndex.set(0); this.editRank.set(0); this.openSearch();
+    this.era.set(null); this.eraKey.set(''); this.eraLoading.set(false); this.eraToken++; this.sittingOut.set(null); this.flipNote.set(null);
   }
 
   protected startPicking(mode: Mode) {
     if (mode !== 'accept') this.mode.set(mode);
-    this.resetTeam(); this.step.set('pick');
+    // Plan 38: new games are innings; a rematch keeps its game's mode; the friend plays the game's mode.
+    this.gameMode.set(mode === 'rematch' || mode === 'accept' ? (this.view()?.mode ?? 'classic') : 'inning');
+    this.resetTeam(); this.step.set(this.inning() ? 'review' : 'pick');
   }
 
   protected async quickPick() {
     this.busy.set(true); this.error.set(null);
     try {
+      if (this.inning()) {
+        const fixed = this.isHome() ? undefined : this.view()?.era?.batters;
+        const q = await capi.quickpickInning(fixed);
+        const rows: (CSlot | null)[] = Array(10).fill(null);
+        q.slots.forEach(t => { if (t.slot >= 0 && t.slot < 10) rows[t.slot] = t; });
+        this.clash.set(null); this.sittingOut.set(null); this.flipNote.set(null);
+        this.slots.set(rows);
+        if (this.isHome() && q.era) { this.eraToken++; this.era.set(q.era); this.eraKey.set(rowsKey(rows, q.era.batters)); this.eraLoading.set(false); }
+        this.step.set('review');
+        return;
+      }
       const team = await capi.quickpick();
       this.slots.set([0, 1, 2, 3].map(i => team.find(t => t.slot === i) ?? null));
       this.step.set('review');
@@ -273,12 +330,69 @@ export class ChallengeFlow {
     this.slots.update(list => list.map((x, i) => (i === slot ? { slot, choices } : x)));
     this.openSearch(false);
     this.editRank.set(0);
+    if (rank === 0) void this.refreshEra();
+  }
+
+  /**
+   * Plan 38: asks the server for the home team's rules after a first choice changes, and keeps the lineup in step:
+   * no DH with 9 batters filled = the oldest-season batter sits out (rows below move up); DH back on = he returns 9th.
+   * Lock waits until the latest answer is for exactly the rows that will be sent.
+   */
+  protected async refreshEra(): Promise<void> {
+    if (!this.inning() || !this.isHome()) return;
+    const token = ++this.eraToken;
+    let rows = this.slots();
+    if (!rows[0]) { this.era.set(null); this.eraKey.set(''); this.eraLoading.set(false); return; }
+    this.eraLoading.set(true);
+    try {
+      const ask = (r: (CSlot | null)[]) => capi.era(r[0]!.choices[0], r.slice(1).filter((x): x is CSlot => !!x).map(x => x.choices[0]));
+      let e = await ask(rows);
+      if (token !== this.eraToken) return;
+      if (!e.dh) {
+        // Pitchers bat: at most 8 batters. Close a gap left by an empty row, then sit the oldest out if all 9 are filled.
+        const filled = rows.slice(1).filter((x): x is CSlot => !!x);
+        if (filled.length >= 9) {
+          const r = sitOut(rows);
+          rows = r.rows;
+          if (r.out) {
+            this.sittingOut.set(r.out);
+            this.flipNote.set(`Pitchers bat in your newest player's era, so ${r.out.choices[0].name} sits out (the order below him moved up).`);
+          }
+        } else if (rows[9] && filled.length < 9) {
+          const gap = rows.findIndex((x, i) => i > 0 && i < 9 && !x);
+          if (gap > 0) rows = rows.map((x, i) => (i === gap ? { ...rows[9]!, slot: gap } : i === 9 ? null : x));
+        }
+        this.slots.set(rows);
+        e = await ask(rows);
+        if (token !== this.eraToken) return;
+      } else if (this.sittingOut() && !rows[9]) {
+        const back = this.sittingOut()!;
+        rows = rows.map((x, i) => (i === 9 ? { ...back, slot: 9 } : x));
+        this.sittingOut.set(null); this.flipNote.set(null);
+        this.slots.set(rows);
+        e = await ask(rows);
+        if (token !== this.eraToken) return;
+      }
+      this.era.set(e);
+      this.eraKey.set(rowsKey(rows, e.batters));
+    } catch (err) {
+      if (token === this.eraToken) this.error.set((err as Error).message);
+    } finally {
+      if (token === this.eraToken) this.eraLoading.set(false);
+    }
   }
 
   protected nextSlot() {
     // After a clash, go straight to the next slot that still needs a new player, then back to review.
     const open = this.clashOpen();
     if (this.clash()) { if (open.length) this.goSlot(open[0]); else this.step.set('review'); return; }
+    if (this.inning()) {
+      // Plan 38: the next empty row, else back to the team list.
+      const n = this.batters(), rows = this.slots();
+      const next = rows.findIndex((x, k) => k <= n && !x);
+      if (next >= 0) this.goSlot(next); else this.step.set('review');
+      return;
+    }
     const i = this.slotIndex();
     if (i < 3) this.goSlot(i + 1);
     else this.step.set('review');
@@ -287,6 +401,7 @@ export class ChallengeFlow {
   protected prevSlot() {
     const i = this.slotIndex();
     if (this.searching() && this.slots()[i]) { this.openSearch(false); return; }
+    if (this.inning()) { this.step.set('review'); return; }
     if (i > 0) this.goSlot(i - 1);
     else this.backFromPicking();
   }
@@ -300,9 +415,9 @@ export class ChallengeFlow {
   protected chooseName(n: string) { this.nickname.set(n); }
 
   protected async lockTeam() {
-    const slots = this.slots();
-    if (!slots.every(Boolean)) return;
-    const body = toBody(slots as CSlot[], this.nickname() ?? this.nickChoices()[0]);
+    const slots = this.slots().slice(0, this.batters() + 1);
+    if (!slots.every(Boolean) || !this.teamDone()) return;
+    const body = toBody(slots as CSlot[], this.nickname() ?? this.nickChoices()[0], this.gameMode());
     this.busy.set(true); this.error.set(null);
     try {
       if (this.mode() === 'cpu') {
@@ -313,7 +428,7 @@ export class ChallengeFlow {
         saveKey(code, r.key);
         this.privateLink.set(links(location.origin, code, r.key).private);
         this.view.set(r.view);
-        this.revealed.set(0); setWatched(code, 0); this.lastCall.set(null);
+        this.revealed.set(0); setWatched(code, 0); this.lastCall.set(null); this.lastPlay.set(null);
         this.step.set('play');
       } else {
         const r = this.mode() === 'rematch' ? await capi.rematch(this.current()!, body) : await capi.create(body);
@@ -334,6 +449,16 @@ export class ChallengeFlow {
         });
         this.goSlot(c.clashes[0].slot);
         this.openSearch(true);
+      } else if (e instanceof ChallengeError && e.status === 409 && e.code === 'update') {
+        // Plan 38: this game was made by a newer app.
+        this.updateNeeded.set(true);
+        this.closedText.set('This game needs the latest version.');
+        this.step.set('closed');
+      } else if (e instanceof ChallengeError && e.status === 400 && typeof (e.data as { batters?: number })?.batters === 'number') {
+        // Plan 38: the lineup size no longer matches the rules: home asks again; the friend reloads the game (its rules are fixed).
+        this.error.set((e.data as { error?: string })?.error ?? e.message);
+        if (this.isHome()) void this.refreshEra();
+        else { try { this.view.set(await capi.view(this.current()!)); } catch { /* the message is enough */ } }
       } else if (e instanceof ChallengeError && e.status === 409) {
         this.closedText.set(({
           expired: 'This challenge expired.', already: 'You already started a rematch of this game.',
@@ -352,7 +477,7 @@ export class ChallengeFlow {
     this.view.set(r.view);
     this.shareLink.set(links(location.origin, r.code, null).share);
     this.privateLink.set(null);
-    this.revealed.set(0); setWatched(r.code, 0); this.lastCall.set(null);
+    this.revealed.set(0); setWatched(r.code, 0); this.lastCall.set(null); this.lastPlay.set(null);
     try { history.pushState({ pr: 'challenge' }, '', `/c/${r.code}`); } catch { /* fine */ }
     this.mode.set('cpu');
     this.step.set('play');
@@ -368,7 +493,8 @@ export class ChallengeFlow {
     level = Math.min(4, Math.max(1, level));
     if (level !== this.gameLevel()) saveLevel(level);
     this.busy.set(true); this.error.set(null);
-    try { await this.playComputer(toBody(picks, this.nickname() ?? undefined), level); }
+    // Plan 38: the stored picks replay in their own game's mode (an old classic game stays classic).
+    try { await this.playComputer(toBody(picks, this.nickname() ?? undefined, this.view()?.mode ?? 'classic'), level); }
     catch (e) { this.error.set((e as Error).message); }
     finally { this.busy.set(false); }
   }
@@ -393,7 +519,7 @@ export class ChallengeFlow {
   protected async shareResult() {
     const g = this.game(), v = this.view();
     if (!g || !v) return;
-    const score = `${v.creatorName} ${g.totals[0]}, ${v.opponentName ?? 'Friend'} ${g.totals[1]}`;
+    const score = `${v.creatorName} ${g.totals[0]}, ${v.opponentName ?? 'Friend'} ${g.totals[1]}${v.mode === 'inning' ? ' (runs)' : ''}`;
     const text = v.vsCpu ? 'Watch my game against the Computer on Pastime Rivals!'
       : v.you === 'opponent' ? `I played your Pastime Rivals challenge. Watch the game!` : `Watch our Pastime Rivals game!`;
     await this.shareOut(text, this.shareLink(), score);
@@ -432,6 +558,7 @@ export class ChallengeFlow {
   protected async pitch() {
     const ab = this.nextAtBat();
     if (!ab || this.scene() || this.loadingArt()) return;
+    this.lastPlay.set(null);
     const token = ++this.pitchToken;
     const m = this.manifest();
     const art = sideArt(m, ab.batter.id, ab.batter.year);
@@ -448,15 +575,59 @@ export class ChallengeFlow {
 
   protected callOf(ab: CAtBat) {
     const d = this.deco().deco;
-    return callFor(ab.outcome, ab.seed, countFor(ab.outcome, ab.seed, d), ab.batter.name, ab.batter.bats, ab.pitcher.throws, d, ab.batter.year);
+    return callFor(ab.outcome, ab.seed, countFor(ab.outcome, ab.seed, d), ab.batter.name, ab.batter.bats, ab.pitcher.throws, d, ab.batter.year,
+      d === '3' ? playFacts(ab, this.names()) : null);
   }
 
   protected sceneDone() {
     const s = this.scene();
     if (!s) return;
     this.scene.set(null);
-    this.lastCall.set(`${this.callOf(s.ab).text}${s.ab.points ? ` +${s.ab.points}` : ''}`);
+    const inn = this.view()?.mode === 'inning';
+    this.lastCall.set(`${this.callOf(s.ab).text}${!inn && s.ab.points ? ` +${s.ab.points}` : ''}`);
+    if (inn) this.lastPlay.set(s.ab);
     this.advance(this.revealed() + 1);
+  }
+
+  // ---- Plan 38: inning play screen ----
+  protected readonly names = computed(() => namesOf(this.game()));
+  /** The play just shown (its after-state is on screen until the next Pitch). */
+  protected readonly lastPlay = signal<CAtBat | null>(null);
+  protected readonly isInningGame = computed(() => this.view()?.mode === 'inning');
+  /** Bases and outs on screen: after the last play, else before the next one. */
+  protected readonly diamond = computed(() => {
+    const lp = this.lastPlay(), n = this.nextAtBat();
+    if (lp) return { bases: (lp.outsAfter ?? 0) >= 3 ? [null, null, null] : lp.basesAfter ?? [null, null, null], outs: lp.outsAfter ?? 0 };
+    if (n) return { bases: n.basesBefore ?? [null, null, null], outs: n.outsBefore ?? 0 };
+    return { bases: [null, null, null], outs: 0 };
+  });
+  protected readonly baseText = computed(() => {
+    const lp = this.lastPlay(), g = this.game();
+    return lp && g ? baseLine(lp, this.names(), lp.index === g.atBats.length - 1) : null;
+  });
+  protected readonly halfCard = computed(() => {
+    const lp = this.lastPlay(), g = this.game();
+    if (!lp || !g) return null;
+    const capped = (g.notes ?? []).includes(CAP_NOTE);
+    return halfChange(lp, this.nextAtBat(), this.score(), s => this.sideName(s).replace(' (you)', ''), capped);
+  });
+  /** "Top 1 · Batter 4": the half of the next plate appearance (or the last one shown) and its number in that half. */
+  protected readonly inningProgress = computed(() => {
+    const g = this.game(), a = this.nextAtBat() ?? this.lastPlay();
+    if (!g || !a) return '';
+    const n = g.atBats.filter(x => x.inning === a.inning && x.battingSide === a.battingSide && x.index <= a.index).length;
+    return `${halfLabel(a.inning ?? 1, a.battingSide)} · Batter ${n}`;
+  });
+  protected readonly halvesList = computed(() => { const g = this.game(); return g ? halves(g) : []; });
+  protected readonly lineInnings = computed(() => {
+    const g = this.game();
+    return Array.from({ length: Math.max(g?.lineScore?.[0]?.length ?? 0, g?.lineScore?.[1]?.length ?? 0) }, (_, i) => i + 1);
+  });
+  protected shortLabel(a: CAtBat) {
+    if (a.outType === 'error') return 'Reached on error';
+    if (a.doublePlay) return 'Double play';
+    if (playFacts(a, this.names()).sacFly) return 'Sacrifice fly';
+    return label(a.outcome);
   }
 
   private advance(n: number) {
@@ -466,9 +637,9 @@ export class ChallengeFlow {
     if (this.revealed() >= total) this.step.set('final');
   }
 
-  protected skipToFinal() { this.pitchToken++; this.scene.set(null); this.advance(this.game()?.atBats.length ?? 0); }
+  protected skipToFinal() { this.pitchToken++; this.scene.set(null); this.lastPlay.set(null); this.advance(this.game()?.atBats.length ?? 0); }
 
-  protected watchAgain() { this.pitchToken++; this.scene.set(null); this.revealed.set(0); this.lastCall.set(null); if (this.current()) setWatched(this.current()!, 0); this.step.set('play'); }
+  protected watchAgain() { this.pitchToken++; this.scene.set(null); this.revealed.set(0); this.lastCall.set(null); this.lastPlay.set(null); if (this.current()) setWatched(this.current()!, 0); this.step.set('play'); }
 
   protected eraOf = eraOf;
 

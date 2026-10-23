@@ -102,6 +102,34 @@ public class BaseRunningTests(ITestOutputHelper output)
         Assert.Equal(1, hrs.Runs);   // solo shot ends it
     }
 
+    [Fact]
+    public void A_walk_off_hit_puts_nobody_out_after_the_winning_run()
+    {
+        // Sample 07 of the expert gate: two out, runners on first and third, a double; the plain engine sometimes throws
+        // the runner from first out at home after the winning run has scored.
+        var found = 0;
+        for (ulong s = 0; s < 4000; s++)
+        {
+            var plain = BaseRunning.Apply(Outcome.Double, OutType.None, 2, B("r1", null, "r3"), "bat", new SeededRandom(s));
+            if (plain.RunnersOut.Count == 0) continue;
+            found++;
+            Assert.Equal(3, plain.OutsAfter);
+            var w = HalfInning.WalkOff(plain, 1);
+            Assert.Equal(new[] { "r3" }, w.Scored);
+            Assert.Empty(w.RunnersOut);
+            Assert.Equal(2, w.OutsAfter);
+        }
+        Assert.True(found > 0);
+        // Outs in play keep their outs: a sacrifice fly that wins it still has the batter out.
+        for (ulong s = 0; s < 200; s++)
+        {
+            var fly = BaseRunning.Apply(Outcome.Oip, OutType.Fly, 1, B(null, null, "r3"), "bat", new SeededRandom(s));
+            if (fly.Scored.Count == 0) continue;
+            Assert.Equal(2, HalfInning.WalkOff(fly, 1).OutsAfter);
+            break;
+        }
+    }
+
     // ---- Calibration (research 37, plan 38): league-average lineups against real runs per team per game. ----
     private static Rates League(params int[][] rows)
     {

@@ -297,11 +297,22 @@ public class InningApiTests
         var abs = Enumerable.Range(0, 240).Select(i => new AtBatResult(i, i / 60, i % 2, new PickRef("ap01", 2000), new PickRef($"ab{i % 24 + 1:00}", 2000), (ulong)i * 1_000_003UL,
             Outcome.Single, i % 3 == 0 ? 1 : 0, new InningAtBat(i / 60 + 1, i % 9, i % 3, i % 3, new string?[] { "ab01", null, "ab03" }, new string?[] { null, "ab02", null },
                 OutType.None, i % 3 == 0 ? new[] { "ab03" } : Array.Empty<string>()))).ToList();
+        // Stage B2: the play kinds the base line needs come back whole.
+        abs[10] = abs[10] with { Inn = abs[10].Inn! with { OutType = OutType.Ground, RunnersOut = new[] { "ab01" }, DoublePlay = true } };          // double play
+        abs[11] = abs[11] with { Inn = abs[11].Inn! with { RunnersOut = new[] { "ab02" } } };                                                     // thrown out on a single
+        abs[12] = abs[12] with { Inn = abs[12].Inn! with { OutType = OutType.Fly, SacFly = true } };                                             // sac fly
+        abs[13] = abs[13] with { Inn = abs[13].Inn! with { OutType = OutType.Ground, RunnersOut = new[] { "ab01" } } };                           // force at second
+        abs[14] = abs[14] with { Inn = abs[14].Inn! with { OutsAfter = 3, BasesAfter = new string?[3], RunnersOut = Array.Empty<string>() } };     // stranded runners
         var lineups = Enumerable.Range(0, 2).Select(s => (IReadOnlyList<LineupEntry>)Enumerable.Range(0, 10).Select(k => new LineupEntry($"ab{k + 1:00}", 2000, k == 0 ? "pick" : "backup")).ToList()).ToList();
         var game = new GameResult(42, new PickRef[2][], abs, new[] { 40, 40 }, -1, new List<string>(), new InningData(1, era, lineups, new[] { new[] { 10, 10, 10, 10 }, new[] { 10, 10, 10, 10 } }, 4));
         Assert.Equal(LockOutcome.Locked, await store.LockAndResolveAsync(code, Guid.NewGuid(), "B", Array.Empty<StoredPick>(), Identity.Hash(Identity.NewToken()), now, _ => game));
         var back = await store.AtBatsAsync(code);
         Assert.Equal(240, back.Count);
+        Assert.True(back[10].Inn!.DoublePlay); Assert.Equal(new[] { "ab01" }, back[10].Inn!.RunnersOut);
+        Assert.Equal(new[] { "ab02" }, back[11].Inn!.RunnersOut); Assert.False(back[11].Inn!.DoublePlay);
+        Assert.True(back[12].Inn!.SacFly);
+        Assert.Equal(new[] { "ab01" }, back[13].Inn!.RunnersOut);
+        Assert.Empty(back[14].Inn!.RunnersOut!); Assert.Equal(3, back[14].Inn!.OutsAfter);
         Assert.Equal(abs[239].Seed, back[239].Seed);
         Assert.Equal(new string?[] { "ab01", null, "ab03" }, back[100].Inn!.BasesBefore);
         Assert.Equal(new[] { "ab03" }, back[99].Inn!.Scored);

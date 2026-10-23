@@ -29,3 +29,24 @@
 
 /* Plan 27: Skip is a small link so it does not compete with Pitch. */
 .actions .skip-link { min-height: 44px; padding: 0 12px; background: none; border: 0; }
+
+/* Plan 38: inning mode. */
+.rules-line { margin: 0; }
+.lineup .row-btn { min-height: 40px; padding-top: 6px; padding-bottom: 6px; }
+.pitcher-bats { padding: 8px 12px; font-size: .95rem; }
+.scoreboard { align-items: center; }
+.state { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.diamond { width: 44px; height: 30px; display: block; }
+.diamond polygon { fill: none; stroke: #f4efe2; stroke-width: 1.5; }
+.diamond polygon.on { fill: #f2c94c; stroke: #f2c94c; }
+.outs { display: flex; gap: 4px; }
+.outs i { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid #f4efe2; box-sizing: border-box; }
+.outs i.on { background: #e36b5b; border-color: #e36b5b; }
+.base-line { margin: 6px 0 0; font-size: .92rem; }
+.half-card { margin: 8px 0 0; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); font-size: .88rem; font-weight: 600; }
+.linescore { width: 100%; border-collapse: collapse; font-size: .9rem; font-variant-numeric: tabular-nums; table-layout: fixed; }
+.linescore th, .linescore td { padding: 4px 2px; text-align: center; border-bottom: 1px solid var(--border); }
+.linescore th:first-child { width: 40%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.plays-card { display: grid; gap: 2px; }
+.half-head { margin: 6px 0 0; font-size: .82rem; font-weight: 700; color: var(--text-secondary); }
+.how-link { align-self: flex-start; }

@@ -218,6 +218,17 @@ public static class BaseRunning
 public static class HalfInning
 {
     /// <summary>
+    /// Walk-off play (not a home run): runs count up to and including the winning run. Plan 38 expert gate: the game ends
+    /// when the winning run scores, so on a hit, walk or hit batter nobody is out afterwards (a trailing runner thrown out
+    /// on the same hit). Outs in play keep their outs (the batter's own out or a force happen with the run).
+    /// </summary>
+    public static PlayResult WalkOff(PlayResult p, int keepRuns)
+    {
+        p = p with { Scored = p.Scored.Take(keepRuns).ToList() };
+        return p.Outcome == Outcome.Oip ? p : p with { RunnersOut = Array.Empty<string>(), OutsAfter = p.OutsBefore, DoublePlay = false };
+    }
+
+    /// <summary>
     /// Plays one half inning. ratesFor(spot) gives the odds for the lineup spot; the lineup continues from startSpot.
     /// seedFor(paIndex) gives each plate appearance's seed (outcome draw, out split and running draws use separate streams).
     /// stopWhenRunsReach: walk-off limit (runs needed to win in the bottom half), or int.MaxValue.
@@ -242,7 +253,7 @@ public static class HalfInning
             {
                 // walk-off: runs count up to and including the winning run (all runs on a home run)
                 var keep = stopWhenRunsReach - runs;
-                p = p with { Scored = p.Scored.Take(keep).ToList() };
+                p = WalkOff(p, keep);
                 scoredNow = keep;
             }
             if (runs + scoredNow >= stopWhenRunsReach) p = p with { BasesAfter = new string?[3] };   // game over: freeze the bases display

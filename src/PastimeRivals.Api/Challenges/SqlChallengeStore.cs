@@ -48,6 +48,7 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
           seed DECIMAL(20,0) NOT NULL, outcome VARCHAR(8) NOT NULL, points TINYINT NOT NULL, PRIMARY KEY (code, idx));
         IF COL_LENGTH('dbo.ch_atbats', 'inning') IS NULL ALTER TABLE dbo.ch_atbats ADD inning TINYINT NULL, spot TINYINT NULL, outs_before TINYINT NULL, outs_after TINYINT NULL,
           bases_before VARCHAR(40) NULL, bases_after VARCHAR(40) NULL, out_type VARCHAR(6) NULL, scored VARCHAR(80) NULL;
+        IF COL_LENGTH('dbo.ch_atbats', 'runners_out') IS NULL ALTER TABLE dbo.ch_atbats ADD runners_out VARCHAR(40) NULL, dp BIT NULL, sf BIT NULL;
         IF OBJECT_ID('dbo.ch_keys') IS NULL CREATE TABLE dbo.ch_keys (
           key_hash CHAR(64) COLLATE Latin1_General_BIN2 NOT NULL PRIMARY KEY, code VARCHAR(24) COLLATE Latin1_General_BIN2 NOT NULL, side TINYINT NOT NULL);
         """;
@@ -211,14 +212,15 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
     {
         await using var c = await OpenAsync();
         await using var cmd = Cmd(c, "SELECT idx, round, batting_side, pitcher_id, pitcher_year, batter_id, batter_year, seed, outcome, points, " +
-            "inning, spot, outs_before, outs_after, bases_before, bases_after, out_type, scored FROM dbo.ch_atbats WHERE code = @c ORDER BY idx", null, ("@c", code));
+            "inning, spot, outs_before, outs_after, bases_before, bases_after, out_type, scored, runners_out, dp, sf FROM dbo.ch_atbats WHERE code = @c ORDER BY idx", null, ("@c", code));
         await using var r = await cmd.ExecuteReaderAsync();
         var list = new List<AtBatResult>();
         while (await r.ReadAsync())
             list.Add(new AtBatResult(r.GetByte(0), r.GetByte(1), r.GetByte(2), new PickRef(r.GetString(3), r.GetInt16(4)), new PickRef(r.GetString(5), r.GetInt16(6)),
                 (ulong)r.GetDecimal(7), Enum.Parse<Outcome>(r.GetString(8)), r.GetByte(9),
                 r.IsDBNull(10) ? null : new InningAtBat(r.GetByte(10), r.GetByte(11), r.GetByte(12), r.GetByte(13), Unbases(r.GetString(14)), Unbases(r.GetString(15)),
-                    Enum.Parse<OutType>(r.GetString(16)), r.GetString(17).Split(',', StringSplitOptions.RemoveEmptyEntries))));
+                    Enum.Parse<OutType>(r.GetString(16)), r.GetString(17).Split(',', StringSplitOptions.RemoveEmptyEntries),
+                    r.IsDBNull(18) ? Array.Empty<string>() : r.GetString(18).Split(',', StringSplitOptions.RemoveEmptyEntries), !r.IsDBNull(19) && r.GetBoolean(19), !r.IsDBNull(20) && r.GetBoolean(20))));
         return list;
     }
 
@@ -270,17 +272,18 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         for (var start = 0; start < game.AtBats.Count; start += 50)
         {
             var sql = new System.Text.StringBuilder("INSERT INTO dbo.ch_atbats (code, idx, round, batting_side, pitcher_id, pitcher_year, batter_id, batter_year, seed, outcome, points, " +
-                "inning, spot, outs_before, outs_after, bases_before, bases_after, out_type, scored) VALUES ");
+                "inning, spot, outs_before, outs_after, bases_before, bases_after, out_type, scored, runners_out, dp, sf) VALUES ");
             var ps = new List<(string, object?)> { ("@c", code) };
             for (var i = start; i < Math.Min(start + 50, game.AtBats.Count); i++)
             {
                 var a = game.AtBats[i];
                 var n = a.Inn;
-                sql.Append(i == start ? "" : ", ").Append($"(@c, @i{i}, @r{i}, @b{i}, @p{i}, @py{i}, @bt{i}, @by{i}, @s{i}, @o{i}, @pt{i}, @in{i}, @sp{i}, @ob{i}, @oa{i}, @bb{i}, @ba{i}, @ot{i}, @sc{i})");
+                sql.Append(i == start ? "" : ", ").Append($"(@c, @i{i}, @r{i}, @b{i}, @p{i}, @py{i}, @bt{i}, @by{i}, @s{i}, @o{i}, @pt{i}, @in{i}, @sp{i}, @ob{i}, @oa{i}, @bb{i}, @ba{i}, @ot{i}, @sc{i}, @ro{i}, @dp{i}, @sf{i})");
                 ps.AddRange(new (string, object?)[] { ($"@i{i}", a.Index), ($"@r{i}", a.Round), ($"@b{i}", a.BattingSide), ($"@p{i}", a.Pitcher.Id), ($"@py{i}", a.Pitcher.Year),
                     ($"@bt{i}", a.Batter.Id), ($"@by{i}", a.Batter.Year), ($"@s{i}", (decimal)a.Seed), ($"@o{i}", a.Outcome.ToString()), ($"@pt{i}", a.Points),
                     ($"@in{i}", n?.Inning), ($"@sp{i}", n?.Spot), ($"@ob{i}", n?.OutsBefore), ($"@oa{i}", n?.OutsAfter), ($"@bb{i}", n is null ? null : Bases(n.BasesBefore)),
-                    ($"@ba{i}", n is null ? null : Bases(n.BasesAfter)), ($"@ot{i}", n?.OutType.ToString()), ($"@sc{i}", n is null ? null : string.Join(",", n.Scored)) });
+                    ($"@ba{i}", n is null ? null : Bases(n.BasesAfter)), ($"@ot{i}", n?.OutType.ToString()), ($"@sc{i}", n is null ? null : string.Join(",", n.Scored)),
+                    ($"@ro{i}", n is null ? null : string.Join(",", n.RunnersOut ?? Array.Empty<string>())), ($"@dp{i}", n?.DoublePlay), ($"@sf{i}", n?.SacFly) });
             }
             await using var cmd = Cmd(c, sql.ToString(), tx, ps.ToArray());
             await cmd.ExecuteNonQueryAsync();

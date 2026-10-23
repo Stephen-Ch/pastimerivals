@@ -8,8 +8,9 @@
     @case ('home') {
       <main class="flex home">
         <h1 #screenTitle tabindex="-1">Pastime Rivals</h1>
-        <p class="home-pitch">Pick a pitcher and 3 batters from any season. Beat the computer or a friend.</p>
-        <p class="how">Walk or single 1 point, double 2, triple 3, homer 4. Most points wins.</p>
+        <p class="home-pitch">Pick a pitcher and a batting order from any season. Beat the computer or a friend.</p>
+        <p class="how">One inning: your hitters bat until 3 outs, then theirs. Most runs wins.</p>
+        <button type="button" class="link small how-link" (click)="showSimInfo.set(true)">How the sim works</button>
         @if (myGames() > 0) { <button type="button" class="link" (click)="openChallenge()">Your games ({{ myGames() }})</button> }
       </main>
       <div class="actions home-actions">
@@ -114,11 +115,12 @@
       <div class="actions three">
         <button class="primary big" type="button" (click)="throwPitch()" [disabled]="busy()">{{ artWaiting() ? 'Loading art' : 'Pitch again' }}</button>
         <button type="button" (click)="share()">Share</button>
-        @if (firstResult()) { <button type="button" (click)="openChallenge('cpu')">Play a 3-batter game ›</button> }
+        @if (firstResult()) { <button type="button" (click)="openChallenge('cpu')">Play an inning ›</button> }
         @else { <button type="button" (click)="goBack()">New matchup</button> }
       </div>
     }
   }
+  @if (showSimInfo()) { <pr-how-sim (close)="showSimInfo.set(false)" /> }
   <footer class="notice">The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.</footer>
 </div>
 }

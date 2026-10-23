@@ -77,6 +77,8 @@ export class Feedback {
   readonly where = input.required<'cpu' | 'friend' | 'practice'>();
   readonly level = input<number | null>(null);
   readonly result = input<'win' | 'loss' | 'draw' | null>(null);
+  /** Plan 38: game mode, recorded with the vote. */
+  readonly mode = input<'classic' | 'inning' | null>(null);
   protected readonly up = UP_REASONS;
   protected readonly down = DOWN_REASONS;
   protected readonly state = signal<'ask' | 'reasons' | 'thanks' | 'gone'>('ask');
@@ -89,7 +91,7 @@ export class Feedback {
   protected async vote(v: 'up' | 'down') {
     this.votedUp.set(v === 'up');
     this.state.set('reasons');
-    this.id = capi.feedback({ vote: v, where: this.where(), level: this.level() ?? undefined, result: this.result() ?? undefined });
+    this.id = capi.feedback({ vote: v, where: this.where(), level: this.level() ?? undefined, result: this.result() ?? undefined, mode: this.mode() ?? undefined });
   }
 
   protected toggle(k: string) { this.picked.update(p => (p.includes(k) ? p.filter(x => x !== k) : [...p, k])); }

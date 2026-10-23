@@ -62,9 +62,10 @@ export type FinalKind = 'called' | 'swinging' | 'tip';
 export interface AtBatCount { leadUp: CountPitch[]; finalKind: FinalKind | null; balls: number; strikes: number; }
 
 /** Plan 32A: decoration versions. 1 = count c1 + call a1 (frozen); 2 = c2 + a2. Travels in share links as d. */
-export type Deco = '1' | '2';
+export type Deco = '1' | '2' | '3';
 export const DECORATION_VERSION: Deco = '2';
-const KNOWN_DECO: Deco[] = ['1', '2'];
+/** '3' (plan 38) is for inning games only: the server stores it; new classic games still send DECORATION_VERSION '2'. */
+const KNOWN_DECO: Deco[] = ['1', '2', '3'];
 /** Missing = 1. Unknown (newer than this app) = replay with the newest known, and say a refresh would help. */
 export function resolveDeco(d: string | number | null | undefined): { deco: Deco; unknown: boolean } {
   if (d === null || d === undefined || d === '') return { deco: '1', unknown: false };
@@ -92,7 +93,7 @@ function rng(version: string, seed: string): () => number {
 
 /** A legal lead-up count that ends in the given result. Same seed and version, same count. */
 export function countFor(o: OutcomeKey, seed: string, deco: Deco = '1'): AtBatCount {
-  return deco === '2' ? countC2(o, seed) : countC1(o, seed);
+  return deco === '2' || deco === '3' ? countC2(o, seed) : countC1(o, seed);
 }
 
 /** Version c1, frozen (plan 11). Do not change: old links and games replay it. */
@@ -218,8 +219,72 @@ export interface Call { text: string; type: string; fielder?: string; spot?: Spo
 
 /** One announcer-style line for the result. The engine only decided the outcome; the rest is for show. */
 export function callFor(o: OutcomeKey, seed: string, count: AtBatCount, batter: string, bats?: string | null, pitcherThrows?: string | null,
-  deco: Deco = '1', year?: number | null): Call {
+  deco: Deco = '1', year?: number | null, play?: PlayFacts | null): Call {
+  if (deco === '3') return callA3(o, seed, count, batter, bats, pitcherThrows, year ?? null, play ?? null);
   return deco === '2' ? callA2(o, seed, count, batter, bats, pitcherThrows, year ?? null) : callA1(o, seed, count, batter, bats, pitcherThrows);
+}
+
+/** Plan 38: what the server decided about a play that a3 calls must match. */
+export type ServerOutType = 'ground' | 'fly' | 'line' | 'pop' | 'error';
+/** tagged: on a line out, a runner tagged (scored, moved up, or was thrown out on the tag); the catch was in the outfield. */
+export interface PlayFacts { outType: ServerOutType | null; doublePlay: boolean; sacFly: boolean; forceRunner: string | null; tagged?: boolean; }
+
+const FULL_POS: Record<string, string> = {
+  P: 'pitcher', C: 'catcher', '1B': 'first baseman', '2B': 'second baseman', SS: 'shortstop', '3B': 'third baseman',
+  LF: 'left fielder', CF: 'center fielder', RF: 'right fielder',
+};
+
+/**
+ * Version a3 (plan 38, inning games). Count c2 and the a2 text for everything but outs in play. Outs in play run a2's
+ * draws in a2's order (direction, spot, its own type roll) so the stream stays aligned, then the fielder is drawn by a2's
+ * rule for the SERVER's out type, so words and the ball's path match the play the server scored.
+ */
+function callA3(o: OutcomeKey, seed: string, count: AtBatCount, batter: string, bats: string | null | undefined, pitcherThrows: string | null | undefined,
+  year: number | null, play: PlayFacts | null): Call {
+  if (o !== 'oip' || !play?.outType) return callA2(o, seed, count, batter, bats, pitcherThrows, year);
+  const r = stream('a2', seed);
+  const one = <T,>(xs: T[]): T => xs[Math.floor(r() * xs.length)];
+  const side = hitsFrom(bats, pitcherThrows);
+  const x = r();
+  const dir: Dir = x < 0.5 ? 'pull' : x < 0.8 ? 'center' : 'opp';
+  const spotR: Spot = dir === 'pull' ? one<Spot>(['left', 'left-center']) : dir === 'center' ? 'center' : one<Spot>(['right-center', 'right']);
+  const mirror: Record<Spot, Spot> = { left: 'right', 'left-center': 'right-center', center: 'center', 'right-center': 'left-center', right: 'left' };
+  const spot = side === 'R' ? spotR : mirror[spotR];
+  const mirrorPos = (p: string) => side === 'R' ? p : ({ '3B': '1B', '1B': '3B', SS: '2B', '2B': 'SS', LF: 'RF', RF: 'LF' } as Record<string, string>)[p] ?? p;
+  const pos = (byDir: Record<Dir, string[]>) => mirrorPos(one(byDir[dir]));
+  const of = (s: Spot) => (s === 'left' || s === 'left-center' ? 'LF' : s === 'center' ? 'CF' : 'RF');
+  const n = batter;
+  r();   // a2's own out-type roll: drawn and set aside so every later draw lines up with a2
+  const ground = () => pos({ pull: ['3B', 'SS'], center: ['SS', '2B', 'P'], opp: ['2B', '1B'] });
+  switch (play.outType) {
+    case 'ground': {
+      const f = ground();
+      if (play.doublePlay) return { type: 'ground', fielder: f, dir, trajectory: 'ground', text: `${n} grounded into a double play.` };
+      if (play.forceRunner) return { type: 'ground', fielder: f, dir, trajectory: 'ground', text: `${n} grounded into a force out; ${play.forceRunner} out at second.` };
+      return { type: 'ground', fielder: f, dir, trajectory: 'ground', text: `${n} grounded out to ${FIELD[f]}.` };
+    }
+    case 'error': {
+      const f = ground();
+      return { type: 'error', fielder: f, dir, trajectory: 'ground', text: `${n} reached on an error by the ${FULL_POS[f]}.` };
+    }
+    case 'fly': {
+      const f = of(spot);
+      const deep = r() < 0.25 ? 'deep ' : '';
+      return { type: 'fly', fielder: f, spot, dir, trajectory: 'fly',
+        text: play.sacFly ? `${n} hit a sacrifice fly to ${deep}${FIELD[f]}.` : `${n} flied out to ${deep}${FIELD[f]}.` };
+    }
+    case 'line': {
+      const drawn = pos({ pull: ['3B', 'SS', 'LF'], center: ['P', 'SS', '2B', 'CF'], opp: ['2B', '1B', 'RF'] });
+      // Expert gate: nobody tags up on an infield liner, so a liner a runner tagged on was caught in the outfield.
+      const f = play.tagged && !play.doublePlay ? of(spot) : drawn;
+      if (play.doublePlay) return { type: 'line', fielder: f, dir, trajectory: 'line', text: `${n} lined into a double play.` };
+      return { type: 'line', fielder: f, dir, trajectory: 'line', text: play.sacFly ? `${n} lined out to ${FIELD[f]} for a sacrifice fly.` : `${n} lined out to ${FIELD[f]}.` };
+    }
+    case 'pop': {
+      const f = one(['1B', '2B', 'SS', '3B', '3B', '1B', 'C']);
+      return { type: 'pop', fielder: f, trajectory: 'pop', text: `${n} popped out to ${FIELD[f]}.` };
+    }
+  }
 }
 
 /** Version a1, frozen (plan 12/21). Do not change: old links and games replay it. */

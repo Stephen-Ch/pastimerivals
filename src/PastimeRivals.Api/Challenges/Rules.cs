@@ -9,7 +9,8 @@ public sealed record PickRef(string Id, int Year);
 public sealed record SlotPick(int Slot, IReadOnlyList<PickRef> Choices);
 
 /// <summary>Plan 38: the inning-game state around one plate appearance. Bases hold player ids (index 0 = first).</summary>
-public sealed record InningAtBat(int Inning, int Spot, int OutsBefore, int OutsAfter, string?[] BasesBefore, string?[] BasesAfter, OutType OutType, IReadOnlyList<string> Scored);
+public sealed record InningAtBat(int Inning, int Spot, int OutsBefore, int OutsAfter, string?[] BasesBefore, string?[] BasesAfter, OutType OutType, IReadOnlyList<string> Scored,
+    IReadOnlyList<string>? RunnersOut = null, bool DoublePlay = false, bool SacFly = false);
 
 public sealed record AtBatResult(int Index, int Round, int BattingSide, PickRef Pitcher, PickRef Batter, ulong Seed, Outcome Outcome, int Points, InningAtBat? Inn = null);
 
@@ -248,7 +249,8 @@ public static class Rules
             side => BaseRunning.ReachOnErrorShare(chosen[1 - side][0].Year), MaxPaPerHalf);
 
         var atBats = g.Plays.Select(p => new AtBatResult(p.Index, p.Inning - 1, p.BattingSide, chosen[1 - p.BattingSide][0], order[p.BattingSide][p.Spot], p.Seed,
-            p.Play.Outcome, p.Runs, new InningAtBat(p.Inning, p.Spot, p.Play.OutsBefore, p.Play.OutsAfter, p.Play.BasesBefore, p.Play.BasesAfter, p.Play.OutType, p.Play.Scored))).ToList();
+            p.Play.Outcome, p.Runs, new InningAtBat(p.Inning, p.Spot, p.Play.OutsBefore, p.Play.OutsAfter, p.Play.BasesBefore, p.Play.BasesAfter, p.Play.OutType, p.Play.Scored,
+            p.Play.RunnersOut, p.Play.DoublePlay, p.Play.SacFly))).ToList();
         foreach (var half in atBats.GroupBy(a => (a.Inn!.Inning, a.BattingSide)))
         {
             var last = half.Last().Inn!;

@@ -1,5 +1,7 @@
 import { callFor, countFor, finalCaption, hitsFrom, OUTCOMES, resolveDeco } from './logic';
 import { V1_FIXTURE } from './logic-v1-fixture';
+import { V2_FIXTURE } from './logic-v2-fixture';
+import { V3_FIXTURE } from './logic-v3-fixture';
 import { frameAt, planPitch } from './pitch-scene';
 
 const h = (s: string, off: number) => { let x = off >>> 0; for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619) >>> 0; } return x.toString(16); };
@@ -23,11 +25,53 @@ describe('plan 32A decoration versions', () => {
     expect(JSON.stringify(sample)).toBe(JSON.stringify(V1_FIXTURE.sample));
   }, 30000);
 
+  it('replays version 3 (c2 + a3, inning games) byte for byte, as frozen when plan 38 shipped', () => {
+    const types = ['ground', 'fly', 'line', 'pop', 'error'] as const;
+    let all = '';
+    const sample: Record<string, unknown> = {};
+    let n = 0;
+    const years = [1910, 1955, 1990, 2020];
+    for (let i = 0; i < 300; i++) for (const o of OUTCOMES) for (const [bats, thr] of [['R', 'R'], ['L', 'R'], ['B', 'R'], ['B', 'L'], ['R', 'L'], ['L', 'L']]) {
+      const seed = `s${i * 7919 % 100003}`, year = years[i % 4];
+      const t = types[(i + n) % 5];
+      const facts = { outType: o === 'oip' ? t : null, doublePlay: (i % 7 === 0) && (t === 'ground' || t === 'line'), sacFly: (i % 5 === 0) && (t === 'fly' || t === 'line'), forceRunner: i % 6 === 1 && t === 'ground' ? 'Runner Y' : null, tagged: (i % 5 === 0 || i % 4 === 1) && t === 'line' };
+      const c = countFor(o, seed, '3');
+      const line = JSON.stringify({ c, a: callFor(o, seed, c, 'Batter X', bats, thr, '3', year, facts) });
+      all += line + '\n';
+      if (n++ % 500 === 0) sample[`${o}|${seed}|${bats}|${thr}|${year}`] = JSON.parse(line);
+    }
+    expect(n).toBe(V3_FIXTURE.entries);
+    expect(all.length).toBe(V3_FIXTURE.length);
+    expect(h(all, 2166136261)).toBe(V3_FIXTURE.h1);
+    expect(h(all, 0x811c9dc5 ^ 0x5bd1e995)).toBe(V3_FIXTURE.h2);
+    expect(JSON.stringify(sample)).toBe(JSON.stringify(V3_FIXTURE.sample));
+  }, 30000);
+
+  it('replays version 2 (c2 + a2) byte for byte, as frozen before plan 38 stage C', () => {
+    let all = '';
+    const sample: Record<string, unknown> = {};
+    let n = 0;
+    const years = [1910, 1955, 1990, 2020];
+    for (let i = 0; i < 300; i++) for (const o of OUTCOMES) for (const [bats, thr] of [['R', 'R'], ['L', 'R'], ['B', 'R'], ['B', 'L'], ['R', 'L'], ['L', 'L']]) {
+      const seed = `s${i * 7919 % 100003}`, year = years[i % 4];
+      const c = countFor(o, seed, '2');
+      const line = JSON.stringify({ c, a: callFor(o, seed, c, 'Batter X', bats, thr, '2', year) });
+      all += line + '\n';
+      if (n++ % 500 === 0) sample[`${o}|${seed}|${bats}|${thr}|${year}`] = JSON.parse(line);
+    }
+    expect(n).toBe(V2_FIXTURE.entries);
+    expect(all.length).toBe(V2_FIXTURE.length);
+    expect(h(all, 2166136261)).toBe(V2_FIXTURE.h1);
+    expect(h(all, 0x811c9dc5 ^ 0x5bd1e995)).toBe(V2_FIXTURE.h2);
+    expect(JSON.stringify(sample)).toBe(JSON.stringify(V2_FIXTURE.sample));
+  }, 30000);
+
   it('reads versions: missing = 1, unknown = newest plus a refresh flag', () => {
     expect(resolveDeco(undefined)).toEqual({ deco: '1', unknown: false });
     expect(resolveDeco('1')).toEqual({ deco: '1', unknown: false });
     expect(resolveDeco(2)).toEqual({ deco: '2', unknown: false });
     expect(resolveDeco('9')).toEqual({ deco: '2', unknown: true });
+    expect(resolveDeco(3)).toEqual({ deco: '3', unknown: false });
   }, 30000);
 
   it('c2 counts are legal and match the review rates', () => {

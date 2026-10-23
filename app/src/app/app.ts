@@ -1,3 +1,4 @@
+import { HowSim } from './how-sim';
 import { Component, computed, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResult } from './api';
@@ -42,7 +43,7 @@ function sessionId(): string {
 
 @Component({
   selector: 'app-root',
-  imports: [ReportView, PitchScene, ChallengeFlow, Feedback],
+  imports: [ReportView, PitchScene, ChallengeFlow, Feedback, HowSim],
   styleUrls: ['./app.css', './sims.css'],
   templateUrl: './app.html',
 })
@@ -151,6 +152,8 @@ export class App {
   private practicePushed = false;
 
   /** Plan 36: from the first view, Home switches in place (no history entry, so Back behaves). */
+  /** Plan 38: "How the sim works" sheet. */
+  protected readonly showSimInfo = signal(false);
   protected moreWays() { this.firstView.set(false); this.goHome(); }
 
   protected goHome() {

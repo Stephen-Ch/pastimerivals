@@ -156,4 +156,26 @@ public class InningRulesTests
         decades[1970] = new SeasonCounts(1000, 1000, 900, 0, 0, 10, 0, 0, 0);
         Assert.Equal(b.K, PastimeRivals.Api.Stats.PlayService.PitcherBattingLine(decades, null, 1975)!.K);
     }
+
+    [Fact]
+    public void Plays_carry_the_engines_runner_outs_double_plays_and_sac_flies()
+    {
+        var o = new Oracle();
+        var era = EraRules.From(new[] { (2000, "AL") });
+        bool dp = false, sf = false;
+        for (ulong seed = 0; seed < 300 && !(dp && sf); seed++)
+        {
+            // Batters alternate singles ("s") and outs in play ("o") so runners are on when outs happen.
+            var h = Team("h", 2000, 9, "o"); var v = Team("v", 2000, 9, "o");
+            for (var k = 1; k <= 9; k += 2) { h[k] = new SlotPick(k, new[] { new PickRef($"h{k}s", 2000) }); v[k] = new SlotPick(k, new[] { new PickRef($"v{k}s", 2000) }); }
+            foreach (var a in Rules.PlayInning(new[] { h, v }, seed, o, era).AtBats)
+            {
+                var n = a.Inn!;
+                if (n.DoublePlay) { dp = true; Assert.True(n.OutsAfter - n.OutsBefore == 2 || n.OutsAfter == 3); Assert.NotEmpty(n.RunnersOut!); }
+                if (n.SacFly) { sf = true; Assert.Equal(OutType.Fly, n.OutType); Assert.NotEmpty(n.Scored); }
+                Assert.All(n.RunnersOut!, r => Assert.Contains(r, n.BasesBefore));
+            }
+        }
+        Assert.True(dp && sf);
+    }
 }
