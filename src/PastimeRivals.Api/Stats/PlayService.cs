@@ -28,6 +28,12 @@ public sealed class PlayService(IStatsSource source)
         public readonly Dictionary<(bool Pit, int Level), IReadOnlyList<Challenges.PickRef>[]> Levels = new();
         public readonly ConcurrentDictionary<(string Id, bool Pit), string> Bios = new();
         private Dictionary<int, double>? _batMean, _pitMean;
+        private Dictionary<int, SeasonCounts>? _pitcherBatting;
+
+        /// <summary>Plan 38: summed batting of pitchers by decade (batter seasons listed at P with 100+ batters faced that year).</summary>
+        public Dictionary<int, SeasonCounts> PitcherBatting => _pitcherBatting ??= Bat.Values.SelectMany(v => v)
+            .Where(r => r.Position == "P" && Pit.TryGetValue(r.Id, out var ps) && ps.Any(x => x.Year == r.Year && x.Counts.Pa >= 100))
+            .GroupBy(r => r.Year / 10 * 10).ToDictionary(g => g.Key, g => g.Select(r => r.Counts).Aggregate(SeasonCounts.Empty, PlayService.Add));
 
         private static Dictionary<int, double> Means(Dictionary<string, List<PlayerRow>> pool) =>
             pool.Values.SelectMany(v => v).Where(r => r.Counts.Pa > 0).GroupBy(r => r.Year).ToDictionary(g => g.Key,
@@ -215,8 +221,60 @@ public sealed class PlayService(IStatsSource source)
         return (pitcher ? d.Cat.Pitcher(id, year) : d.Cat.Batter(id, year)) != null;
     }
 
+    internal static SeasonCounts Add(SeasonCounts a, SeasonCounts b) => new(a.Pa + b.Pa, a.KKnownPa + b.KKnownPa, a.K + b.K,
+        a.Bb + b.Bb, a.Hbp + b.Hbp, a.Single + b.Single, a.Double + b.Double, a.Triple + b.Triple, a.Hr + b.Hr);
+
+    private static SeasonCounts Scale(SeasonCounts c, double f) => new((int)Math.Round(c.Pa * f), (int)Math.Round(c.KKnownPa * f), (int)Math.Round(c.K * f),
+        (int)Math.Round(c.Bb * f), (int)Math.Round(c.Hbp * f), (int)Math.Round(c.Single * f), (int)Math.Round(c.Double * f), (int)Math.Round(c.Triple * f), (int)Math.Round(c.Hr * f));
+
+    /// <summary>Plan 38: pitchers' batting decade line; a decade with under 20,000 plate appearances uses the decade before.</summary>
+    public const int PitcherBatMinPa = 30, PitcherBatScaledPa = 3000, DecadeMinPa = 20000;
+
+    /// <summary>
+    /// Plan 38: the batting line a pitcher hits with when there is no DH: his own line if 30+ PA that season, else his
+    /// decade's pitcher line. Null when there is no data at all.
+    /// </summary>
+    public static SeasonCounts? PitcherBattingLine(Dictionary<int, SeasonCounts> decades, SeasonCounts? own, int year)
+    {
+        SeasonCounts? line = null;
+        for (var dec = year / 10 * 10; dec >= 1870; dec -= 10)
+            if (decades.TryGetValue(dec, out var c) && c.Pa >= DecadeMinPa) { line = c; break; }
+        line ??= decades.Values.Where(c => c.Pa > 0).OrderByDescending(c => c.Pa).FirstOrDefault();
+        // Plan 38 as approved: his own line when he has 30+ PA that season, else the decade line. Either way scaled to
+        // 3000 PA so the engine's pull toward the non-pitcher league average barely moves it.
+        var use = own is { } mine && mine.Pa >= PitcherBatMinPa ? mine : line;
+        if (use is null || use.Pa == 0) return null;
+        return Scale(use, (double)PitcherBatScaledPa / use.Pa);
+    }
+
     private sealed class Oracle(Loaded d) : Challenges.IMatchupOracle
     {
+        /// <summary>Builds the decade pitcher-batting table now (it scans every batting season), outside any transaction.</summary>
+        public void Warm() { lock (d) _ = d.PitcherBatting; }
+
+        public string LeagueOf(Challenges.PickRef p, bool pitcher)
+        {
+            var row = pitcher ? d.Cat.Pitcher(p.Id, p.Year)?.Row : d.Cat.Batter(p.Id, p.Year)?.Row;
+            return row is null ? "NL" : row.PaAl > 0 ? "AL" : row.PaNl > 0 ? "NL" : "FL";
+        }
+
+        public Rates? PitcherAtBat(Challenges.PickRef pb, Challenges.PickRef pitcher)
+        {
+            var pit = d.Cat.Pitcher(pitcher.Id, pitcher.Year);
+            var asPitcher = d.Cat.Pitcher(pb.Id, pb.Year);
+            var asBatter = d.Cat.Batter(pb.Id, pb.Year);
+            if (pit == null || (asPitcher == null && asBatter == null)) return null;
+            Dictionary<int, SeasonCounts> decades;
+            lock (d) decades = d.PitcherBatting;
+            var counts = PitcherBattingLine(decades, asBatter?.Row.Counts, pb.Year);
+            if (counts is null) return null;
+            var row = asBatter?.Row ?? asPitcher!.Row;
+            var input = new PlayerInput(counts, d.Cat.PlayerLeague(row, "bat"), null, d.Cat.PlatoonFor(pb.Year));
+            var bp = d.People.GetValueOrDefault(pb.Id);
+            var pp = d.People.GetValueOrDefault(pitcher.Id);
+            bool? same = bp is { Bats: "L" or "R" or "B" } && pp is { Throws: "L" or "R" } ? bp.Bats != "B" && bp.Bats == pp.Throws : null;
+            return Matchup.Compute(input, pit.Input, d.Neutral, d.NeutralPlatoon, EngineOptions.Default, same).Probabilities;
+        }
 
         public Rates? Odds(Challenges.PickRef batter, Challenges.PickRef pitcher)
         {

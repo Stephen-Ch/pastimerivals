@@ -6,17 +6,27 @@ namespace PastimeRivals.Api.Challenges;
 
 public sealed record PickChoiceIn(string Id, int Year);
 public sealed record SlotIn(int Slot, List<PickChoiceIn> Choices);
-public sealed record FeedbackIn(string? Vote, string? Where, int? Level, string? Result);
+public sealed record FeedbackIn(string? Vote, string? Where, int? Level, string? Result, string? Mode = null);
 public sealed record FeedbackReasonsIn(string[]? Reasons);
-public sealed record PicksIn(List<SlotIn> Picks, string? Nickname, string? Turnstile, int? Level = null, int? Deco = null);
+/// <summary>Mode (plan 38): "classic" or "inning"; old apps send none, which means classic.</summary>
+public sealed record PicksIn(List<SlotIn> Picks, string? Nickname, string? Turnstile, int? Level = null, int? Deco = null, string? Mode = null);
 public sealed record NicknameIn(string Nickname);
 
 public sealed record PlayerOut(string Id, int Year, string Name, string Bats = "R", string Throws = "R", string Bio = "");
 public sealed record SlotOut(int Slot, IReadOnlyList<PlayerOut> Choices);
-public sealed record AtBatOut(int Index, int Round, int BattingSide, PlayerOut Pitcher, PlayerOut Batter, string Seed, string Outcome, int Points);
-public sealed record GameOut(IReadOnlyList<IReadOnlyList<PlayerOut>> Lineups, IReadOnlyList<AtBatOut> AtBats, int[] Totals, int Winner, IReadOnlyList<string> Notes);
+public sealed record AtBatOut(int Index, int Round, int BattingSide, PlayerOut Pitcher, PlayerOut Batter, string Seed, string Outcome, int Points,
+    int? Inning = null, int? Spot = null, int? OutsBefore = null, int? OutsAfter = null, string?[]? BasesBefore = null, string?[]? BasesAfter = null,
+    string? OutType = null, IReadOnlyList<string>? Scored = null);
+public sealed record GameOut(IReadOnlyList<IReadOnlyList<PlayerOut>> Lineups, IReadOnlyList<AtBatOut> AtBats, int[] Totals, int Winner, IReadOnlyList<string> Notes,
+    int[][]? LineScore = null, int? Innings = null, IReadOnlyList<IReadOnlyList<string>>? LineupSources = null);
+/// <summary>Plan 38: the game's era rules (shown before the game too: the friend needs to know 8 or 9 batters).</summary>
+public sealed record EraOut(bool Dh, bool RunnerOnSecond, int Season, int Batters)
+{
+    public static EraOut Of(EraRules e) => new(e.DesignatedHitter, e.RunnerOnSecondInExtras, e.Season, e.PickedBatters);
+}
 public sealed record ChallengeView(string Code, string Status, string You, string CreatorName, string? OpponentName, DateTime ExpiresUtc,
-    bool CanClaim, string? RematchOf, IReadOnlyList<SlotOut>? YourPicks, GameOut? Game, bool VsCpu = false, int CpuLevel = 1, int Deco = 1);
+    bool CanClaim, string? RematchOf, IReadOnlyList<SlotOut>? YourPicks, GameOut? Game, bool VsCpu = false, int CpuLevel = 1, int Deco = 1,
+    string Mode = Rules.Classic, EraOut? Era = null);
 public sealed record CreatedOut(string Code, string Key);
 
 public static class ChallengeEndpoints
@@ -49,22 +59,44 @@ public static class ChallengeEndpoints
         });
 
         // Quick pick (plan 26): a fully random team (random era, then a random real-workload season), each with suggested backups.
-        api.MapGet("/challenges/quickpick", async (PlayService play) =>
+        // Plan 38: ?mode=inning returns { era, slots }. batters=8|9 (the friend, whose size is fixed by the stored era) draws
+        // exactly that many. Without it (a home team) it draws 9, and drops one when the drawn team's era has no DH.
+        api.MapGet("/challenges/quickpick", async (string? mode, int? batters, PlayService play) =>
         {
+            var inning = mode == Rules.Inning;
+            if (batters is { } nb && (!inning || nb is not (8 or 9))) return Results.BadRequest();
             var oracle = await play.OracleAsync();
-            var used = new HashSet<string>();
-            var slots = new List<SlotOut>();
-            for (var slot = 0; slot < Rules.Slots; slot++)
+            for (var attempt = 0; ; attempt++)
             {
-                var role = slot == 0 ? "pit" : "bat";
-                if (Rules.DrawAtLevel(oracle, slot == 0, Rules.MinLevel, used, Rnd) is not { } first)
-                    return Results.Problem("Player data is still loading. Try again.", statusCode: 503);
-                used.Add(first.Id);
-                var choices = new List<PlayerOut> { await Out(play, first, role) };
-                foreach (var b in await play.SimilarAsync(first.Id, first.Year, slot == 0, 2, used)) { choices.Add(await Out(play, b, role)); used.Add(b.Id); }
-                slots.Add(new SlotOut(slot, choices));
+                var drawn = await QuickTeam(oracle, play, inning ? (batters ?? 9) : Rules.Slots - 1);
+                if (drawn is null) return Results.Problem("Player data is still loading. Try again.", statusCode: 503);
+                if (!inning) return Results.Ok(drawn);
+                EraRules Era(List<SlotOut> t) => Rules.EraFrom(t.Select(x => new SlotPick(x.Slot, new[] { new PickRef(x.Choices[0].Id, x.Choices[0].Year) })).ToList(), oracle);
+                var era = Era(drawn);
+                if (batters is { } want)
+                    return Results.Ok(new { era = (EraOut?)null, batters = want, slots = drawn });
+                if (era.DesignatedHitter) return Results.Ok(new { era = EraOut.Of(era), batters = 9, slots = drawn });
+                if (EightFromNine(drawn, oracle) is { } eight) return Results.Ok(new { era = EraOut.Of(Era(eight)), batters = 8, slots = eight });
+                if (attempt >= 20) return Results.Problem("Could not draw a team. Try again.", statusCode: 503);
             }
-            return Results.Ok(slots);
+        });
+
+        // Plan 38: era rules for a home team being picked: p = pitcher "id:year", b = batters "id:year" (first choices).
+        api.MapGet("/challenges/era", async (string? p, string[]? b, HttpContext ctx, PlayService play, MissCounter misses) =>
+        {
+            var ip = MissCounter.KeyFor(ctx);
+            if (misses.Blocked(ip)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            var refs = new List<SlotPick>();
+            var all = new[] { p }.Concat(b ?? Array.Empty<string>()).ToList();
+            if (p is null || all.Count > 10) return Results.BadRequest();
+            for (var i = 0; i < all.Count; i++)
+            {
+                var parts = all[i]?.Split(':');
+                if (parts is not { Length: 2 } || parts[0].Length is < 1 or > 12 || !int.TryParse(parts[1], out var y)) return Results.BadRequest();
+                if (!await play.SeasonExistsAsync(parts[0], y, pitcher: i == 0)) { misses.Miss(ip); return Results.BadRequest(); }
+                refs.Add(new SlotPick(i, new[] { new PickRef(parts[0], y) }));
+            }
+            return Results.Ok(EraOut.Of(Rules.EraFrom(refs, await play.OracleAsync())));
         });
 
         // Reading never creates a guest; it hands out the anti-forgery token the app sends back on every change.
@@ -104,7 +136,7 @@ public static class ChallengeEndpoints
             var now = DateTime.UtcNow;
             return Results.Ok(list.Select(s => new
             {
-                s.Code, you = s.Side == 0 ? "creator" : "opponent", s.CreatorName, s.OpponentName, s.CreatedUtc, s.VsCpu,
+                s.Code, you = s.Side == 0 ? "creator" : "opponent", s.CreatorName, s.OpponentName, s.CreatedUtc, s.VsCpu, s.Mode,
                 status = s.Status == ChallengeStatus.Open && s.OpponentName is null && s.ExpiresUtc <= now ? "expired" : s.Status.ToString().ToLowerInvariant(),
             }));
         });
@@ -156,7 +188,8 @@ public static class ChallengeEndpoints
             if (body.Vote is not ("up" or "down") || body.Where is not ("cpu" or "friend" or "practice")) return Results.BadRequest();
             if (body.Level is { } lv && (lv < Rules.MinLevel || lv > Rules.MaxLevel)) return Results.BadRequest();
             if (body.Result is not (null or "win" or "loss" or "draw")) return Results.BadRequest();
-            var id = await store.AddFeedbackAsync(new FeedbackRow(body.Vote, body.Where, body.Where == "cpu" ? body.Level : null, body.Result, EngineInfo.Version),
+            var mode = body.Mode is Rules.Classic or Rules.Inning ? body.Mode : null;
+            var id = await store.AddFeedbackAsync(new FeedbackRow(body.Vote, body.Where, body.Where == "cpu" ? body.Level : null, body.Result, EngineInfo.Version, mode),
                 Identity.IpHash(ctx, Salt(cfg)), DateTime.UtcNow, FeedbackPerIpPerDay);
             return id is null ? Results.StatusCode(StatusCodes.Status429TooManyRequests) : Results.Ok(new { id });
         });
@@ -187,8 +220,10 @@ public static class ChallengeEndpoints
             var ip = MissCounter.KeyFor(ctx);
             if (misses.Blocked(ip)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
             if (!Identity.CodePattern().IsMatch(code) || await store.GetAsync(code) is not { } before) { misses.Miss(ip); return Results.NotFound(); }
+            // Plan 38: an app that does not know this game's mode (an old app on an inning link) is told to refresh.
+            if (ModeOf(body) != before.Mode) return Results.Conflict(new { error = "update" });
             if (!await ts.PassesAsync(body.Turnstile, ctx)) return Results.BadRequest(new { error = "Bot check failed. Try again." });
-            if (await CheckPicks(body.Picks, play) is { } err) return Results.BadRequest(new { error = err });
+            if (await CheckPicks(body.Picks, play, before.Era) is { } err) return Results.BadRequest(err);
             if (body.Nickname is not null && !Identity.IsGeneratedNickname(body.Nickname)) return Results.BadRequest(new { error = "Pick one of the suggested names." });
 
             var current = await CurrentGuest(ctx, store);
@@ -209,7 +244,8 @@ public static class ChallengeEndpoints
             // first choices are taken so they can choose again; after that, their backups play. Only clashing players
             // are named, and only once, so the challenger's team cannot be found by trial and error.
             var creatorFirsts = (await store.PicksAsync(code)).Where(p => p.Side == 0 && p.Rank == 0).Select(p => p.PlayerId).ToHashSet();
-            var clashes = body.Picks.Where(p => creatorFirsts.Contains(p.Choices[0].Id)).ToList();
+            // Plan 38: an inning team has 10 slots; the notice names at most 3 (classic is unchanged: at most 4 slots).
+            var clashes = body.Picks.Where(p => creatorFirsts.Contains(p.Choices[0].Id)).Take(before.Mode == Rules.Inning ? 3 : int.MaxValue).ToList();
             if (clashes.Count > 0 && await store.TryUseClashCheckAsync(code))
             {
                 var named = new List<object>();
@@ -222,9 +258,9 @@ public static class ChallengeEndpoints
             if (body.Nickname is not null && body.Nickname != g.Nickname) { await store.SetNicknameAsync(g.Id, body.Nickname); g = g with { Nickname = body.Nickname }; }
             var key = Identity.NewToken();
             var oracle = await play.OracleAsync();
-            oracle.Top50(true); oracle.Top50(false); // build the fallback pools before the claim transaction starts
+            oracle.Top50(true); oracle.Top50(false); oracle.Warm(); // build the fallback pools and pitcher batting before the claim transaction starts
             var outcome = await store.LockAndResolveAsync(code, g.Id, g.Nickname, ToStored(body.Picks, side: 1), Identity.Hash(key), DateTime.UtcNow,
-                all => Rules.Play(new[] { ToSlots(all, 0), ToSlots(all, 1) }, PlayService.NewSeed(), oracle));
+                all => PlayGame(before, all, PlayService.NewSeed(), oracle));
             switch (outcome)
             {
                 case LockOutcome.NotFound: misses.Miss(ip); return Results.NotFound();
@@ -241,7 +277,11 @@ public static class ChallengeEndpoints
         // Plan 25: play the computer. The user is the home side (keeps every pick); the computer bats first.
         write.MapPost("/challenges/computer", async (PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, IConfiguration cfg, MissCounter misses) =>
         {
-            if (await CheckPicks(body.Picks, play) is { } err) return Results.BadRequest(new { error = err });
+            if (ModeOf(body) is not { } mode) return Results.BadRequest(new { error = "Unknown game mode." });
+            var oracle0 = await play.OracleAsync();
+            var era = mode == Rules.Inning ? EraOfBody(body, oracle0) : null;
+            if (mode == Rules.Inning && era is null) return Results.BadRequest(new { error = "Pick 1 pitcher and 8 or 9 batters." });
+            if (await CheckPicks(body.Picks, play, era) is { } err) return Results.BadRequest(err);
             if (body.Nickname is not null && !Identity.IsGeneratedNickname(body.Nickname)) return Results.BadRequest(new { error = "Pick one of the suggested names." });
             var now = DateTime.UtcNow;
             var ipHash = Identity.IpHash(ctx, Salt(cfg));
@@ -257,22 +297,23 @@ public static class ChallengeEndpoints
             // The computer never uses any of the user's players, in any season or role (all 12 picks).
             var used = body.Picks.SelectMany(p => p.Choices).Select(c => c.Id).ToHashSet();
             var cpu = new List<StoredPick>();
-            for (var slot = 0; slot < Rules.Slots; slot++)
+            for (var slot = 0; slot < (era is null ? Rules.Slots : era.PickedBatters + 1); slot++)
             {
                 if (Rules.DrawAtLevel(oracle, slot == 0, level, used, Rnd) is not { } pick)
                     return Results.Problem("Player data is still loading. Try again.", statusCode: 503);
                 used.Add(pick.Id);
                 cpu.Add(new StoredPick(1, slot, 0, pick.Id, pick.Year));
             }
-            oracle.Top50(true); oracle.Top50(false);
+            oracle.Top50(true); oracle.Top50(false); oracle.Warm();
 
             var code = Identity.NewCode();
             var key = Identity.NewToken();
             // Reserved for the computer, so nobody else can ever claim it.
-            var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, ComputerId, null, null, null, VsCpu: true, CpuLevel: level, Deco: DecoOf(body));
+            var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, ComputerId, null, null, null, VsCpu: true, CpuLevel: level,
+                Deco: DecoOf(body, mode), Mode: mode, Era: era);
             await store.CreateChallengeAsync(ch, ToStored(body.Picks, side: 0), Identity.Hash(key), ipHash);
             var outcome = await store.LockAndResolveAsync(code, ComputerId, ComputerName, cpu, Identity.Hash(Identity.NewToken()), now,
-                all => Rules.Play(new[] { ToSlots(all, 0), ToSlots(all, 1) }, PlayService.NewSeed(), oracle));
+                all => PlayGame(ch, all, PlayService.NewSeed(), oracle));
             if (outcome != LockOutcome.Locked) return Results.Problem("Could not start the game. Try again.", statusCode: 500);
             try { await store.PurgeCpuGamesAsync(now.AddDays(-30)); } catch { /* retention is best effort */ }
             var view = await ViewFor((await store.GetAsync(code))!, ctx, store, play, misses, asGuest: g);
@@ -291,13 +332,31 @@ public static class ChallengeEndpoints
                 return Results.NotFound();
             }
             if (await store.RematchExistsAsync(code, g.Id)) return Results.Conflict(new { error = "already" });
+            // Plan 38: a rematch keeps the game's mode (its era is worked out again from the new home side's picks).
+            if (ModeOf(body) != ch.Mode) return Results.Conflict(new { error = "update" });
             var other = g.Id == ch.CreatorId ? ch.OpponentId : ch.CreatorId;
             return await Create(body, ctx, store, play, ts, cfg, rematchOf: (code, other));
         });
     }
 
     /// <summary>Plan 32A: decoration version the creating app used (count and call text). Old apps send none = 1.</summary>
-    internal static int DecoOf(PicksIn body) => body.Deco is { } d && d >= 1 && d <= 9 ? d : 1;
+    internal static int DecoOf(PicksIn body, string mode = Rules.Classic) =>
+        mode == Rules.Inning ? Rules.InningDeco : body.Deco is { } d && d >= 1 && d <= 9 ? d : 1;
+
+    /// <summary>Plan 38: "classic" when the app sends no mode (old apps), null when the mode is unknown.</summary>
+    internal static string? ModeOf(PicksIn body) => body.Mode switch { null or Rules.Classic => Rules.Classic, Rules.Inning => Rules.Inning, _ => null };
+
+    /// <summary>Plan 38: era rules from a home side's first choices as sent (null when the picks are too broken to read).</summary>
+    private static EraRules? EraOfBody(PicksIn body, IMatchupOracle oracle)
+    {
+        if (body.Picks is null || body.Picks.Count is 0 or > 10 || body.Picks.Any(p => p?.Choices is not { Count: > 0 } || p.Choices[0] is null)) return null;
+        return Rules.EraFrom(body.Picks.Select(p => new SlotPick(p.Slot, new[] { new PickRef(p.Choices[0].Id, p.Choices[0].Year) })).ToList(), oracle);
+    }
+
+    private static GameResult PlayGame(Challenge ch, IReadOnlyList<StoredPick> all, ulong seed, IMatchupOracle oracle) =>
+        ch.Mode == Rules.Inning
+            ? Rules.PlayInning(new[] { ToSlots(all, 0), ToSlots(all, 1) }, seed, oracle, ch.Era!)
+            : Rules.Play(new[] { ToSlots(all, 0), ToSlots(all, 1) }, seed, oracle);
 
     /// <summary>Plan 29: funnel counts never break the request they ride on.</summary>
     private static async Task Funnel(IChallengeStore store, string code, string step, string? notFromIp = null)
@@ -320,11 +379,11 @@ public static class ChallengeEndpoints
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Pastime Rivals funnel, last {days} days (UTC; friend challenges grouped by the day they were created)");
-        sb.AppendLine("day         kind      created  sent  opened  opened-late  picking  played  watched");
+        sb.AppendLine("day         kind     mode     created  sent  opened  opened-late  picking  played  watched");
         foreach (var d in r.Days)
-            sb.AppendLine($"{d.Day:yyyy-MM-dd}  {(d.Rematch ? "rematch" : "first  ")}  {d.Created,7}  {d.Sent,4}  {d.Opened,6}  {d.OpenedExpired,11}  {d.Picking,7}  {d.Played,6}  {d.Watched,7}");
+            sb.AppendLine($"{d.Day:yyyy-MM-dd}  {(d.Rematch ? "rematch" : "first  ")}  {d.Mode,-7}  {d.Created,7}  {d.Sent,4}  {d.Opened,6}  {d.OpenedExpired,11}  {d.Picking,7}  {d.Played,6}  {d.Watched,7}");
         int T(Func<FunnelDay, int> f) => r.Days.Sum(f);
-        sb.AppendLine($"TOTAL                 {T(d => d.Created),7}  {T(d => d.Sent),4}  {T(d => d.Opened),6}  {T(d => d.OpenedExpired),11}  {T(d => d.Picking),7}  {T(d => d.Played),6}  {T(d => d.Watched),7}");
+        sb.AppendLine($"TOTAL                          {T(d => d.Created),7}  {T(d => d.Sent),4}  {T(d => d.Opened),6}  {T(d => d.OpenedExpired),11}  {T(d => d.Picking),7}  {T(d => d.Played),6}  {T(d => d.Watched),7}");
         sb.AppendLine($"Spread (friends who played and later made their own challenge): {r.Spread}");
         sb.AppendLine($"Computer games (kept 30 days): {r.Computer.Sum(c => c.Games)}" + (r.Computer.Count > 0 ? " | " + string.Join(", ", r.Computer.Select(c => $"{c.Day:MM-dd} {c.Games}")) : ""));
         sb.AppendLine("App opens by source: " + (r.Sources.Count == 0 ? "none yet" : string.Join(", ", r.Sources.Select(s => $"{s.Source} {s.Opens}"))));
@@ -343,6 +402,37 @@ public static class ChallengeEndpoints
     public static readonly HashSet<string> FeedbackDown = new() { "hard", "confusing", "slow", "players" };
 
     private static int Rnd(int n) => System.Security.Cryptography.RandomNumberGenerator.GetInt32(n);
+
+    /// <summary>
+    /// Plan 38: a drawn home team of 9 batters whose era has no DH loses its oldest-season batter (never the newest, who
+    /// set the rules) and is renumbered. Null if the rules would change (cannot happen with today's rules; then draw again).
+    /// </summary>
+    public static List<SlotOut>? EightFromNine(List<SlotOut> nine, IMatchupOracle oracle)
+    {
+        EraRules Era(List<SlotOut> t) => Rules.EraFrom(t.Select(x => new SlotPick(x.Slot, new[] { new PickRef(x.Choices[0].Id, x.Choices[0].Year) })).ToList(), oracle);
+        var before = Era(nine);
+        var drop = nine.Skip(1).OrderBy(x => x.Choices[0].Year).ThenBy(x => x.Slot).First();
+        var eight = nine.Where(x => x != drop).Select((x, i) => new SlotOut(i, x.Choices)).ToList();
+        var after = Era(eight);
+        return after == before ? eight : null;
+    }
+
+    /// <summary>Quick pick (plan 26): slot 0 a random pitcher, then that many random batters, each with 2 suggested backups. Null while data loads.</summary>
+    private static async Task<List<SlotOut>?> QuickTeam(IMatchupOracle oracle, PlayService play, int batters)
+    {
+        var used = new HashSet<string>();
+        var slots = new List<SlotOut>();
+        for (var slot = 0; slot <= batters; slot++)
+        {
+            var role = slot == 0 ? "pit" : "bat";
+            if (Rules.DrawAtLevel(oracle, slot == 0, Rules.MinLevel, used, Rnd) is not { } first) return null;
+            used.Add(first.Id);
+            var choices = new List<PlayerOut> { await Out(play, first, role) };
+            foreach (var b in await play.SimilarAsync(first.Id, first.Year, slot == 0, 2, used)) { choices.Add(await Out(play, b, role)); used.Add(b.Id); }
+            slots.Add(new SlotOut(slot, choices));
+        }
+        return slots;
+    }
 
     /// <summary>bioRole "pit" or "bat" adds the plan 26 bio line (pick screens only; game views stay small).</summary>
     private static async Task<PlayerOut> Out(PlayService play, PickRef r, string? bioRole = null) =>
@@ -364,7 +454,10 @@ public static class ChallengeEndpoints
         (string Code, Guid? Other)? rematchOf)
     {
         if (!await ts.PassesAsync(body.Turnstile, ctx)) return Results.BadRequest(new { error = "Bot check failed. Try again." });
-        if (await CheckPicks(body.Picks, play) is { } err) return Results.BadRequest(new { error = err });
+        if (ModeOf(body) is not { } mode) return Results.BadRequest(new { error = "Unknown game mode." });
+        var era = mode == Rules.Inning ? EraOfBody(body, await play.OracleAsync()) : null;
+        if (mode == Rules.Inning && era is null) return Results.BadRequest(new { error = "Pick 1 pitcher and 8 or 9 batters." });
+        if (await CheckPicks(body.Picks, play, era) is { } err) return Results.BadRequest(err);
         if (body.Nickname is not null && !Identity.IsGeneratedNickname(body.Nickname)) return Results.BadRequest(new { error = "Pick one of the suggested names." });
 
         var now = DateTime.UtcNow;
@@ -382,20 +475,24 @@ public static class ChallengeEndpoints
         if (body.Nickname is not null && body.Nickname != g.Nickname) { await store.SetNicknameAsync(g.Id, body.Nickname); g = g with { Nickname = body.Nickname }; }
         var code = Identity.NewCode();
         var key = Identity.NewToken();
-        var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, rematchOf?.Other, rematchOf?.Code, null, null, Deco: DecoOf(body));
+        var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, rematchOf?.Other, rematchOf?.Code, null, null,
+            Deco: DecoOf(body, mode), Mode: mode, Era: era);
         await store.CreateChallengeAsync(ch, ToStored(body.Picks, side: 0), Identity.Hash(key), ipHash);
         return Results.Ok(new CreatedOut(code, key));
     }
 
-    private static async Task<string?> CheckPicks(List<SlotIn>? picks, PlayService play)
+    /// <summary>Null when the picks are fine, else the 400 body. era null = classic; else an inning team for that era (pitcher plus 8 or 9 batters).</summary>
+    private static async Task<object?> CheckPicks(List<SlotIn>? picks, PlayService play, EraRules? era = null)
     {
-        if (picks is null || picks.Any(p => p is null || p.Choices is null || p.Choices.Any(c => c is null))) return "Pick 1 pitcher and 3 batters.";
+        object Bad(string e) => era is null ? new { error = e } : new { error = e, batters = era.PickedBatters };
+        if (picks is null || picks.Any(p => p is null || p.Choices is null || p.Choices.Any(c => c is null)))
+            return Bad(era is null ? "Pick 1 pitcher and 3 batters." : $"Pick 1 pitcher and {era.PickedBatters} batters.");
         var slots = picks.Select(p => new SlotPick(p.Slot, p.Choices.Select(c => new PickRef(c.Id, c.Year)).ToList())).ToList();
-        if (Rules.Validate(slots) is { } err) return err;
+        if ((era is null ? Rules.Validate(slots) : Rules.ValidateInning(slots, era.PickedBatters)) is { } err) return Bad(err);
         foreach (var s in slots!)
             foreach (var c in s.Choices)
                 if (!await play.SeasonExistsAsync(c.Id, c.Year, pitcher: s.Slot == 0))
-                    return $"No {(s.Slot == 0 ? "pitching" : "batting")} season for {c.Id} in {c.Year}.";
+                    return Bad($"No {(s.Slot == 0 ? "pitching" : "batting")} season for {c.Id} in {c.Year}.");
         return null;
     }
 
@@ -466,18 +563,37 @@ public static class ChallengeEndpoints
         {
             var abs = await store.AtBatsAsync(ch.Code);
             var outs = new List<AtBatOut>();
+            var names = new Dictionary<string, PlayerOut>();
+            async Task<PlayerOut> Named(PickRef r) => names.TryGetValue($"{r.Id}:{r.Year}", out var x) ? x : names[$"{r.Id}:{r.Year}"] = await P(r);
             foreach (var a in abs)
-                outs.Add(new AtBatOut(a.Index, a.Round, a.BattingSide, await P(a.Pitcher), await P(a.Batter), a.Seed.ToString(), a.Outcome.ToString().ToLowerInvariant(), a.Points));
+            {
+                var n = a.Inn;
+                outs.Add(new AtBatOut(a.Index, a.Round, a.BattingSide, await Named(a.Pitcher), await Named(a.Batter), a.Seed.ToString(), a.Outcome.ToString().ToLowerInvariant(), a.Points,
+                    n?.Inning, n?.Spot, n?.OutsBefore, n?.OutsAfter, n?.BasesBefore, n?.BasesAfter, n is null || n.OutType == OutType.None ? null : n.OutType.ToString().ToLowerInvariant(), n?.Scored));
+            }
+            if (ch.Mode == Rules.Inning && ch.Inning is { } inn)
+            {
+                // Lineups from the stored lineup ([0] pitcher, then the 9 spots), never from the plays (a side may bat 3 or 13 times).
+                var lu = new List<IReadOnlyList<PlayerOut>>();
+                foreach (var team in inn.Lineups)
+                {
+                    var list = new List<PlayerOut>();
+                    foreach (var e in team) list.Add(await Named(new PickRef(e.Id, e.Year)));
+                    lu.Add(list);
+                }
+                game = new GameOut(lu, outs, ch.Totals!, ch.Winner ?? -1, ch.Notes ?? new List<string>(), inn.LineScore, inn.Innings,
+                    inn.Lineups.Select(team => (IReadOnlyList<string>)team.Select(e => e.From).ToList()).ToList());
+            }
             var lineups = new List<IReadOnlyList<PlayerOut>>();
-            for (var sd = 0; sd < 2; sd++)
+            for (var sd = 0; sd < 2 && game is null; sd++)
             {
                 var pitcher = outs.First(a => a.BattingSide == 1 - sd).Pitcher;
                 var batters = outs.Where(a => a.BattingSide == sd && a.Round == 0).Select(a => a.Batter).ToList();
                 lineups.Add(new[] { pitcher }.Concat(batters).ToList());
             }
-            game = new GameOut(lineups, outs, ch.Totals!, ch.Winner ?? -1, ch.Notes ?? new List<string>());
+            game ??= new GameOut(lineups, outs, ch.Totals!, ch.Winner ?? -1, ch.Notes ?? new List<string>());
         }
         return new ChallengeView(ch.Code, ch.Status.ToString().ToLowerInvariant(), you, ch.CreatorName, ch.OpponentName, ch.ExpiresUtc,
-            canClaim, ch.RematchOf, yourPicks, game, ch.VsCpu, ch.CpuLevel ?? 1, ch.Deco ?? 1);
+            canClaim, ch.RematchOf, yourPicks, game, ch.VsCpu, ch.CpuLevel ?? 1, ch.Deco ?? 1, ch.Mode, ch.Era is null ? null : EraOut.Of(ch.Era));
     }
 }

@@ -42,7 +42,9 @@ public static class InningGame
     /// <param name="ids">ids(battingSide, spot): player id in that spot (the pitcher's id in spot 8 without the DH).</param>
     /// <param name="seedFor">seed for plate appearance number n of the game.</param>
     /// <param name="reachOnError">reach-on-error share per batting side (from the fielding side's season).</param>
-    public static InningGameResult Play(Func<int, int, Rates> rates, Func<int, int, string> ids, EraRules era, Func<int, ulong> seedFor, Func<int, double> reachOnError)
+    /// <param name="maxPaPerHalf">safety cap on plate appearances in one half (the server uses 30 so a game fits its storage).</param>
+    public static InningGameResult Play(Func<int, int, Rates> rates, Func<int, int, string> ids, EraRules era, Func<int, ulong> seedFor, Func<int, double> reachOnError,
+        int maxPaPerHalf = 60)
     {
         var plays = new List<InningPlay>();
         var totals = new int[2];
@@ -59,7 +61,7 @@ public static class InningGame
                 var limit = side == 0 && totals[0] <= totals[1] ? totals[1] - totals[0] + 1 : int.MaxValue;   // walk-off
                 var start = plays.Count;
                 var half = HalfInning.Play(s => rates(side, s), s => ids(side, s), LineupLength, next[side],
-                    n => seedFor(start + n), runner, limit, reachOnError: reachOnError(side));
+                    n => seedFor(start + n), runner, limit, maxPaPerHalf, reachOnError(side));
                 var spot = next[side];
                 for (var i = 0; i < half.Plays.Count; i++)
                 {

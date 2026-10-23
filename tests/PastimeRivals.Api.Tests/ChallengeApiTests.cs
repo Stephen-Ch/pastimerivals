@@ -88,7 +88,7 @@ public sealed class MemoryChallengeStore : IChallengeStore
             _picksByCode[code] = all;
             _atBats[code] = g.AtBats.ToList();
             _keys[keyHash] = (code, 1);
-            _ch[code] = (c with { OpponentId = oid, OpponentName = oname, Status = ChallengeStatus.Resolved, Totals = g.Totals, Winner = g.Winner, Notes = g.Notes }, v.Ip);
+            _ch[code] = (c with { OpponentId = oid, OpponentName = oname, Status = ChallengeStatus.Resolved, Totals = g.Totals, Winner = g.Winner, Notes = g.Notes, Inning = g.Inning }, v.Ip);
             return Task.FromResult(LockOutcome.Locked);
         }
     }
@@ -128,9 +128,9 @@ public sealed class MemoryChallengeStore : IChallengeStore
         {
             var all = _ch.Values.Select(v => v.C).Where(c => c.CreatedUtc >= since).ToList();
             int Has(Challenge c, string st) => _funnel.Contains((c.Code, st)) ? 1 : 0;
-            var days = all.Where(c => !c.VsCpu).GroupBy(c => (c.CreatedUtc.Date, c.RematchOf is not null)).OrderBy(g => g.Key)
+            var days = all.Where(c => !c.VsCpu).GroupBy(c => (c.CreatedUtc.Date, c.RematchOf is not null, c.Mode)).OrderBy(g => g.Key)
                 .Select(g => new FunnelDay(g.Key.Date, g.Key.Item2, g.Count(), g.Sum(c => Has(c, "sent")), g.Sum(c => Has(c, "opened")), g.Sum(c => Has(c, "opened_expired")),
-                    g.Sum(c => Has(c, "picking")), g.Sum(c => Has(c, "played")), g.Sum(c => Has(c, "watched")))).ToList();
+                    g.Sum(c => Has(c, "picking")), g.Sum(c => Has(c, "played")), g.Sum(c => Has(c, "watched")), g.Key.Mode)).ToList();
             var friends = _ch.Values.Select(v => v.C).Where(c => !c.VsCpu).ToList();
             var spread = all.Where(a => !a.VsCpu && a.OpponentId is { } o && friends.Any(b => b.CreatorId == o && b.CreatedUtc > a.CreatedUtc)).Select(a => a.OpponentId).Distinct().Count();
             var cpu = all.Where(c => c.VsCpu).GroupBy(c => c.CreatedUtc.Date).Select(g => (g.Key, g.Count())).ToList();
@@ -158,7 +158,7 @@ public sealed class MemoryChallengeStore : IChallengeStore
     {
         lock (_gate) return Task.FromResult<IReadOnlyList<ChallengeSummary>>(_ch.Values.Select(v => v.C).Where(c => c.CreatorId == id || c.OpponentId == id)
             .OrderByDescending(c => c.CreatedUtc).Take(take)
-            .Select(c => new ChallengeSummary(c.Code, c.CreatorId == id ? 0 : 1, c.Status, c.CreatorName, c.OpponentName, c.CreatedUtc, c.ExpiresUtc, c.VsCpu)).ToList());
+            .Select(c => new ChallengeSummary(c.Code, c.CreatorId == id ? 0 : 1, c.Status, c.CreatorName, c.OpponentName, c.CreatedUtc, c.ExpiresUtc, c.VsCpu, c.Mode)).ToList());
     }
 
     /// <summary>Test hook: push a challenge's expiry into the past.</summary>
@@ -699,6 +699,8 @@ public class ChallengeApiTests
 }
 
 /// <summary>Same scenarios on a real SQL Server when PR_TEST_SQL holds a connection string (cloud workspace has one).</summary>
+/// <summary>One shared test database: SQL test classes run one at a time.</summary>
+[Xunit.Collection("sql")]
 public class ChallengeSqlTests : ChallengeApiTests
 {
     private static readonly string? Cs = Environment.GetEnvironmentVariable("PR_TEST_SQL");

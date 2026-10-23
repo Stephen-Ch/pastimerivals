@@ -1,3 +1,5 @@
+using PastimeRivals.Engine;
+
 namespace PastimeRivals.Api.Challenges;
 
 public sealed record Guest(Guid Id, string Nickname);
@@ -7,21 +9,22 @@ public enum ChallengeStatus { Open, Resolved, Expired }
 public sealed record Challenge(
     string Code, Guid CreatorId, string CreatorName, Guid? OpponentId, string? OpponentName,
     ChallengeStatus Status, DateTime CreatedUtc, DateTime ExpiresUtc, Guid? RematchFor, string? RematchOf,
-    int[]? Totals, int? Winner, IReadOnlyList<string>? Notes = null, bool VsCpu = false, int? CpuLevel = null, int? Deco = null);
+    int[]? Totals, int? Winner, IReadOnlyList<string>? Notes = null, bool VsCpu = false, int? CpuLevel = null, int? Deco = null,
+    string Mode = Rules.Classic, EraRules? Era = null, InningData? Inning = null);
 
 public sealed record StoredPick(int Side, int Slot, int Rank, string PlayerId, int Year);
 
-public sealed record ChallengeSummary(string Code, int Side, ChallengeStatus Status, string CreatorName, string? OpponentName, DateTime CreatedUtc, DateTime ExpiresUtc, bool VsCpu = false);
+public sealed record ChallengeSummary(string Code, int Side, ChallengeStatus Status, string CreatorName, string? OpponentName, DateTime CreatedUtc, DateTime ExpiresUtc, bool VsCpu = false, string Mode = Rules.Classic);
 
 public enum LockOutcome { Locked, Taken, NotFound, Expired, OwnChallenge, NotForYou }
 
 /// <summary>Plan 29 funnel readout: one row per day the challenges were created, first challenges and rematches apart.</summary>
-public sealed record FunnelDay(DateTime Day, bool Rematch, int Created, int Sent, int Opened, int OpenedExpired, int Picking, int Played, int Watched);
+public sealed record FunnelDay(DateTime Day, bool Rematch, int Created, int Sent, int Opened, int OpenedExpired, int Picking, int Played, int Watched, string Mode = Rules.Classic);
 public sealed record FunnelReport(IReadOnlyList<FunnelDay> Days, int Spread, IReadOnlyList<(DateTime Day, int Games)> Computer, IReadOnlyList<(string Source, int Opens)> Sources,
     FeedbackSummary? Feedback = null);
 
 /// <summary>Plan 30: one tap of feedback. Reasons are fixed keys (comma list), never free text.</summary>
-public sealed record FeedbackRow(string Vote, string Where, int? Level, string? Result, string Version);
+public sealed record FeedbackRow(string Vote, string Where, int? Level, string? Result, string Version, string? Mode = null);
 public sealed record FeedbackSummary(IReadOnlyList<(string Where, string Vote, string Result, int N)> Votes, IReadOnlyList<(string Vote, string Reason, int N)> Reasons);
 
 /// <summary>Everything challenges keep. SqlChallengeStore in production; tests use an in-memory copy.</summary>

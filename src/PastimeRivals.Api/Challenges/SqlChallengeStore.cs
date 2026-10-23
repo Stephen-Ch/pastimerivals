@@ -25,9 +25,12 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         IF COL_LENGTH('dbo.ch_challenges', 'vs_cpu') IS NULL ALTER TABLE dbo.ch_challenges ADD vs_cpu BIT NOT NULL DEFAULT 0;
         IF COL_LENGTH('dbo.ch_challenges', 'cpu_level') IS NULL ALTER TABLE dbo.ch_challenges ADD cpu_level TINYINT NULL;
         IF COL_LENGTH('dbo.ch_challenges', 'deco_version') IS NULL ALTER TABLE dbo.ch_challenges ADD deco_version TINYINT NULL;
+        IF COL_LENGTH('dbo.ch_challenges', 'mode') IS NULL ALTER TABLE dbo.ch_challenges ADD mode TINYINT NULL, rules_version TINYINT NULL, dh BIT NULL, xrunner BIT NULL,
+          era_season SMALLINT NULL, lineups VARCHAR(4000) NULL, line_score VARCHAR(200) NULL, innings TINYINT NULL;
         IF OBJECT_ID('dbo.ch_feedback') IS NULL CREATE TABLE dbo.ch_feedback (
           id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY, at DATETIME2 NOT NULL, vote VARCHAR(4) NOT NULL, where_ VARCHAR(8) NOT NULL, level TINYINT NULL,
           result VARCHAR(4) NULL, reasons VARCHAR(64) NULL, version VARCHAR(16) NOT NULL, ip_hash CHAR(64) COLLATE Latin1_General_BIN2 NOT NULL);
+        IF COL_LENGTH('dbo.ch_feedback', 'mode') IS NULL ALTER TABLE dbo.ch_feedback ADD mode VARCHAR(8) NULL;
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_fb_ip') CREATE INDEX ix_fb_ip ON dbo.ch_feedback (ip_hash, at);
         IF OBJECT_ID('dbo.ch_funnel') IS NULL CREATE TABLE dbo.ch_funnel (
           code VARCHAR(24) COLLATE Latin1_General_BIN2 NOT NULL, step VARCHAR(16) NOT NULL, at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(), PRIMARY KEY (code, step));
@@ -43,6 +46,8 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
           code VARCHAR(24) COLLATE Latin1_General_BIN2 NOT NULL, idx TINYINT NOT NULL, round TINYINT NOT NULL, batting_side TINYINT NOT NULL,
           pitcher_id VARCHAR(12) NOT NULL, pitcher_year SMALLINT NOT NULL, batter_id VARCHAR(12) NOT NULL, batter_year SMALLINT NOT NULL,
           seed DECIMAL(20,0) NOT NULL, outcome VARCHAR(8) NOT NULL, points TINYINT NOT NULL, PRIMARY KEY (code, idx));
+        IF COL_LENGTH('dbo.ch_atbats', 'inning') IS NULL ALTER TABLE dbo.ch_atbats ADD inning TINYINT NULL, spot TINYINT NULL, outs_before TINYINT NULL, outs_after TINYINT NULL,
+          bases_before VARCHAR(40) NULL, bases_after VARCHAR(40) NULL, out_type VARCHAR(6) NULL, scored VARCHAR(80) NULL;
         IF OBJECT_ID('dbo.ch_keys') IS NULL CREATE TABLE dbo.ch_keys (
           key_hash CHAR(64) COLLATE Latin1_General_BIN2 NOT NULL PRIMARY KEY, code VARCHAR(24) COLLATE Latin1_General_BIN2 NOT NULL, side TINYINT NOT NULL);
         """;
@@ -79,7 +84,7 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         foreach (var (n, v) in ps)
         {
             if (v is string str)
-                cmd.Parameters.Add(new SqlParameter(n, Unicode.Contains(n) ? SqlDbType.NVarChar : SqlDbType.VarChar, Unicode.Contains(n) ? 4000 : 64) { Value = str });
+                cmd.Parameters.Add(new SqlParameter(n, Unicode.Contains(n) ? SqlDbType.NVarChar : SqlDbType.VarChar, Unicode.Contains(n) ? 4000 : Math.Max(64, str.Length)) { Value = str });
             else cmd.Parameters.AddWithValue(n, v ?? DBNull.Value);
         }
         return cmd;
@@ -135,9 +140,10 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         await using var c = await OpenAsync();
         await using var tx = (SqlTransaction)await c.BeginTransactionAsync();
         await using (var cmd = Cmd(c, """
-            INSERT INTO dbo.ch_challenges (code, creator_id, creator_name, status, created_utc, expires_utc, rematch_for, rematch_of, creator_ip, vs_cpu, cpu_level, deco_version)
-            VALUES (@c, @g, @n, 0, @cr, @ex, @rf, @ro, @ip, @cpu, @lv, @dv)
-            """, tx, ("@cpu", ch.VsCpu), ("@lv", ch.CpuLevel), ("@dv", ch.Deco), ("@c", ch.Code), ("@g", ch.CreatorId), ("@n", ch.CreatorName), ("@cr", ch.CreatedUtc), ("@ex", ch.ExpiresUtc),
+            INSERT INTO dbo.ch_challenges (code, creator_id, creator_name, status, created_utc, expires_utc, rematch_for, rematch_of, creator_ip, vs_cpu, cpu_level, deco_version,
+              mode, dh, xrunner, era_season)
+            VALUES (@c, @g, @n, 0, @cr, @ex, @rf, @ro, @ip, @cpu, @lv, @dv, @md, @dh, @xr, @es)
+            """, tx, ("@md", ch.Mode == Rules.Inning ? 1 : null), ("@dh", ch.Era?.DesignatedHitter), ("@xr", ch.Era?.RunnerOnSecondInExtras), ("@es", ch.Era?.Season), ("@cpu", ch.VsCpu), ("@lv", ch.CpuLevel), ("@dv", ch.Deco), ("@c", ch.Code), ("@g", ch.CreatorId), ("@n", ch.CreatorName), ("@cr", ch.CreatedUtc), ("@ex", ch.ExpiresUtc),
             ("@rf", ch.RematchFor), ("@ro", ch.RematchOf), ("@ip", ipHash)))
             await cmd.ExecuteNonQueryAsync();
         await InsertPicks(c, tx, ch.Code, picks);
@@ -156,9 +162,22 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         }
     }
 
-    private const string ChallengeColumns = "code, creator_id, creator_name, opponent_id, opponent_name, status, created_utc, expires_utc, rematch_for, rematch_of, total0, total1, winner, notes, vs_cpu, cpu_level, deco_version";
+    private const string ChallengeColumns = "code, creator_id, creator_name, opponent_id, opponent_name, status, created_utc, expires_utc, rematch_for, rematch_of, total0, total1, winner, notes, vs_cpu, cpu_level, deco_version, " +
+        "mode, dh, xrunner, era_season, rules_version, lineups, line_score, innings";
 
-    private static Challenge ReadChallenge(SqlDataReader r) => new(
+    private static Challenge ReadChallenge(SqlDataReader r)
+    {
+        var c = ReadClassic(r);
+        if (r.IsDBNull(17) || r.GetByte(17) != 1) return c;
+        var era = new EraRules(r.GetBoolean(18), r.GetBoolean(19), r.GetInt16(20));
+        InningData? inn = null;
+        if (!r.IsDBNull(21))
+            inn = new InningData(r.GetByte(21), era, JsonSerializer.Deserialize<List<List<LineupEntry>>>(r.GetString(22))!.Select(l => (IReadOnlyList<LineupEntry>)l).ToList(),
+                JsonSerializer.Deserialize<int[][]>(r.GetString(23))!, r.GetByte(24));
+        return c with { Mode = Rules.Inning, Era = era, Inning = inn };
+    }
+
+    private static Challenge ReadClassic(SqlDataReader r) => new(
         r.GetString(0), r.GetGuid(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetGuid(3), r.IsDBNull(4) ? null : r.GetString(4),
         (ChallengeStatus)r.GetByte(5), DateTime.SpecifyKind(r.GetDateTime(6), DateTimeKind.Utc), DateTime.SpecifyKind(r.GetDateTime(7), DateTimeKind.Utc),
         r.IsDBNull(8) ? null : r.GetGuid(8), r.IsDBNull(9) ? null : r.GetString(9),
@@ -191,14 +210,21 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
     public async Task<IReadOnlyList<AtBatResult>> AtBatsAsync(string code)
     {
         await using var c = await OpenAsync();
-        await using var cmd = Cmd(c, "SELECT idx, round, batting_side, pitcher_id, pitcher_year, batter_id, batter_year, seed, outcome, points FROM dbo.ch_atbats WHERE code = @c ORDER BY idx", null, ("@c", code));
+        await using var cmd = Cmd(c, "SELECT idx, round, batting_side, pitcher_id, pitcher_year, batter_id, batter_year, seed, outcome, points, " +
+            "inning, spot, outs_before, outs_after, bases_before, bases_after, out_type, scored FROM dbo.ch_atbats WHERE code = @c ORDER BY idx", null, ("@c", code));
         await using var r = await cmd.ExecuteReaderAsync();
         var list = new List<AtBatResult>();
         while (await r.ReadAsync())
             list.Add(new AtBatResult(r.GetByte(0), r.GetByte(1), r.GetByte(2), new PickRef(r.GetString(3), r.GetInt16(4)), new PickRef(r.GetString(5), r.GetInt16(6)),
-                (ulong)r.GetDecimal(7), Enum.Parse<Outcome>(r.GetString(8)), r.GetByte(9)));
+                (ulong)r.GetDecimal(7), Enum.Parse<Outcome>(r.GetString(8)), r.GetByte(9),
+                r.IsDBNull(10) ? null : new InningAtBat(r.GetByte(10), r.GetByte(11), r.GetByte(12), r.GetByte(13), Unbases(r.GetString(14)), Unbases(r.GetString(15)),
+                    Enum.Parse<OutType>(r.GetString(16)), r.GetString(17).Split(',', StringSplitOptions.RemoveEmptyEntries))));
         return list;
     }
+
+    /// <summary>Plan 38: bases as "first,second,third" with empty for no runner.</summary>
+    internal static string Bases(string?[] b) => string.Join(",", b.Select(x => x ?? ""));
+    internal static string?[] Unbases(string s) => s.Split(',').Select(x => x.Length == 0 ? null : x).ToArray();
 
     public async Task<bool> TryUseClashCheckAsync(string code)
     {
@@ -240,20 +266,29 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         await InsertPicks(c, tx, code, opponentPicks);
         var all = await ReadPicks(c, tx, code);
         var game = resolve(all);
-        if (game.AtBats.Count > 0)
+        // Chunks of 50 rows: an inning game can have 200+ at-bats and SQL Server takes at most 2100 parameters.
+        for (var start = 0; start < game.AtBats.Count; start += 50)
         {
-            var sql = new System.Text.StringBuilder("INSERT INTO dbo.ch_atbats (code, idx, round, batting_side, pitcher_id, pitcher_year, batter_id, batter_year, seed, outcome, points) VALUES ");
+            var sql = new System.Text.StringBuilder("INSERT INTO dbo.ch_atbats (code, idx, round, batting_side, pitcher_id, pitcher_year, batter_id, batter_year, seed, outcome, points, " +
+                "inning, spot, outs_before, outs_after, bases_before, bases_after, out_type, scored) VALUES ");
             var ps = new List<(string, object?)> { ("@c", code) };
-            for (var i = 0; i < game.AtBats.Count; i++)
+            for (var i = start; i < Math.Min(start + 50, game.AtBats.Count); i++)
             {
                 var a = game.AtBats[i];
-                sql.Append(i == 0 ? "" : ", ").Append($"(@c, @i{i}, @r{i}, @b{i}, @p{i}, @py{i}, @bt{i}, @by{i}, @s{i}, @o{i}, @pt{i})");
+                var n = a.Inn;
+                sql.Append(i == start ? "" : ", ").Append($"(@c, @i{i}, @r{i}, @b{i}, @p{i}, @py{i}, @bt{i}, @by{i}, @s{i}, @o{i}, @pt{i}, @in{i}, @sp{i}, @ob{i}, @oa{i}, @bb{i}, @ba{i}, @ot{i}, @sc{i})");
                 ps.AddRange(new (string, object?)[] { ($"@i{i}", a.Index), ($"@r{i}", a.Round), ($"@b{i}", a.BattingSide), ($"@p{i}", a.Pitcher.Id), ($"@py{i}", a.Pitcher.Year),
-                    ($"@bt{i}", a.Batter.Id), ($"@by{i}", a.Batter.Year), ($"@s{i}", (decimal)a.Seed), ($"@o{i}", a.Outcome.ToString()), ($"@pt{i}", a.Points) });
+                    ($"@bt{i}", a.Batter.Id), ($"@by{i}", a.Batter.Year), ($"@s{i}", (decimal)a.Seed), ($"@o{i}", a.Outcome.ToString()), ($"@pt{i}", a.Points),
+                    ($"@in{i}", n?.Inning), ($"@sp{i}", n?.Spot), ($"@ob{i}", n?.OutsBefore), ($"@oa{i}", n?.OutsAfter), ($"@bb{i}", n is null ? null : Bases(n.BasesBefore)),
+                    ($"@ba{i}", n is null ? null : Bases(n.BasesAfter)), ($"@ot{i}", n?.OutType.ToString()), ($"@sc{i}", n is null ? null : string.Join(",", n.Scored)) });
             }
             await using var cmd = Cmd(c, sql.ToString(), tx, ps.ToArray());
             await cmd.ExecuteNonQueryAsync();
         }
+        if (game.Inning is { } inn)
+            await using (var cmd = Cmd(c, "UPDATE dbo.ch_challenges SET rules_version = @rv, lineups = @lu, line_score = @ls, innings = @ni WHERE code = @c", tx,
+                ("@rv", inn.RulesVersion), ("@lu", JsonSerializer.Serialize(inn.Lineups)), ("@ls", JsonSerializer.Serialize(inn.LineScore)), ("@ni", inn.Innings), ("@c", code)))
+                await cmd.ExecuteNonQueryAsync();
         await using (var cmd = Cmd(c, "UPDATE dbo.ch_challenges SET status = 1, total0 = @t0, total1 = @t1, winner = @w, notes = @no, seed = @sd WHERE code = @c", tx,
             ("@sd", (decimal)game.Seed), ("@t0", game.Totals[0]), ("@t1", game.Totals[1]), ("@w", game.Winner), ("@no", JsonSerializer.Serialize(game.Notes)), ("@c", code)))
             await cmd.ExecuteNonQueryAsync();
@@ -304,14 +339,15 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
     {
         await using var c = await OpenAsync();
         await using var cmd = Cmd(c, $"""
-            SELECT TOP (@t) code, CASE WHEN creator_id = @g THEN 0 ELSE 1 END, status, creator_name, opponent_name, created_utc, expires_utc, vs_cpu
+            SELECT TOP (@t) code, CASE WHEN creator_id = @g THEN 0 ELSE 1 END, status, creator_name, opponent_name, created_utc, expires_utc, vs_cpu, ISNULL(mode, 0)
             FROM dbo.ch_challenges WHERE creator_id = @g OR opponent_id = @g ORDER BY created_utc DESC
             """, null, ("@t", take), ("@g", guestId));
         await using var r = await cmd.ExecuteReaderAsync();
         var list = new List<ChallengeSummary>();
         while (await r.ReadAsync())
             list.Add(new ChallengeSummary(r.GetString(0), r.GetInt32(1), (ChallengeStatus)r.GetByte(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4),
-                DateTime.SpecifyKind(r.GetDateTime(5), DateTimeKind.Utc), DateTime.SpecifyKind(r.GetDateTime(6), DateTimeKind.Utc), r.GetBoolean(7)));
+                DateTime.SpecifyKind(r.GetDateTime(5), DateTimeKind.Utc), DateTime.SpecifyKind(r.GetDateTime(6), DateTimeKind.Utc), r.GetBoolean(7),
+                r.GetByte(8) == 1 ? Rules.Inning : Rules.Classic));
         return list;
     }
 
@@ -336,7 +372,7 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         await using (var cmd = Cmd(c, """
             SELECT CAST(ch.created_utc AS date), CASE WHEN ch.rematch_of IS NULL THEN 0 ELSE 1 END, COUNT(*),
                    SUM(ISNULL(f.sent, 0)), SUM(ISNULL(f.opened, 0)), SUM(ISNULL(f.opened_expired, 0)),
-                   SUM(ISNULL(f.picking, 0)), SUM(ISNULL(f.played, 0)), SUM(ISNULL(f.watched, 0))
+                   SUM(ISNULL(f.picking, 0)), SUM(ISNULL(f.played, 0)), SUM(ISNULL(f.watched, 0)), ISNULL(ch.mode, 0)
             FROM dbo.ch_challenges ch
             LEFT JOIN (SELECT code,
                 MAX(CASE WHEN step = 'sent' THEN 1 ELSE 0 END) sent, MAX(CASE WHEN step = 'opened' THEN 1 ELSE 0 END) opened,
@@ -344,12 +380,13 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
                 MAX(CASE WHEN step = 'played' THEN 1 ELSE 0 END) played, MAX(CASE WHEN step = 'watched' THEN 1 ELSE 0 END) watched
                 FROM dbo.ch_funnel GROUP BY code) f ON f.code = ch.code
             WHERE ch.vs_cpu = 0 AND ch.created_utc >= @s
-            GROUP BY CAST(ch.created_utc AS date), CASE WHEN ch.rematch_of IS NULL THEN 0 ELSE 1 END
-            ORDER BY 1, 2
+            GROUP BY CAST(ch.created_utc AS date), CASE WHEN ch.rematch_of IS NULL THEN 0 ELSE 1 END, ISNULL(ch.mode, 0)
+            ORDER BY 1, 2, ISNULL(ch.mode, 0)
             """, null, ("@s", sinceUtc)))
         await using (var r = await cmd.ExecuteReaderAsync())
             while (await r.ReadAsync())
-                days.Add(new FunnelDay(r.GetDateTime(0), r.GetInt32(1) == 1, r.GetInt32(2), r.GetInt32(3), r.GetInt32(4), r.GetInt32(5), r.GetInt32(6), r.GetInt32(7), r.GetInt32(8)));
+                days.Add(new FunnelDay(r.GetDateTime(0), r.GetInt32(1) == 1, r.GetInt32(2), r.GetInt32(3), r.GetInt32(4), r.GetInt32(5), r.GetInt32(6), r.GetInt32(7), r.GetInt32(8),
+                    r.GetByte(9) == 1 ? Rules.Inning : Rules.Classic));
 
         int spread;
         await using (var cmd = Cmd(c, """
@@ -397,11 +434,11 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
             await purge.ExecuteNonQueryAsync();
         var id = Guid.NewGuid();
         await using var cmd = Cmd(c, """
-            INSERT INTO dbo.ch_feedback (id, at, vote, where_, level, result, version, ip_hash)
-            SELECT @id, @at, @v, @w, @lv, @r, @ver, @ip
+            INSERT INTO dbo.ch_feedback (id, at, vote, where_, level, result, version, ip_hash, mode)
+            SELECT @id, @at, @v, @w, @lv, @r, @ver, @ip, @md
             WHERE (SELECT COUNT(*) FROM dbo.ch_feedback WHERE ip_hash = @ip AND at > @since) < @cap
             """, null, ("@id", id), ("@at", nowUtc), ("@v", row.Vote), ("@w", row.Where), ("@lv", row.Level), ("@r", row.Result),
-            ("@ver", row.Version), ("@ip", ipHash), ("@since", nowUtc.AddDays(-1)), ("@cap", dailyCap));
+            ("@ver", row.Version), ("@md", row.Mode), ("@ip", ipHash), ("@since", nowUtc.AddDays(-1)), ("@cap", dailyCap));
         return await cmd.ExecuteNonQueryAsync() == 1 ? id : null;
     }
 
