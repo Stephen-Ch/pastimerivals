@@ -32,6 +32,7 @@ export const RETROSHEET_NOTICE = 'The information used here was obtained free of
               <li>Errors happen about as often as they did in the pitcher's era.</li>
               <li>The newest player on the home team sets the rules: designated hitter or pitchers bat, and the runner on second in extra innings.</li>
               <li>When pitchers bat, they use their real batting line that season (or the average pitcher of their decade).</li>
+              <li>Left-handed batters stand on the other side of the plate, so the view flips. Switch hitters usually bat from the side opposite the pitcher's arm.</li>
               <li>Not in this version: steals, bunts, pinch hitters and relief pitchers.</li>
             </ul>
             <h3>About the art</h3>

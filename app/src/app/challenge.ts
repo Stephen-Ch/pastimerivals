@@ -1,7 +1,8 @@
 import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, effect, ElementRef, input, output, signal, viewChild } from '@angular/core';
 import { api, PlayerHit, SeasonItem } from './api';
-import { ArtManifest, eraOf, preloadImages, SideArt, sideArt } from './art';
+import { ArtManifest, eraOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
+import { sideLine } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
 import { PitchScene } from './pitch-scene';
@@ -127,11 +128,16 @@ export class ChallengeFlow {
 
   // Playing out a resolved game, one tap per at-bat.
   protected readonly revealed = signal(0);
-  protected readonly scene = signal<{ ab: CAtBat; art: SideArt | null } | null>(null);
+  protected readonly scene = signal<{ ab: CAtBat; art: SideArt | null; windup: WindupArt | null } | null>(null);
   protected readonly lastCall = signal<string | null>(null);
 
   protected readonly game = computed(() => this.view()?.game ?? null);
   protected readonly nextAtBat = computed(() => this.game()?.atBats[this.revealed()] ?? null);
+  /** Plan 40 B: side of the plate for the batter now up (during the scene) or the next batter; none when the game is over. */
+  protected readonly sideText = computed(() => {
+    const ab = this.scene()?.ab ?? this.nextAtBat();
+    return ab ? sideLine(ab.batter.bats, ab.pitcher.throws) : null;
+  });
   protected readonly score = computed<[number, number]>(() => {
     const g = this.game(), n = this.revealed(), t: [number, number] = [0, 0];
     g?.atBats.slice(0, n).forEach(a => (t[a.battingSide] += a.points));
@@ -563,15 +569,20 @@ export class ChallengeFlow {
     const token = ++this.pitchToken;
     const m = this.manifest();
     const art = sideArt(m, ab.batter.id, ab.batter.year);
-    let ok = false;
+    // Plan 40 A: the pitcher's windup before every pitch, loaded on its own so a failed pitcher sheet never drops the batter art.
+    const wind = art ? windupArt(m, ab.pitcher.id, eraOf(ab.pitcher.year), ab.pitcher.throws) : null;
+    let ok = false, windOk = false;
     if (art) {
       this.loadingArt.set(true);
-      ok = await Promise.race([preloadImages([art.sheet]), new Promise<boolean>(res => setTimeout(() => res(false), 3000))]);
+      const limit = new Promise<void>(res => setTimeout(res, 3000));
+      const a = preloadImages([art.sheet]).then(r => { ok = r; });
+      const w = wind ? preloadImages([wind.sheet]).then(r => { windOk = r; }) : Promise.resolve();
+      await Promise.race([Promise.all([a, w]), limit]);
       this.loadingArt.set(false);
     }
     // Skip, Watch again or leaving during the wait cancels this pitch.
     if (token !== this.pitchToken || this.step() !== 'play' || this.nextAtBat() !== ab) return;
-    this.scene.set({ ab, art: ok ? art : null });
+    this.scene.set({ ab, art: ok ? art : null, windup: ok && windOk ? wind : null });
   }
 
   protected callOf(ab: CAtBat) {

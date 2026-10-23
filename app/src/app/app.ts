@@ -8,6 +8,7 @@ import { ChallengeFlow } from './challenge';
 import { Feedback, feedbackDue } from './feedback';
 import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
+import { sideLine } from './side-line';
 import { ArtManifest, Era, eraOf, figure, isFirstVisit, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, WindupArt, windupArt } from './art';
 import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
@@ -88,6 +89,8 @@ export class App {
   protected readonly error = signal<string | null>(null);
   protected readonly shareNote = signal<string | null>(null);
   protected readonly batterReport = signal<Report | null>(null);
+  /** Plan 40 B: which side of the plate the batter stands on. */
+  protected readonly sideText = computed(() => sideLine(this.batterReport()?.bats ?? this.matchup()?.batter.hand, this.pitcherReport()?.throws ?? this.matchup()?.pitcher.hand));
   protected readonly pitcherReport = signal<Report | null>(null);
   protected readonly popup = signal<Report | null>(null);
   protected readonly pending = signal<PitchResult | null>(null);
@@ -271,7 +274,7 @@ export class App {
   private artReady: Promise<boolean> = Promise.resolve(false);
   protected readonly artWaiting = signal(false);
   protected readonly sceneArt = signal<SideArt | null>(null);
-  /** Plan 36: pitcher windup before the first and final pitch (both or neither with the batter's side art). */
+  /** Plan 36/40: pitcher windup before every pitch (both or neither with the batter's side art). */
   protected readonly sceneWindup = signal<WindupArt | null>(null);
   protected readonly windup = computed<WindupArt | null>(() => {
     const p = this.pitcherReport();

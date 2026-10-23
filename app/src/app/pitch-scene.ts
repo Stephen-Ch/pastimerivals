@@ -476,7 +476,7 @@ export class PitchScene {
   readonly deco = input<Deco>('1');
   /** Plan 32C: the batter's side-on sheet, already preloaded; null = text only. */
   readonly side = input<SideArt | null>(null);
-  /** Plan 36: the pitcher's windup sheet (only when the batter's side art shows too). */
+  /** Plan 36/40: the pitcher's windup sheet, played before every pitch (only when the batter's side art shows too). */
   readonly windup = input<WindupArt | null>(null);
   protected readonly windFrame = signal(-1);
   /** Plan 39: the fading-in next pose over the current one (the bottom pose stays fully visible). */
@@ -528,7 +528,7 @@ export class PitchScene {
     const bats = this.bats() === 'L' ? 'L' : 'R';
     const plan = planPitch({ m, kind, isFinal: final, outcome: this.outcome(), era: this.era(), bats,
       call: final ? this.call() : null, contact: this.contactPoint(), seed: this.seed(), index: this.step(),
-      windup: !!this.windup() && !!this.side() && (this.step() === 0 || final), tip: this.batTip() });
+      windup: !!this.windup() && !!this.side(), tip: this.batTip() });
     const fin = final ? finalCaption(this.outcome(), this.count().finalKind, this.deco()) : '';
     let cleared = false, called = false;
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: FrameRequestCallback) => setTimeout(() => fn(performance.now()), 16) as unknown as number;
