@@ -23,6 +23,10 @@ public static class PlayEndpoints
         api.MapGet("/matchup", async (string b, int by, string p, int py, PlayService s) =>
             await s.MatchupAsync(b, by, p, py) is { } m ? Results.Ok(m.View) : Results.NotFound());
 
+        // Plan 39: random opening matchups for returning visitors (level-2 "good players", real workload). Read-only.
+        api.MapGet("/matchup/random", async (int? n, PlayService s) =>
+            Results.Ok(await s.RandomPairsAsync(Math.Clamp(n ?? 12, 1, 20))));
+
         api.MapGet("/card", async (string id, int year, string? role, PlayService s) =>
             await s.ReportAsync(id, year, role == "pit" ? "pit" : "bat") is { } r ? Results.Ok(r) : Results.NotFound());
 

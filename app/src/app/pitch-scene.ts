@@ -272,8 +272,27 @@ export interface PitchSetup {
 }
 export interface Plan { p: Pitch; f: Flight | null; tl: Timeline; r: number[]; s: PitchSetup; highBall: boolean; exitT: number; }
 
-/** Plan 36: the pitcher's windup (front-view sheet frames: set, hands up, kick, peak, stride, cock, release). */
-export const WINDUP: [number, number][] = [[0, 0.08], [1, 0.08], [2, 0.12], [3, 0.14], [4, 0.08], [5, 0.05], [6, 0.05]];
+/** Plan 36/39: the pitcher's windup (front-view sheet frames: set, hands up, kick, peak, stride, cock, release).
+ *  Plan 39: peak (leg up) and release hold a little longer, the in-betweens are shorter; the total stays 0.6 s. */
+export const WINDUP: [number, number][] = [[0, 0.07], [1, 0.07], [2, 0.10], [3, 0.17], [4, 0.08], [5, 0.05], [6, 0.06]];
+/** Plan 39: the next pose fades in over the last 30 ms of each pose (half the pose at most); release cuts to the side view. */
+export const WINDUP_FADE = 0.03;
+export interface WindupBlend { base: number; next: number | null; top: number; }
+export function windupBlendAt(t: number): WindupBlend {
+  let acc = 0;
+  for (let i = 0; i < WINDUP.length; i++) {
+    const [f, d] = WINDUP[i];
+    const end = acc + d;
+    if (t < end) {
+      if (i === WINDUP.length - 1) return { base: f, next: null, top: 0 };   // release: nothing fades in
+      const fade = Math.min(WINDUP_FADE, d / 2);
+      const top = Math.min(1, Math.max(0, (t - (end - fade)) / fade));
+      return { base: f, next: WINDUP[i + 1][0], top };
+    }
+    acc = end;
+  }
+  return { base: 6, next: null, top: 0 };
+}
 export const WINDUP_S = WINDUP.reduce((a, [, d]) => a + d, 0);
 export function windupFrameAt(t: number): number {
   let acc = 0;
@@ -403,7 +422,12 @@ export function prefersReducedMotion(): boolean {
         }
       </div>
       @if (windFrame() >= 0 && windup(); as w) {
-        <div class="windup" aria-hidden="true"><div class="pit" [class.mirror]="w.mirror" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windFrame()"></div></div>
+        <div class="windup" aria-hidden="true">
+          <div class="pit" [class.mirror]="w.mirror" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windFrame()"></div>
+          @if (windBlend().next !== null) {
+            <div class="pit top" [class.mirror]="w.mirror" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windBlend().next" [style.opacity]="windBlend().top"></div>
+          }
+        </div>
       }
       </div>
     }
@@ -421,6 +445,7 @@ export function prefersReducedMotion(): boolean {
     .windup .pit { position: absolute; z-index: 1; height: 92%; aspect-ratio: 364 / 480; bottom: 4%; left: 50%; transform: translateX(-50%);
       background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
     .windup .pit.mirror { transform: translateX(-50%) scaleX(-1); }
+    .windup .pit.top { z-index: 2; }
     .side { position: relative; isolation: isolate; width: 100%; aspect-ratio: 760 / 480; overflow: hidden;
       border: 1px solid var(--border); border-radius: 14px; background: linear-gradient(#cfd9e3 0 52%, #7d9a5f 52% 92%, #b48a5a 92% 100%); }
     @container (min-height: 1px) { .stage { max-width: min(560px, calc((100cqh - 64px) * 760 / 480)); } }
@@ -454,6 +479,8 @@ export class PitchScene {
   /** Plan 36: the pitcher's windup sheet (only when the batter's side art shows too). */
   readonly windup = input<WindupArt | null>(null);
   protected readonly windFrame = signal(-1);
+  /** Plan 39: the fading-in next pose over the current one (the bottom pose stays fully visible). */
+  protected readonly windBlend = signal<WindupBlend>({ base: 0, next: null, top: 0 });
   /** Plan 21: the announcer call for the final pitch (trajectory and field). */
   readonly call = input<Call | null>(null);
   readonly done = output<void>();
@@ -509,7 +536,7 @@ export class PitchScene {
     const start = performance.now();
     const tick = () => {
       const el = (performance.now() - start) / 1000;
-      if (el < lead0) { this.windFrame.set(windupFrameAt(el)); this.frame.set(frameAt(plan, 0)); if (!this.finished) this.raf = raf(tick); return; }
+      if (el < lead0) { const wb = windupBlendAt(el); this.windBlend.set(wb); this.windFrame.set(wb.base); this.frame.set(frameAt(plan, 0)); if (!this.finished) this.raf = raf(tick); return; }
       this.windFrame.set(-1);
       const t = Math.min(plan.tl.end, el - lead0);
       if (this.side()) this.frame.set(frameAt(plan, t));

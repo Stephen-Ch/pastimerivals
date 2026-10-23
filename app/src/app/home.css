@@ -1,0 +1,35 @@
+/* Plan 39: the matchup is home. */
+.brand { font-weight: 700; }
+.art-line { margin: 0; font-size: .78rem; color: var(--text-secondary); text-align: center; }
+.about-art { align-self: center; min-height: 28px; }
+.art-line .inline-link { min-height: 0; padding: 0; font-size: inherit; display: inline; }
+.actions.home-row { grid-template-columns: 1fr auto 44px; align-items: stretch; }
+.home-row .help-btn { width: 44px; min-width: 44px; padding: 0; border-radius: 50%; font-weight: 700; aspect-ratio: 1; align-self: center; }
+.home-row .modes { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.home-row .modes button { white-space: nowrap; }
+.home-row .links { grid-column: 1 / -1; display: flex; justify-content: center; gap: 18px; }
+.home-row .links .link { min-height: 28px; }
+.about-art-side, .how-head { display: none; }
+/* Short phones (portrait): How it works moves to the header, the mode buttons get smaller. */
+@media (orientation: portrait) and (max-height: 640px) {
+  .how-head { display: inline; }
+  .cards { min-height: calc(100px + 5.5em); }
+  .pcard { min-height: 100px; }
+  .home-row .hint { display: none; }
+  .top3 { font-size: .8rem; }
+  .about-art { min-height: 24px; }
+  .home-row .links { display: none; }
+  .home-row .modes button { min-height: 40px; padding-top: 4px; padding-bottom: 4px; font-size: .9rem; }
+}
+/* Short landscape: the actions column stacks; About the art sits with How the sim works. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .actions.home-row { grid-template-columns: 1fr 44px; align-content: center; }
+  .home-row .pitch-btn { grid-column: 1 / -1; }
+  .home-row .modes { grid-template-columns: 1fr; gap: 6px; }
+  .home-row .modes button { min-height: 38px; padding-top: 2px; padding-bottom: 2px; }
+  .home-row .links { flex-direction: column; align-items: center; gap: 0; }
+  .home-row .hint, .art-line, .about-art { display: none; }
+  .cards { min-height: calc(100px + 5.5em); }
+  .pcard { min-height: 100px; }
+  .about-art-side { display: inline; }
+}

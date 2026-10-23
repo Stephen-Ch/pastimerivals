@@ -31,12 +31,13 @@ describe('App', () => {
     await new Promise(r => setTimeout(r, 0));
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Plan 27: Home first, with the three ways in.
-    expect(el.textContent).toContain('Play the computer');
+    // Plan 39: the matchup is home for everyone, with the ways to switch modes.
+    await new Promise(r => setTimeout(r, 0)); fixture.detectChanges(); await fixture.whenStable();
+    expect(el.textContent).toContain('Play an inning');
     expect(el.textContent).toContain('Challenge a friend');
-    expect(el.textContent).toContain('20 Sunset Rd., Newark, DE 19711');
-    (fixture.componentInstance as any).openPractice();
-    fixture.detectChanges(); await fixture.whenStable();
+    expect(el.textContent).toContain('About the art');
+    expect(el.textContent).toContain('How the sim works');
+    expect(el.textContent).not.toContain('More ways to play');
     expect(el.textContent).toContain('Pedro Martinez');
     expect(el.textContent).toContain('Babe Ruth');
     expect(el.textContent).toContain('Out in play 36%');
@@ -89,8 +90,6 @@ describe('App', () => {
     await new Promise(r => setTimeout(r, 0));
     await fixture.whenStable();
     const app = fixture.componentInstance as any;
-    expect(app.screen()).toBe('home');
-    app.openPractice();
     expect(app.screen()).toBe('matchup');
     app.pending.set({ outcome: 'hr', seed: 'x', engineVersion: '0.1.0' });
     app['enterPlay']();
@@ -105,31 +104,63 @@ describe('App', () => {
     expect(app.overlay()).toBeNull();
   });
 
-  it('Back from practice returns Home, and ?vs= picks the game type (plan 27)', async () => {
+  it('every "Home" returns to the matchup, and ?vs= picks the game type (plan 27/39)', async () => {
     const fixture = TestBed.createComponent(App);
     await new Promise(r => setTimeout(r, 0));
     const app = fixture.componentInstance as any;
-    app.openPractice();
+    app.openChallenge('cpu');
+    expect(app.challenge()).toBeNull();
+    app.leaveChallenge();
+    await new Promise(r => setTimeout(r, 50));
+    expect(app.challenge()).toBeUndefined();
     expect(app.screen()).toBe('matchup');
-    app['onPopState']();
-    expect(app.screen()).toBe('home');
     expect(vsFromSearch('?vs=cpu')).toBe('cpu');
     expect(vsFromSearch('?vs=friend')).toBe('friend');
     expect(vsFromSearch('?vs=x')).toBeNull();
     expect(vsFromSearch('')).toBeNull();
   });
 
-  it('opens a new player straight on the ready matchup with More ways to play (plan 36)', async () => {
+  it('a new player sees Pedro vs Ruth, the hint and the art note; Play an inning marks the visit seen (plan 36/39)', async () => {
     localStorage.removeItem('pr_seen');
     const fixture = TestBed.createComponent(App);
     await new Promise(r => setTimeout(r, 0));
     await fixture.whenStable(); fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.textContent).toContain('More ways to play');
+    expect(el.textContent).toContain('Pedro Martinez');
     expect(el.textContent).toContain('Tap Pitch to play this at-bat');
-    (Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('More ways to play')) as HTMLButtonElement).click();
-    fixture.detectChanges();
-    expect(el.textContent).toContain('Play the computer');
+    expect(el.textContent).toContain('The drawings are generic ballplayers, not portraits.');
+    (Array.from(el.querySelectorAll('button')).find(b => b.textContent?.trim() === 'Play an inning') as HTMLButtonElement).click();
+    expect(localStorage.getItem('pr_seen')).toBe('1');
+  });
+
+  it('a returning player gets a random pair, preferring one with art for both (plan 39)', async () => {
+    const pairs = [
+      { pitcher: { id: 'p1', name: 'No Art Pitcher', year: 1950, line: 'x' }, batter: { id: 'b1', name: 'No Art Batter', year: 1950, line: 'y' } },
+      { pitcher: { id: 'p2', name: 'Art Pitcher', year: 1960, line: 'x' }, batter: { id: 'b2', name: 'Art Batter', year: 1961, line: 'y' } },
+    ];
+    const manifest = { cell: [1, 1], frames: 8, sheets: {}, cards: {}, tones: { p2: 'light', b2: 'dark' } };
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => new Response(JSON.stringify(
+      String(url).includes('/api/matchup/random') ? pairs : String(url).includes('art-manifest') ? manifest
+      : String(url).includes('/api/matchup') ? matchup : String(url).includes('/api/card') ? report('bat', 'X', 1960) : []), { status: 200 })) as typeof fetch;
+    try {
+      const fixture = TestBed.createComponent(App);
+      await new Promise(r => setTimeout(r, 30));
+      const app = fixture.componentInstance as any;
+      expect(app.pitcher().id).toBe('p2');   // names are refreshed from the (mocked) matchup afterward
+      expect(app.batter().id).toBe('b2');
+    } finally { globalThis.fetch = real; }
+  });
+
+  it('chooses pairs in order: both with art, else the first, else none (plan 39)', async () => {
+    const { choosePair } = await import('./app');
+    const pr = (a: string, b: string) => ({ pitcher: { id: a, name: a, year: 1, line: '' }, batter: { id: b, name: b, year: 1, line: '' } });
+    const m = { tones: { a: 1, b: 1, c: 1 } } as never;
+    expect(choosePair([pr('a', 'x'), pr('b', 'c')], m)?.pitcher.id).toBe('b');
+    expect(choosePair([pr('a', 'x'), pr('y', 'z')], m)?.pitcher.id).toBe('a');
+    expect(choosePair([pr('a', 'x')], null)?.pitcher.id).toBe('a');
+    expect(choosePair([], m)).toBeNull();
+    expect(choosePair(null, m)).toBeNull();
   });
 
   it('reads the visit source from utm_source or ref (plan 29)', () => {

@@ -5,26 +5,13 @@
 } @else {
 <div class="game" [class.landscape]="false">
   @switch (screen()) {
-    @case ('home') {
-      <main class="flex home">
-        <h1 #screenTitle tabindex="-1">Pastime Rivals</h1>
-        <p class="home-pitch">Pick a pitcher and a batting order from any season. Beat the computer or a friend.</p>
-        <p class="how">One inning: your hitters bat until 3 outs, then theirs. Most runs wins.</p>
-        <button type="button" class="link small how-link" (click)="showSimInfo.set(true)">How the sim works</button>
-        @if (myGames() > 0) { <button type="button" class="link" (click)="openChallenge()">Your games ({{ myGames() }})</button> }
-      </main>
-      <div class="actions home-actions">
-        <button class="primary big" type="button" (click)="openChallenge('cpu')">Play the computer</button>
-        <button class="big" type="button" (click)="openChallenge('friend')">Challenge a friend</button>
-        <button type="button" (click)="openPractice()">Practice one at-bat</button>
-      </div>
-    }
     @case ('matchup') {
       <header class="bar">
-        @if (firstView()) { <button type="button" class="link" (click)="moreWays()">‹ More ways to play</button> }
-        @else { <button type="button" class="link" (click)="leaveChallenge()">‹ Home</button> }
-        <h1 #screenTitle tabindex="-1" class="sr-only">Practice one at-bat</h1>
+        @if (myGames() > 0) { <button type="button" class="link" (click)="openChallenge()">Your games ({{ myGames() }})</button> }
+        @else { <span class="brand">Pastime Rivals</span> }
+        <h1 #screenTitle tabindex="-1" class="sr-only">Pastime Rivals</h1>
         <span class="bar-links">
+          <button type="button" class="link how-head" (click)="info.set('how')">How it works</button>
           <button type="button" class="link" (click)="openOverlay('details')" [disabled]="!matchup()">Details</button>
         </span>
       </header>
@@ -58,6 +45,10 @@
             </div>
           }
         </div>
+        @if (firstView()) {
+          <p class="art-line">The drawings are generic ballplayers, not portraits. Uniforms are made up, in era styles.
+            <button type="button" class="link small inline-link" (click)="info.set('art')">About the art</button></p>
+        } @else { <button type="button" class="link small about-art" (click)="info.set('art')">About the art</button> }
         @if (error()) {
           <p class="error" role="alert">{{ error() }} <button type="button" (click)="retry()">Retry</button></p>
         }
@@ -71,10 +62,19 @@
           </div>
         }
       </main>
-      <div class="actions">
-        <button class="primary big" type="button" (click)="throwPitch()" [disabled]="busy() || !matchup() || !pitcherReport() || !batterReport()">{{ artWaiting() ? 'Loading art' : 'Pitch' }}</button>
-        <button type="button" (click)="runSims()" [disabled]="busy() || !matchup()">Simulate 1,000</button>
-        <p class="hint">{{ firstView() ? 'Tap Pitch to play this at-bat. Any era, any matchup.' : 'Pitch plays one at-bat. Simulate runs this matchup 1,000 times.' }}</p>
+      <div class="actions home-row">
+        <button class="primary big pitch-btn" type="button" (click)="throwPitch()" [disabled]="busy() || !matchup() || !pitcherReport() || !batterReport()">{{ artWaiting() ? 'Loading art' : 'Pitch' }}</button>
+        <button type="button" class="sim-btn" (click)="runSims()" [disabled]="busy() || !matchup()">Simulate 1,000</button>
+        <button type="button" class="help-btn" aria-label="What does Simulate do?" (click)="info.set('sim')">?</button>
+        @if (firstView()) { <p class="hint">Pick any pitcher and batter from history. Tap Pitch to play this at-bat.</p> }
+        <div class="modes">
+          <button type="button" (click)="openChallenge('cpu')">Play an inning</button>
+          <button type="button" (click)="openChallenge('friend')">Challenge a friend</button>
+        </div>
+        <div class="links">
+          <button type="button" class="link small about-art-side" (click)="info.set('art')">About the art</button>
+          <button type="button" class="link small how-link" (click)="info.set('how')">How the sim works</button>
+        </div>
       </div>
     }
     @case ('atbat') {
@@ -120,7 +120,7 @@
       </div>
     }
   }
-  @if (showSimInfo()) { <pr-how-sim (close)="showSimInfo.set(false)" /> }
+  @if (info(); as k) { <pr-how-sim [kind]="k" (close)="info.set(null)" /> }
   <footer class="notice">The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.</footer>
 </div>
 }

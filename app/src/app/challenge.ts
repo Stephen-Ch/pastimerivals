@@ -6,6 +6,7 @@ import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
 import { PitchScene } from './pitch-scene';
 import { HowSim } from './how-sim';
+import { pushEntry } from './nav';
 import {
   CAtBat, capi, CEra, ChallengeError, CClash, CMine, CPlayer, CSlot, CView, GameMode, keyFor, links, saveKey, setWatched, takeKeyFromHash, toBody, watched,
 } from './challenge-api';
@@ -189,7 +190,7 @@ export class ChallengeFlow {
 
   /** Plan 27: a new game straight at the pitcher pick (from Home, "Start your own", or "Play the computer while you wait"). */
   protected startFresh(vs: 'cpu' | 'friend', push = true) {
-    if (push) { try { history.pushState({ pr: 'challenge' }, '', `/c/new?vs=${vs}`); } catch { /* fine */ } }
+    if (push) { pushEntry('challenge', `/c/new?vs=${vs}`); }
     this.current.set(null); this.view.set(null); this.error.set(null); this.note.set(null);
     this.mode.set(vs === 'cpu' ? 'cpu' : 'create');
     this.gameMode.set('inning');
@@ -436,7 +437,7 @@ export class ChallengeFlow {
         const l = links(location.origin, r.code, r.key);
         this.shareLink.set(l.share); this.privateLink.set(l.private);
         this.current.set(r.code);
-        try { history.pushState({ pr: 'challenge' }, '', `/c/${r.code}`); } catch { /* fine */ }
+        pushEntry('challenge', `/c/${r.code}`);
         this.step.set('shared');
       }
       if (body.nickname) this.nickname.set(body.nickname);
@@ -478,7 +479,7 @@ export class ChallengeFlow {
     this.shareLink.set(links(location.origin, r.code, null).share);
     this.privateLink.set(null);
     this.revealed.set(0); setWatched(r.code, 0); this.lastCall.set(null); this.lastPlay.set(null);
-    try { history.pushState({ pr: 'challenge' }, '', `/c/${r.code}`); } catch { /* fine */ }
+    pushEntry('challenge', `/c/${r.code}`);
     this.mode.set('cpu');
     this.step.set('play');
     let session = 'no-storage';
@@ -657,7 +658,7 @@ export class ChallengeFlow {
   protected newChallenge() { this.startFresh('friend'); }
 
   protected openMine(code: string) {
-    try { history.pushState({ pr: 'challenge' }, '', `/c/${code}`); } catch { /* fine */ }
+    pushEntry('challenge', `/c/${code}`);
     this.open(code);
   }
 

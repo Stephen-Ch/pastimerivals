@@ -38,6 +38,8 @@ export const api = {
   search: (q: string, role: 'bat' | 'pit') => get<PlayerHit[]>(`/api/players/search?q=${encodeURIComponent(q)}&role=${role}`),
   seasons: (id: string, role: 'bat' | 'pit') => get<SeasonItem[]>(`/api/players/${encodeURIComponent(id)}/seasons?role=${role}`),
   matchup: (m: Pick) => get<MatchupView>(`/api/matchup?b=${m.b}&by=${m.by}&p=${m.p}&py=${m.py}`),
+  /** Plan 39: random opening matchups (pitcher and batter with name, year and card line). */
+  randomPairs: (n: number) => get<{ pitcher: { id: string; name: string; year: number; line: string }; batter: { id: string; name: string; year: number; line: string } }[]>(`/api/matchup/random?n=${n}`),
   card: (id: string, year: number, role: 'bat' | 'pit') => get<Report>(`/api/card?id=${encodeURIComponent(id)}&year=${year}&role=${role}`),
   pitch: (m: Pick, seed?: string) => post<PitchResult>('/api/pitch', { ...m, seed }),
   sims: (m: Pick) => post<SimsResult>('/api/sims', { ...m, n: 1000 }),

@@ -144,6 +144,34 @@ public sealed class PlayService(IStatsSource source)
             Reports.Ratios(row.Counts, player.Input.League, role), d.Bios.GetOrAdd((id, role == "pit"), k => BuildBio(d, k.Id, k.Pit)));
     }
 
+    /// <summary>Plan 39: one side of a random opening matchup, with the same name and line the app's cards use.</summary>
+    public sealed record RandomSide(string Id, string Name, int Year, string Line);
+    public sealed record RandomPair(RandomSide Pitcher, RandomSide Batter);
+
+    /// <summary>Plan 39: n random pitcher-batter pairs drawn like computer level 2 (better half of each era); no player twice.</summary>
+    public async Task<IReadOnlyList<RandomPair>> RandomPairsAsync(int n)
+    {
+        var d = await _loaded.Value;
+        var oracle = new Oracle(d);
+        var used = new HashSet<string>();
+        var pairs = new List<RandomPair>();
+        int Rnd(int k) => RandomNumberGenerator.GetInt32(k);
+        RandomSide? Side(bool pit)
+        {
+            if (Challenges.Rules.DrawAtLevel(oracle, pit, 2, used, Rnd) is not { } r) return null;
+            used.Add(r.Id);
+            var row = pit ? d.Cat.Pitcher(r.Id, r.Year)?.Row : d.Cat.Batter(r.Id, r.Year)?.Row;
+            if (row is null) return null;
+            return new RandomSide(r.Id, d.People.TryGetValue(r.Id, out var p) ? p.Name : r.Id, r.Year, Line(row, pit ? "pit" : "bat"));
+        }
+        for (var i = 0; i < n; i++)
+        {
+            if (Side(true) is not { } pit || Side(false) is not { } bat) break;
+            pairs.Add(new RandomPair(pit, bat));
+        }
+        return pairs;
+    }
+
     /// <summary>Challenge rules need synchronous odds; call this first so the stats are loaded.</summary>
     public async Task<Challenges.IMatchupOracle> OracleAsync() => new Oracle(await _loaded.Value);
 

@@ -1,5 +1,5 @@
 import { isFirstVisit, windupArt, ArtManifest } from './art';
-import { FINAL_TL, frameAt, LEAD_TL, planPitch, SMEAR_AFTER, SMEAR_BEFORE, WINDUP_S, windupFrameAt, windupTimeline, Motion } from './pitch-scene';
+import { FINAL_TL, frameAt, LEAD_TL, planPitch, SMEAR_AFTER, SMEAR_BEFORE, WINDUP_S, windupBlendAt, windupFrameAt, windupTimeline, Motion } from './pitch-scene';
 
 const C = { x: 220, y: 238 }, TIP = { x: 35, y: 102 };
 const setup = (m: Motion, isFinal: boolean, windup: boolean) => planPitch({ m, kind: null, isFinal, outcome: 'single', era: '1990-2025', bats: 'R',
@@ -39,5 +39,18 @@ describe('plan 36', () => {
     expect(frameAt(pl, pl.p.tSwing - 0.01).fx.smear![1].d).toContain(`${C.x.toFixed(1)} ${C.y.toFixed(1)}`);
     const take = setup('take', false, false);
     expect([...Array(100).keys()].some(i => !!frameAt(take, i / 100).fx.smear)).toBe(false);
+  }, 30000);
+
+  it('plan 39: blends each windup pose into the next without the pitcher ever going see-through', () => {
+    expect(WINDUP_S).toBeCloseTo(0.6, 5);
+    expect(windupBlendAt(0.0)).toEqual({ base: 0, next: 1, top: 0 });
+    expect(windupBlendAt(0.03).top).toBe(0);                    // before the fade
+    expect(windupBlendAt(0.055).top).toBeCloseTo(0.5, 5);      // mid-fade (pose 0 ends at 0.07)
+    expect(windupBlendAt(0.0699).top).toBeGreaterThan(0.95);
+    expect(windupBlendAt(0.07).base).toBe(1);                   // swap: the faded-in pose is now the base
+    expect(windupBlendAt(0.522)).toMatchObject({ base: 5, next: 6 });   // cock (0.05 s): fades over 25 ms, half the pose
+    expect(windupBlendAt(0.5275).top).toBeCloseTo(0.5, 5);
+    expect(windupBlendAt(0.57)).toEqual({ base: 6, next: null, top: 0 });   // release: nothing fades in; the cut comes at 0.6 s
+    for (let t = 0; t < 0.6; t += 0.001) { const b = windupBlendAt(t); expect(b.base).toBe(windupFrameAt(t)); expect(b.top).toBeGreaterThanOrEqual(0); expect(b.top).toBeLessThanOrEqual(1); }
   }, 30000);
 });

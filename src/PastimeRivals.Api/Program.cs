@@ -57,7 +57,10 @@ app.Use(async (ctx, next) =>
 });
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// Plan 39: the app page and the few unversioned files are always checked for a newer copy; versioned files (main-*.js, art) are not touched.
+static bool AlwaysCheck(PathString p) => p.Equals("/index.html", StringComparison.OrdinalIgnoreCase) || p.Equals("/sw.js", StringComparison.OrdinalIgnoreCase)
+    || p.Equals("/manifest.webmanifest", StringComparison.OrdinalIgnoreCase) || p.Equals("/art-manifest.json", StringComparison.OrdinalIgnoreCase);
+app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = c => { if (AlwaysCheck(c.Context.Request.Path)) c.Context.Response.Headers.CacheControl = "no-cache"; } });
 app.UseRateLimiter();
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", engineVersion = EngineInfo.Version }));
@@ -66,8 +69,9 @@ app.MapPlay();
 app.MapChallenges();
 
 // Plan 24: link previews for challenge links say only that a game is waiting (never picks or score).
-app.MapGet("/c/{code}", async (string code, IChallengeStore store, IWebHostEnvironment env) =>
+app.MapGet("/c/{code}", async (string code, HttpContext ctx, IChallengeStore store, IWebHostEnvironment env) =>
 {
+    ctx.Response.Headers.CacheControl = "no-cache";   // plan 39
     var file = env.WebRootFileProvider.GetFileInfo("index.html");
     if (!file.Exists) return Results.NotFound();
     using var reader = new StreamReader(file.CreateReadStream());
@@ -75,7 +79,7 @@ app.MapGet("/c/{code}", async (string code, IChallengeStore store, IWebHostEnvir
     ChallengeStatus? status = null;
     if (Identity.CodePattern().IsMatch(code)) { try { status = (await store.GetAsync(code))?.Status; } catch { /* preview text only */ } }
     var title = status == ChallengeStatus.Resolved ? "Your game is ready" : "You've been challenged on Pastime Rivals";
-    var desc = status == ChallengeStatus.Resolved ? "Watch the game on Pastime Rivals." : "Pick a pitcher and three batters from all of baseball history. Can you beat my team?";
+    var desc = status == ChallengeStatus.Resolved ? "Watch the game on Pastime Rivals." : "Pick a pitcher and a batting order from all of baseball history. Can you beat my team?";
     var meta = $"<meta property=\"og:title\" content=\"{title}\"><meta property=\"og:description\" content=\"{desc}\">"
         + "<meta property=\"og:image\" content=\"https://pastimerivals.com/og/pr-share-v1.png\"><meta property=\"og:image:width\" content=\"1200\">"
         + "<meta property=\"og:image:height\" content=\"630\"><meta property=\"og:type\" content=\"website\">"
@@ -101,7 +105,7 @@ app.MapGet("/robots.txt", (HttpContext ctx) =>
 });
 
 // Single-page app: unknown non-API paths serve index.html.
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", new StaticFileOptions { OnPrepareResponse = c => c.Context.Response.Headers.CacheControl = "no-cache" });
 
 app.Run();
 

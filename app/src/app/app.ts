@@ -1,4 +1,5 @@
-import { HowSim } from './how-sim';
+import { HowSim, InfoKind } from './how-sim';
+import { isCold, navDepth, pushEntry, stampBase } from './nav';
 import { Component, computed, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResult } from './api';
@@ -12,6 +13,18 @@ import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hits
 
 type Role = 'bat' | 'pit';
 interface Chosen { id: string; name: string; year: number; line: string; }
+/** Plan 36/39: the first-visit matchup (and the fallback when a random one cannot be had). */
+const DEFAULT_PITCHER: Chosen = { id: 'martp001', name: 'Pedro Martinez', year: 1999, line: '313 K, 37 BB in 835 batters faced' };
+const DEFAULT_BATTER: Chosen = { id: 'ruthb101', name: 'Babe Ruth', year: 1927, line: '192 H, 60 HR, 137 BB in 691 PA' };
+
+/** Plan 39: one random opening pair from the server. */
+export interface RandomPair { pitcher: Chosen; batter: Chosen; }
+/** Plan 39: the first pair where both players have drawn art; else the first pair; null when there is none. */
+export function choosePair(pairs: RandomPair[] | null, manifest: ArtManifest | null): RandomPair | null {
+  if (!pairs?.length) return null;
+  const art = manifest?.tones;
+  return (art && pairs.find(p => !!art[p.pitcher.id] && !!art[p.batter.id])) || pairs[0];
+}
 
 /** Plan 24: /c/new starts a challenge, /c/{code} opens one. */
 export function challengeFromPath(path = typeof location !== 'undefined' ? location.pathname : '/'): string | null | undefined {
@@ -44,7 +57,7 @@ function sessionId(): string {
 @Component({
   selector: 'app-root',
   imports: [ReportView, PitchScene, ChallengeFlow, Feedback, HowSim],
-  styleUrls: ['./app.css', './sims.css'],
+  styleUrls: ['./app.css', './sims.css', './home.css'],
   templateUrl: './app.html',
 })
 export class App {
@@ -53,8 +66,8 @@ export class App {
   protected readonly percent = percent;
   protected readonly timesLeague = timesLeague;
 
-  protected readonly pitcher = signal<Chosen | null>({ id: 'martp001', name: 'Pedro Martinez', year: 1999, line: '313 K, 37 BB in 835 batters faced' });
-  protected readonly batter = signal<Chosen | null>({ id: 'ruthb101', name: 'Babe Ruth', year: 1927, line: '192 H, 60 HR, 137 BB in 691 PA' });
+  protected readonly pitcher = signal<Chosen | null>(DEFAULT_PITCHER);
+  protected readonly batter = signal<Chosen | null>(DEFAULT_BATTER);
 
   protected readonly picking = signal<Role | null>(null);
   protected readonly query = signal('');
@@ -132,44 +145,44 @@ export class App {
 
   protected readonly challengeVs = signal<'cpu' | 'friend' | null>(vsFromSearch());
 
-  /** Plan 27: from Home. vs null opens "Your games". */
+  /** Plan 27/39: from the matchup (home). vs null opens "Your games". */
   protected openChallenge(vs: 'cpu' | 'friend' | null = null) {
-    if (this.canHistory()) history.pushState({ pr: 'challenge' }, '', vs ? `/c/new?vs=${vs}` : '/c/new');
+    if (this.firstView()) { try { this.storage()?.setItem(SEEN_KEY, '1'); } catch { /* fine */ } }   // plan 39 R8
+    if (this.canHistory()) pushEntry('challenge', vs ? `/c/new?vs=${vs}` : '/c/new');
     this.challengeVs.set(vs);
     this.challengeKey.update(k => k + 1);
     this.challenge.set(null);
   }
 
-  /** Every "Home" link: switches in place (a share link opened cold has no Home behind it in history). */
+  /**
+   * Every "‹ Home" link (plan 39): steps back to the matchup's own history entry, however many screens were opened since;
+   * a game link opened cold has no matchup behind it, so its entry becomes "/" in place.
+   */
+  private leaving = false;
   protected leaveChallenge() {
-    if (this.canHistory()) history.pushState({}, '', '/');
+    const d = this.canHistory() ? navDepth() : 0;
+    if (d > 0) { this.leaving = true; history.go(-d); return; }   // onPopState finishes the switch
+    if (this.canHistory()) { try { history.replaceState({ depth: 0 }, '', '/'); } catch { /* fine */ } }
     this.challenge.set(undefined);
     this.goHome();
   }
 
-  // ---- Plan 27: Home ----
+  // ---- Plan 39: the matchup is home ----
   protected readonly myGames = signal(0);
-  private practicePushed = false;
-
-  /** Plan 36: from the first view, Home switches in place (no history entry, so Back behaves). */
-  /** Plan 38: "How the sim works" sheet. */
-  protected readonly showSimInfo = signal(false);
-  protected moreWays() { this.firstView.set(false); this.goHome(); }
+  /** Plan 38/39: info sheets (How the sim works, Simulate, About the art). */
+  protected readonly info = signal<InfoKind | null>(null);
 
   protected goHome() {
-    this.overlay.set(null); this.pending.set(null);
-    this.screen.set('home');
-    capi.mine().then(m => this.myGames.set(m.length)).catch(() => undefined);
-  }
-
-  protected openPractice() {
-    if (this.canHistory() && !this.practicePushed) { history.pushState({ pr: 'practice' }, ''); this.practicePushed = true; }
+    this.overlay.set(null); this.pending.set(null); this.info.set(null);
+    this.playPushed = false; this.overlayPushed = false;   // plan 39 X1: the next Pitch pushes its own entry
     this.screen.set('matchup');
+    if (!this.matchup() && !this.busy() && this.pick()) this.load();
+    capi.mine().then(m => this.myGames.set(m.length)).catch(() => undefined);
   }
 
   // ---- Plan 23: one screen at a time ----
   protected readonly roles = ['pit', 'bat'] as const;
-  protected readonly screen = signal<'home' | 'matchup' | 'atbat' | 'result'>('home');
+  protected readonly screen = signal<'matchup' | 'atbat' | 'result'>('matchup');
   protected readonly overlay = signal<'details' | 'why' | 'sims' | null>(null);
   protected readonly rate3 = rate3;
   protected readonly simLine = computed(() => { const s = this.sims(); return s ? battingLine(s.counts, s.n) : null; });
@@ -201,7 +214,7 @@ export class App {
   private canHistory() { return typeof history !== 'undefined' && typeof history.pushState === 'function'; }
 
   private enterPlay() {
-    if (this.screen() === 'matchup' && !this.playPushed && this.canHistory()) { history.pushState({ pr: 'play' }, ''); this.playPushed = true; }
+    if (this.screen() === 'matchup' && !this.playPushed && this.canHistory()) { pushEntry('play'); this.playPushed = true; }
     this.screen.set('atbat');
   }
 
@@ -214,7 +227,7 @@ export class App {
   }
 
   private pushOverlay() {
-    if (!this.overlayPushed && this.canHistory()) { history.pushState({ pr: 'overlay' }, ''); this.overlayPushed = true; }
+    if (!this.overlayPushed && this.canHistory()) { pushEntry('overlay'); this.overlayPushed = true; }
   }
 
   protected openOverlay(o: 'details' | 'why' | 'sims') { this.overlay.set(o); this.pushOverlay(); }
@@ -227,6 +240,13 @@ export class App {
   }
 
   private onPopState() {
+    if (this.leaving) {
+      // Plan 39: "‹ Home" stepped back to the base entry; a cold game link there becomes the matchup in place.
+      this.leaving = false;
+      if (isCold()) { try { history.replaceState({ depth: 0 }, '', '/'); } catch { /* fine */ } }
+      this.challenge.set(undefined);
+      this.goHome(); return;
+    }
     const c = challengeFromPath();
     if (c !== undefined || this.challenge() !== undefined) {
       this.challengeKey.update(k => k + 1);
@@ -237,7 +257,6 @@ export class App {
     }
     if (this.overlayPushed) { this.overlayPushed = false; this.closeOverlays(); return; }
     if (this.playPushed) { this.playPushed = false; this.toMatchup(); return; }
-    if (this.practicePushed) { this.practicePushed = false; this.goHome(); }
   }
 
   // ---- Plan 18: comic art ----
@@ -260,7 +279,7 @@ export class App {
   });
   private readonly windupOk = signal(false);
   private windupReady: Promise<boolean> = Promise.resolve(false);
-  /** Plan 36: new players land on a ready matchup; the first result offers a 3-batter game. */
+  /** Plan 36/39: first visit (hint line, art note, first_view event); the first result offers an inning. */
   protected readonly firstView = signal(false);
   protected readonly firstResult = signal(false);
   private storage(): Storage | null { try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch { return null; } }
@@ -292,7 +311,9 @@ export class App {
       vv?.addEventListener('resize', setVh);
     }
     effect(() => { this.screen(); setTimeout(() => this.screenTitle()?.nativeElement.focus({ preventScroll: true }), 0); });
-    fetch('/art-manifest.json').then(r => (r.ok ? r.json() : null)).then(m => this.manifest.set(m && m.tones && m.sheets && m.cards ? (m as ArtManifest) : null)).catch(() => undefined);
+    const manifestLoad: Promise<ArtManifest | null> = (typeof fetch === 'function' ? fetch('/art-manifest.json') : Promise.reject())
+      .then(r => (r.ok ? r.json() : null)).then(m => (m && m.tones && m.sheets && m.cards ? (m as ArtManifest) : null)).catch(() => null);
+    manifestLoad.then(m => this.manifest.set(m));
     effect(() => {
       const a = this.pair();
       this.artOk.set(false);
@@ -315,24 +336,42 @@ export class App {
       this.windupReady = preloadImages([w.sheet]).then(ok => { if (this.windup() === w) this.windupOk.set(ok); return ok; });
     });
     api.event('open', this.session, sourceFromSearch());
+    if (this.canHistory()) stampBase(this.challenge() !== undefined);   // plan 39: history depth
     const shared = typeof location !== 'undefined' ? parseShare(location.search) : null;
     if (shared) {
       const rd = resolveDeco(shared.deco);
       this.deco.set(rd.deco); this.staleApp.set(rd.unknown);
-      this.screen.set('matchup');   // plan 27: share links skip Home
+      this.screen.set('matchup');
       this.batter.set({ id: shared.pick.b, name: shared.pick.b, year: shared.pick.by, line: '' });
       this.pitcher.set({ id: shared.pick.p, name: shared.pick.p, year: shared.pick.py, line: '' });
       api.event('share_open', this.session);
       this.load().then(() => this.throwPitch(shared.seed));
     } else {
-      this.load();
-      if (this.challenge() === undefined) capi.mine().then(m => this.myGames.set(m.length)).catch(() => undefined);
-      if (this.challenge() === undefined && isFirstVisit(false, this.storage())) {
+      const first = isFirstVisit(false, this.storage());
+      if (first) this.load();
+      else void this.randomOpener(manifestLoad);   // plan 39 E: returning visitors get a random matchup
+      capi.mine().then(m => this.myGames.set(m.length)).catch(() => undefined);
+      if (this.challenge() === undefined && first) {
         this.firstView.set(true);
-        this.screen.set('matchup');
         api.event('first_view', this.session);
       }
     }
+  }
+
+  /**
+   * Plan 39 E: a random opening matchup. Starts with no players (so Pedro vs Ruth never flashes), waits for the pairs and
+   * the art list (art list up to 2 s), takes the first pair with art for both, else the first pair, else Pedro vs Ruth.
+   */
+  private async randomOpener(manifestLoad: Promise<ArtManifest | null>) {
+    this.pitcher.set(null); this.batter.set(null);
+    let pairs: RandomPair[] | null = null;
+    try { pairs = await api.randomPairs(12); } catch { pairs = null; }
+    const m = pairs?.length ? await Promise.race([manifestLoad, new Promise<null>(res => setTimeout(() => res(null), 2000))]) : null;
+    if (this.pitcher() || this.batter()) return;   // the player already chose someone
+    const pick = choosePair(pairs, m);
+    this.pitcher.set(pick?.pitcher ?? DEFAULT_PITCHER);
+    this.batter.set(pick?.batter ?? DEFAULT_BATTER);
+    await this.load();
   }
 
   protected async load() {

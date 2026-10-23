@@ -102,8 +102,5 @@ th { color: var(--text-secondary); font-weight: 500; }
 .bar-links { display: flex; gap: 14px; }
 
 /* Plan 27: Home */
-.home { justify-content: center; gap: 10px; }
-.home h1 { font-size: 2rem; margin: 0; }
-.home-pitch { font-size: 1.15rem; margin: 0; }
-.home-actions { grid-template-columns: 1fr; }
 .how-link { align-self: flex-start; }
+
