@@ -12,7 +12,7 @@ public sealed class CsvStatsSource(IConfiguration cfg) : IStatsSource
         static SeasonCounts C(Dictionary<string, string> r) => new(I(r, "pa"), r.ContainsKey("k_known_pa") ? I(r, "k_known_pa") : I(r, "pa"),
             I(r, "k"), I(r, "bb"), I(r, "hbp"), I(r, "single"), I(r, "double"), I(r, "triple"), I(r, "hr"));
         static PlayerRow P(Dictionary<string, string> r) => new(r["id"], I(r, "year"), I(r, "pa_al"), I(r, "pa_nl"), I(r, "pa_fl"), C(r), r["grade"][0],
-            r.GetValueOrDefault("teams") ?? "", r.GetValueOrDefault("pos") ?? "");
+            r.GetValueOrDefault("teams") ?? "", r.GetValueOrDefault("pos") ?? "", I(r, "pa_nn2"), I(r, "pa_nal"));
         static int? N(Dictionary<string, string> r, string k) => int.TryParse(r.GetValueOrDefault(k), out var v) ? v : null;
 
         var cat = new StatsCatalog(

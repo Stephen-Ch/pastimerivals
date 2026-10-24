@@ -10,6 +10,7 @@ TestResults/
 secrets/
 data/raw/
 data/out/
+data/outall/
 data/tmp/
 appsettings.Production.json
 art/source/

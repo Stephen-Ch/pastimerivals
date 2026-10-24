@@ -1,7 +1,8 @@
 namespace PastimeRivals.Engine;
 
 /// <summary>Everything the engine needs about one side of the matchup.</summary>
-public sealed record PlayerInput(SeasonCounts Counts, Rates League, Exposure? Exposure, Platoon? OwnEraPlatoon = null);
+/// <summary>ShrinkK (plan 41): per-outcome shrinkage strengths for this row; null = the MLB values (Shrinkage.Batter / Pitcher).</summary>
+public sealed record PlayerInput(SeasonCounts Counts, Rates League, Exposure? Exposure, Platoon? OwnEraPlatoon = null, double[]? ShrinkK = null);
 
 /// <summary>Intermediate numbers for one outcome, kept so the app can explain the result.</summary>
 public sealed record OutcomeStep(Outcome Outcome, double? BatterObserved, double BatterShrunk, double BatterLeague, double BatterRatio,
@@ -19,8 +20,8 @@ public static class Matchup
     public static MatchupResult Compute(PlayerInput batter, PlayerInput pitcher, Rates neutral, Platoon neutralPlatoon,
         EngineOptions options, bool? sameHand = null)
     {
-        var b = Shrinkage.Apply(batter.Counts, batter.League, Shrinkage.Batter);
-        var p = Shrinkage.Apply(pitcher.Counts, pitcher.League, Shrinkage.Pitcher);
+        var b = Shrinkage.Apply(batter.Counts, batter.League, batter.ShrinkK ?? Shrinkage.Batter);
+        var p = Shrinkage.Apply(pitcher.Counts, pitcher.League, pitcher.ShrinkK ?? Shrinkage.Pitcher);
         var raw = new double[Rates.Count];
         var steps = new List<OutcomeStep>();
         foreach (var o in Enum.GetValues<Outcome>())

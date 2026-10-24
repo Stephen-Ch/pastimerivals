@@ -1,6 +1,21 @@
 using PastimeRivals.Pipeline;
 
 // Usage: dotnet run --project src/PastimeRivals.Pipeline -- build|platoon <rawDir> <outDir> [firstYear] [lastYear]
+//        ngl <nglDir> <membership.csv> <mlbOutDir> <outDir>   (plan 41: adds the Negro Leagues 1933-1948 to an MLB output)
+if (args.Length >= 5 && args[0] == "ngl")
+{
+    var members = Ngl.LoadMembership(args[2]);
+    var mlbBat = new HashSet<(string, int)>(Ngl.Rows(Path.Combine(args[3], "batters.csv")).Select(r => (r["id"], int.Parse(r["year"]))));
+    var mlbPit = new HashSet<(string, int)>(Ngl.Rows(Path.Combine(args[3], "pitchers.csv")).Select(r => (r["id"], int.Parse(r["year"]))));
+    var res = Ngl.Build(args[1], members, mlbBat, mlbPit, Ngl.Positions(Path.Combine(args[1], "allplayers.csv")));
+    foreach (var l in res.Log) Console.WriteLine(l);
+    Console.WriteLine($"Overlap seasons left out (MLB row kept): {string.Join(", ", res.Overlap.Select(o => $"{o.Id} {o.Year}"))}");
+    Console.WriteLine($"NGL: {res.Batters.Count} batter-seasons ({res.Batters.Count(b => b.Counts.Pa >= 150)} at 150+ PA), {res.Pitchers.Count} pitcher-seasons ({res.Pitchers.Count(p => p.Counts.Pa >= 200)} at 200+ BF)");
+    if (res.Red.Count > 0) { foreach (var r in res.Red) Console.WriteLine("RED " + r); return 2; }
+    Ngl.Merge(args[3], args[4], res, members, Path.Combine(args[1], "biofiles", "teams.csv"), Path.Combine(args[1], "biofiles", "biofile0.csv"));
+    Console.WriteLine($"Merged into {args[4]}");
+    return 0;
+}
 if (args.Length < 3 || args[0] is not ("build" or "platoon" or "backtest"))
 {
     Console.WriteLine("Usage: build|platoon <rawDir> <outDir> [firstYear=1901] [lastYear=2025]");

@@ -32,20 +32,33 @@ public sealed class PlayService(IStatsSource source)
 
         /// <summary>Plan 38: summed batting of pitchers by decade (batter seasons listed at P with 100+ batters faced that year).</summary>
         public Dictionary<int, SeasonCounts> PitcherBatting => _pitcherBatting ??= Bat.Values.SelectMany(v => v)
-            .Where(r => r.Position == "P" && Pit.TryGetValue(r.Id, out var ps) && ps.Any(x => x.Year == r.Year && x.Counts.Pa >= 100))
+            .Where(r => r.Position == "P" && !r.IsNgl && Pit.TryGetValue(r.Id, out var ps) && ps.Any(x => x.Year == r.Year && x.Counts.Pa >= 100))
             .GroupBy(r => r.Year / 10 * 10).ToDictionary(g => g.Key, g => g.Select(r => r.Counts).Aggregate(SeasonCounts.Empty, PlayService.Add));
 
         private static Dictionary<int, double> Means(Dictionary<string, List<PlayerRow>> pool) =>
-            pool.Values.SelectMany(v => v).Where(r => r.Counts.Pa > 0).GroupBy(r => r.Year).ToDictionary(g => g.Key,
+            pool.Values.SelectMany(v => v).Where(r => r.Counts.Pa > 0 && !r.IsNgl).GroupBy(r => r.Year).ToDictionary(g => g.Key,
                 g => (double)g.Sum(r => r.Counts.Bb + r.Counts.Hbp + r.Counts.Single + 2 * r.Counts.Double + 3 * r.Counts.Triple + 4 * r.Counts.Hr) / g.Sum(r => r.Counts.Pa));
 
         /// <summary>Challenge points per plate appearance divided by that year's average (1.0 = average for the year).</summary>
         public double Score(PlayerRow r, bool pitcher)
         {
+            if (r.IsNgl) return _nglScore.GetOrAdd((r.Id, r.Year, pitcher), _ => NglScore(r, pitcher));
             var means = pitcher ? (_pitMean ??= Means(Pit)) : (_batMean ??= Means(Bat));
             var c = r.Counts;
             var ppa = c.Pa == 0 ? 0 : (double)(c.Bb + c.Hbp + c.Single + 2 * c.Double + 3 * c.Triple + 4 * c.Hr) / c.Pa;
             return means.TryGetValue(r.Year, out var m) && m > 0 ? ppa / m : 1;
+        }
+
+        private readonly ConcurrentDictionary<(string, int, bool), double> _nglScore = new();
+
+        /// <summary>Plan 41: Negro Leagues seasons are short, so they are scored on shrunk rates (NGL k values) against their own league.</summary>
+        private double NglScore(PlayerRow r, bool pitcher)
+        {
+            var lg = Cat.PlayerLeague(r, pitcher ? "pit" : "bat");
+            var sh = Shrinkage.Apply(r.Counts, lg, pitcher ? Shrinkage.NglPitcher : Shrinkage.NglBatter);
+            static double Ppa(Rates x) => x[Outcome.Bb] + x[Outcome.Hbp] + x[Outcome.Single] + 2 * x[Outcome.Double] + 3 * x[Outcome.Triple] + 4 * x[Outcome.Hr];
+            var m = Ppa(lg);
+            return m > 0 ? Ppa(sh) / m : 1;
         }
 
         public Loaded(StatsBundle b)
@@ -91,7 +104,7 @@ public sealed class PlayService(IStatsSource source)
         return rows.Select(r => new SeasonItem(r.Year, TeamsFor(r), r.Counts.Pa, Line(r, role), r.Grade, r.Year == best)).ToList();
     }
 
-    private static string TeamsFor(PlayerRow r) => (r.PaAl, r.PaNl, r.PaFl) switch
+    private static string TeamsFor(PlayerRow r) => r.IsNgl ? (r.PaNn2 > 0 && r.PaNal > 0 ? "NNL/NAL" : r.PaNn2 > 0 ? "NNL" : "NAL") : (r.PaAl, r.PaNl, r.PaFl) switch
     {
         ( > 0, > 0, _) => "AL/NL",
         ( > 0, _, _) => "AL",
@@ -105,6 +118,7 @@ public sealed class PlayService(IStatsSource source)
         var h = c.Single + c.Double + c.Triple + c.Hr;
         return role == "pit"
             ? $"{c.K} K, {c.Bb} BB, {c.Hr} HR allowed in {c.Pa} batters faced"
+            : r.IsNgl ? $"{h} H, {c.Hr} HR, {c.Bb} BB in {c.Pa} PA"   // plan 41: Negro Leagues batters' strikeouts are not reliably recorded
             : $"{h} H, {c.Hr} HR, {c.Bb} BB, {c.K} K in {c.Pa} PA";
     }
 
@@ -137,11 +151,13 @@ public sealed class PlayService(IStatsSource source)
         var row = player.Row;
         var places = row.Teams.Split('/', StringSplitOptions.RemoveEmptyEntries)
             .Select(code => d.Teams.FirstOrDefault(t => t.Code == code && year >= t.FirstYear && year <= (t.LastYear >= 2021 ? 9999 : t.LastYear)))
-            .Where(t => t != null).Select(t => $"{t!.City}, {t.League}").Distinct().ToList();
+            .Where(t => t != null).Select(t => $"{t!.City}, {LeagueName(t.League)}").Distinct().ToList();
+        var ratios = Reports.Ratios(row.Counts, player.Input.League, role);
+        if (row.IsNgl && role != "pit") ratios = ratios.Where(x => x.Label != "Strikeouts").ToList();
         return new ScoutingReport(id, p?.Name ?? id, role, year, Reports.AgeOn(p?.BirthDate, year), Reports.Height(p?.Height),
             Reports.Weight(p?.Weight), p?.Bats ?? "?", p?.Throws ?? "?", role == "pit" ? "P" : (row.Position is { Length: > 0 } pos ? pos : "?"),
             places, Line(row, role), row.Grade, Reports.EraOf(year), p?.Hof == "HOF",
-            Reports.Ratios(row.Counts, player.Input.League, role), d.Bios.GetOrAdd((id, role == "pit"), k => BuildBio(d, k.Id, k.Pit)));
+            ratios, d.Bios.GetOrAdd((id, role == "pit"), k => BuildBio(d, k.Id, k.Pit)), row.IsNgl ? NglNote : null);
     }
 
     /// <summary>Plan 39: one side of a random opening matchup, with the same name and line the app's cards use.</summary>
@@ -182,6 +198,19 @@ public sealed class PlayService(IStatsSource source)
 
     /// <summary>Plan 26: real-workload floors for random picks (same as the old top-50 floors).</summary>
     public const int BatFloor = 300, PitFloor = 400, LegendPitFloor = 600;
+    /// <summary>Plan 41: Negro Leagues seasons were short and only partly recorded: 150 PA, 200 batters faced, legends 300.</summary>
+    public const int NglBatFloor = 150, NglPitFloor = 200, NglLegendPitFloor = 300;
+    /// <summary>Plan 41: Negro Leagues share of an era's random pool is capped at 20%.</summary>
+    public const double NglMaxShare = 0.20;
+
+    public static int Floor(PlayerRow r, bool pit, bool legend = false) =>
+        r.IsNgl ? (pit ? (legend ? NglLegendPitFloor : NglPitFloor) : NglBatFloor) : (pit ? (legend ? LegendPitFloor : PitFloor) : BatFloor);
+
+    public const string NglNote = "Negro Leagues stats from surviving box scores (incomplete). Leagues were smaller, so stars stand out further from average.";
+
+    /// <summary>Plan 41: full league names for the card; short forms for the one-line bio.</summary>
+    public static string LeagueName(string code) => code switch { "NN2" => "Negro National League", "NAL" => "Negro American League", _ => code };
+    private static string LeagueShort(string code) => code switch { "NN2" => "(NNL)", "NAL" => "(NAL)", _ => code };
 
     /// <summary>Plan 26: one-line career bio, e.g. "1914-1935 · Boston AL, New York AL +1 · Hall of Fame · Best: 60 HR (1927)".</summary>
     public async Task<string> BioAsync(string id, string role)
@@ -201,7 +230,7 @@ public sealed class PlayService(IStatsSource source)
             foreach (var code in r.Teams.Split('/', StringSplitOptions.RemoveEmptyEntries))
             {
                 var t = d.Teams.FirstOrDefault(t => t.Code == code && r.Year >= t.FirstYear && r.Year <= (t.LastYear >= 2021 ? 9999 : t.LastYear));
-                var name = t is null ? null : $"{System.Text.RegularExpressions.Regex.Replace(t.City, @"\.(?=\S)", ". ")} {t.League}";   // "St.Louis" -> "St. Louis"
+                var name = t is null ? null : $"{System.Text.RegularExpressions.Regex.Replace(t.City, @"\.(?=\S)", ". ")} {LeagueShort(t.League)}";   // "St.Louis" -> "St. Louis"
                 if (name is not null && !places.Contains(name)) places.Add(name);
             }
         if (places.Count > 0) parts.Add(string.Join(", ", places.Take(2)) + (places.Count > 2 ? $" +{places.Count - 2}" : ""));
@@ -234,10 +263,10 @@ public sealed class PlayService(IStatsSource source)
         var skip = new HashSet<string>(exclude ?? Array.Empty<string>()) { id };
         double target;
         lock (d) target = d.Score(me, pitcher);
-        var minPa = pitcher ? 400 : 300;
         double Gap(PlayerRow r) { lock (d) return Math.Abs(d.Score(r, pitcher) - target); }
+        // Plan 41: backups come from the same group (major leagues or Negro Leagues), each with its own floor.
         return pool.Where(kv => !skip.Contains(kv.Key))
-            .Select(kv => kv.Value.Where(r => r.Counts.Pa >= minPa).MinBy(Gap))
+            .Select(kv => kv.Value.Where(r => r.IsNgl == me.IsNgl && r.Counts.Pa >= Floor(r, pitcher)).MinBy(Gap))
             .Where(r => r != null)
             .OrderBy(r => Gap(r!)).ThenBy(r => r!.Id)
             .Take(n).Select(r => new Challenges.PickRef(r!.Id, r.Year)).ToList();
@@ -283,7 +312,7 @@ public sealed class PlayService(IStatsSource source)
         public string LeagueOf(Challenges.PickRef p, bool pitcher)
         {
             var row = pitcher ? d.Cat.Pitcher(p.Id, p.Year)?.Row : d.Cat.Batter(p.Id, p.Year)?.Row;
-            return row is null ? "NL" : row.PaAl > 0 ? "AL" : row.PaNl > 0 ? "NL" : "FL";
+            return row is null ? "NL" : row.PaAl > 0 ? "AL" : row.PaNl > 0 ? "NL" : row.PaFl > 0 ? "FL" : row.PaNn2 > 0 ? "NN2" : row.PaNal > 0 ? "NAL" : "FL";
         }
 
         public Rates? PitcherAtBat(Challenges.PickRef pb, Challenges.PickRef pitcher)
@@ -337,7 +366,7 @@ public sealed class PlayService(IStatsSource source)
         // Era-adjusted (each season against the average of its year), and 10 from each era so no one era fills the list.
         private static IReadOnlyList<Challenges.PickRef> Rank(Loaded d, Dictionary<string, List<PlayerRow>> pool, int minPa, bool ascending, int perEra = 10)
         {
-            var rows = pool.Values.SelectMany(v => v).Where(r => r.Counts.Pa >= minPa).ToList();
+            var rows = pool.Values.SelectMany(v => v).Where(r => !r.IsNgl && r.Counts.Pa >= minPa).ToList();   // plan 41: the duplicate fallback stays major-league only
             return rows.GroupBy(r => EraBucket(r.Year))
                 .SelectMany(g => (ascending ? g.OrderBy(r => d.Score(r, ascending)) : g.OrderByDescending(r => d.Score(r, ascending))).ThenBy(r => r.Id).ThenBy(r => r.Year).Take(perEra))
                 .Select(r => new Challenges.PickRef(r.Id, r.Year)).ToList();
@@ -348,25 +377,33 @@ public sealed class PlayService(IStatsSource source)
         /// 4 the best 5% of each era (pitchers first need 600+ batters faced, so starters only). Call under lock(d).</summary>
         private static IReadOnlyList<Challenges.PickRef>[] BuildLevel(Loaded d, bool pit, int level)
         {
-            var floor = pit ? PitFloor : BatFloor;
-            var rows = (pit ? d.Pit : d.Bat).Values.SelectMany(v => v).Where(r => r.Counts.Pa >= floor).ToList();
+            var all = (pit ? d.Pit : d.Bat).Values.SelectMany(v => v).ToList();
             var eras = new IReadOnlyList<Challenges.PickRef>[5];
             for (var e = 0; e < eras.Length; e++)
             {
-                var inEra = rows.Where(r => EraBucket(r.Year) == e);
-                if (level == 4 && pit) inEra = inEra.Where(r => r.Counts.Pa >= LegendPitFloor);
-                var list = inEra.ToList();
-                var better = (pit ? list.OrderBy(r => d.Score(r, true)) : list.OrderByDescending(r => d.Score(r, false))).ThenBy(r => r.Id).ThenBy(r => r.Year).ToList();
-                IEnumerable<PlayerRow> pick = level switch
-                {
-                    2 => better.Take((better.Count + 1) / 2),
-                    3 => better.Take((better.Count + 1) / 2).Where(r => d.People.TryGetValue(r.Id, out var p) && p.Hof == "HOF"),
-                    4 => better.Take(better.Count == 0 ? 0 : Math.Max(1, (int)Math.Ceiling(better.Count * 0.05))),
-                    _ => better,
-                };
-                eras[e] = pick.OrderBy(r => r.Id, StringComparer.Ordinal).ThenBy(r => r.Year).Select(r => new Challenges.PickRef(r.Id, r.Year)).ToList();
+                // Major-league seasons exactly as plan 26; Negro Leagues seasons (plan 41) ranked among themselves and capped.
+                var mlb = Pick(d, all.Where(r => !r.IsNgl && EraBucket(r.Year) == e), pit, level);
+                var ngl = Pick(d, all.Where(r => r.IsNgl && EraBucket(r.Year) == e), pit, level);
+                var cap = (int)Math.Floor(mlb.Count * NglMaxShare / (1 - NglMaxShare));
+                if (ngl.Count > cap) ngl = ngl.Take(cap).ToList();   // best first
+                eras[e] = mlb.Concat(ngl).OrderBy(r => r.Id, StringComparer.Ordinal).ThenBy(r => r.Year).Select(r => new Challenges.PickRef(r.Id, r.Year)).ToList();
             }
             return eras;
+        }
+
+        /// <summary>One group's picks for a level, best first. Strength = Loaded.Score; higher is better for batters, lower for pitchers.</summary>
+        private static List<PlayerRow> Pick(Loaded d, IEnumerable<PlayerRow> rows, bool pit, int level)
+        {
+            var list = rows.Where(r => r.Counts.Pa >= Floor(r, pit) && (level != 4 || !pit || r.Counts.Pa >= Floor(r, pit, legend: true))).ToList();
+            var better = (pit ? list.OrderBy(r => d.Score(r, true)) : list.OrderByDescending(r => d.Score(r, false))).ThenBy(r => r.Id).ThenBy(r => r.Year).ToList();
+            IEnumerable<PlayerRow> pick = level switch
+            {
+                2 => better.Take((better.Count + 1) / 2),
+                3 => better.Take((better.Count + 1) / 2).Where(r => d.People.TryGetValue(r.Id, out var p) && p.Hof == "HOF"),
+                4 => better.Take(better.Count == 0 ? 0 : Math.Max(1, (int)Math.Ceiling(better.Count * 0.05))),
+                _ => better,
+            };
+            return pick.ToList();
         }
 
         private static int EraBucket(int y) => y < 1920 ? 0 : y < 1946 ? 1 : y < 1970 ? 2 : y < 1990 ? 3 : 4;

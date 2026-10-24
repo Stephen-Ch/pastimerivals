@@ -34,6 +34,7 @@ import { Era, figure } from './art';
             }
           </ul>
           <p class="sub">x = times his league's rate that season. The line marks league average.</p>
+          @if (r.note) { <p class="sub">{{ r.note }}</p> }
           <dl>
             <dt>Age</dt><dd>{{ r.age ?? 'unknown' }}</dd>
             <dt>Height (listed)</dt><dd>{{ r.height ?? 'unknown' }}</dd>

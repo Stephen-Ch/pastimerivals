@@ -7,7 +7,7 @@ public sealed record Ratio(string Label, double TimesLeague);
 /// <summary>Scouting report (plan 10): bio, places, position and how the player compared with his league.</summary>
 public sealed record ScoutingReport(string Id, string Name, string Role, int Year, int? Age, string? Height, string? Weight,
     string Bats, string Throws, string Position, IReadOnlyList<string> Places, string Line, char Grade, string Era, bool Hof,
-    IReadOnlyList<Ratio> Ratios, string Bio = "");
+    IReadOnlyList<Ratio> Ratios, string Bio = "", string? Note = null);
 
 public static class Reports
 {

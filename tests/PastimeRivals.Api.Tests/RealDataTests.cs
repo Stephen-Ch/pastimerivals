@@ -15,6 +15,9 @@ public class RealDataTests(ITestOutputHelper output)
     private static PlayService Play() => _play ??= new PlayService(new CsvStatsSource(new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?> { ["Stats:CsvDir"] = Dir }).Build()));
 
+    /// <summary>Column index by header name (plan 41 added pa_nn2/pa_nal columns, so positions moved).</summary>
+    private static int Col(string file, string name) => Array.IndexOf(File.ReadLines(Path.Combine(Dir!, file)).First().Split(','), name);
+
     private static (double Avg, double Obp, double Slg) Line(Rates r)
     {
         double P(Outcome o) => r[o];
@@ -32,8 +35,9 @@ public class RealDataTests(ITestOutputHelper output)
         if (Dir is null) return;
         var oracle = await Play().OracleAsync();
         // The 30 heaviest-workload pitchers of the decade, each batting against the others.
+        var paCol = Col("pitchers.csv", "pa");
         var csv = File.ReadLines(Path.Combine(Dir, "pitchers.csv")).Skip(1).Select(l => l.Split(','))
-            .Where(f => int.Parse(f[1]) / 10 * 10 == decade).OrderByDescending(f => int.Parse(f[6])).Take(30)
+            .Where(f => int.Parse(f[1]) / 10 * 10 == decade).OrderByDescending(f => int.Parse(f[paCol])).Take(30)
             .Select(f => new PickRef(f[0], int.Parse(f[1]))).ToList();
         double avg = 0, obp = 0, slg = 0; var n = 0;
         foreach (var b in csv)
@@ -58,7 +62,8 @@ public class RealDataTests(ITestOutputHelper output)
         var oracle = await Play().OracleAsync();
         var al1985 = File.ReadLines(Path.Combine(Dir, "pitchers.csv")).Skip(1).Select(l => l.Split(','))
             .Where(f => f[1] == "1985" && int.Parse(f[3]) > 400 && int.Parse(f[4]) == 0).Select(f => new PickRef(f[0], 1985)).ToList();
-        var batters = File.ReadLines(Path.Combine(Dir, "batters.csv")).Skip(1).Select(l => l.Split(',')).Where(f => f[1] == "1985" && int.Parse(f[6]) > 0).Select(f => f[0]).ToHashSet();
+        var bPa = Col("batters.csv", "pa");
+        var batters = File.ReadLines(Path.Combine(Dir, "batters.csv")).Skip(1).Select(l => l.Split(',')).Where(f => f[1] == "1985" && int.Parse(f[bPa]) > 0).Select(f => f[0]).ToHashSet();
         var none = al1985.First(p => !batters.Contains(p.Id));
         var r = oracle.PitcherAtBat(none, al1985.First(p => p.Id != none.Id));
         Assert.NotNull(r);

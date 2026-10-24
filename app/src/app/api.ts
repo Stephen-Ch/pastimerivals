@@ -19,6 +19,8 @@ export interface Report {
   bats: string; throws: string; position: string; places: string[]; line: string; grade: string; era: string; hof: boolean; ratios: Ratio[];
   /** Plan 26: one-line career bio. */
   bio?: string;
+  /** Plan 41: Negro Leagues seasons: the stats come from surviving box scores. */
+  note?: string | null;
 }
 export interface SimsResult { n: number; counts: Record<OutcomeKey, number>; seed: string; }
 

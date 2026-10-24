@@ -1,7 +1,12 @@
 namespace PastimeRivals.Engine;
 
 public sealed record LeagueRow(int Year, string League, string Side, SeasonCounts Counts);
-public sealed record PlayerRow(string Id, int Year, int PaAl, int PaNl, int PaFl, SeasonCounts Counts, char Grade, string Teams = "", string Position = "");
+public sealed record PlayerRow(string Id, int Year, int PaAl, int PaNl, int PaFl, SeasonCounts Counts, char Grade, string Teams = "", string Position = "",
+    int PaNn2 = 0, int PaNal = 0)
+{
+    /// <summary>Plan 41: a Negro Leagues season (second Negro National League "NN2" or Negro American League "NAL").</summary>
+    public bool IsNgl => PaNn2 + PaNal > 0;
+}
 public sealed record PlatoonRow(int Year, bool SameHand, SeasonCounts Counts);
 public sealed record ExposureRow(string Role, string Id, int Year, int SameHandPa, int KnownPa);
 public sealed record PlayerSeasonRef(PlayerRow Row, PlayerInput Input);
@@ -42,7 +47,7 @@ public sealed class StatsCatalog
     /// <summary>League environment for a player-season, weighted by his plate appearances in each league.</summary>
     public Rates PlayerLeague(PlayerRow p, string side)
     {
-        var parts = new[] { ("AL", p.PaAl), ("NL", p.PaNl), ("FL", p.PaFl) }
+        var parts = new[] { ("AL", p.PaAl), ("NL", p.PaNl), ("FL", p.PaFl), ("NN2", p.PaNn2), ("NAL", p.PaNal) }
             .Where(x => x.Item2 > 0 && _leagues.ContainsKey((p.Year, x.Item1, side))).ToList();
         if (parts.Count == 0) throw new InvalidOperationException($"No league rows for {p.Id} {p.Year}");
         double total = parts.Sum(x => x.Item2);
@@ -104,7 +109,8 @@ public sealed class StatsCatalog
     {
         if (!d.TryGetValue((id, year), out var row) || row.Counts.Pa == 0) return null;
         var ex = _exposure.TryGetValue((side, id, year), out var e) ? new Exposure(e.SameHandPa, e.KnownPa) : null;
-        return new PlayerSeasonRef(row, new PlayerInput(row.Counts, PlayerLeague(row, side), ex, PlatoonFor(year)));
+        return new PlayerSeasonRef(row, new PlayerInput(row.Counts, PlayerLeague(row, side), ex, PlatoonFor(year),
+            row.IsNgl ? (side == "pit" ? Shrinkage.NglPitcher : Shrinkage.NglBatter) : null));
     }
 
     private static SeasonCounts Sum(IEnumerable<SeasonCounts> items) => items.Aggregate(SeasonCounts.Empty, Add);

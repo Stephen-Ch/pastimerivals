@@ -41,7 +41,8 @@ public sealed class SqlStatsSource(IConfiguration cfg) : IStatsSource
         static SeasonCounts Counts(SqlDataReader r) => new(I(r, "pa"), I(r, "k_known_pa"), I(r, "k"), I(r, "bb"), I(r, "hbp"),
             I(r, "single"), I(r, "double"), I(r, "triple"), I(r, "hr"));
         static PlayerRow Player(SqlDataReader r) => new(S(r, "id"), I(r, "year"), I(r, "pa_al"), I(r, "pa_nl"), I(r, "pa_fl"),
-            Counts(r), S(r, "grade") is { Length: > 0 } g ? g[0] : 'B', S(r, "teams"), Has(r, "pos") ? S(r, "pos") : "");
+            Counts(r), S(r, "grade") is { Length: > 0 } g ? g[0] : 'B', S(r, "teams"), Has(r, "pos") ? S(r, "pos") : "",
+            Has(r, "pa_nn2") ? I(r, "pa_nn2") : 0, Has(r, "pa_nal") ? I(r, "pa_nal") : 0);
         static bool Has(SqlDataReader r, string c) { for (var i = 0; i < r.FieldCount; i++) if (r.GetName(i) == c) return true; return false; }
         static int? N(SqlDataReader r, string c) => Has(r, c) && r[c] is not DBNull ? Convert.ToInt32(r[c]) : null;
 

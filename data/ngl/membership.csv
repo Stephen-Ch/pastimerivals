@@ -1,0 +1,185 @@
+season,team,league,games,name
+1933,AKR,NN2,10,Akron Grays
+1933,BLS,NN2,38,Baltimore Black Sox
+1933,CAG,NN2,63,Chicago American Giants
+1933,CB2,NN2,44,Columbus Bluebirds
+1933,CV7,NN2,1,Cleveland Giants
+1933,DI1,NN2,55,Detroit - Indianapolis Stars
+1933,HOM,NN2,26,Homestead Grays
+1933,NSH,NN2,47,Nashville Elite Giants
+1933,PTC,NN2,76,Pittsburgh Crawfords
+1934,BLS,NN2,12,Baltimore Black Sox
+1934,CAG,NN2,50,Chicago American Giants
+1934,CV8,NN2,29,Cleveland Red Sox
+1934,NSH,NN2,43,Nashville Elite Giants
+1934,NW1,NN2,31,Newark Dodgers
+1934,PH5,NN2,53,Philadelphia Stars
+1934,PH6,NN2,19,Philadelphia Bacharach Giants
+1934,PTC,NN2,64,Pittsburgh Crawfords
+1935,BRN,NN2,67,Brooklyn Eagles
+1935,CAG,NN2,60,Chicago American Giants
+1935,HOM,NN2,65,Homestead Grays
+1935,NSH,NN2,55,Nashville Elite Giants
+1935,NW1,NN2,64,Newark Dodgers
+1935,NY6,NN2,63,New York Cubans
+1935,PH5,NN2,73,Philadelphia Stars
+1935,PTC,NN2,74,Pittsburgh Crawfords
+1936,HOM,NN2,58,Homestead Grays
+1936,NW2,NN2,65,Newark Eagles
+1936,NY5,NN2,34,New York Black Yankees
+1936,NY6,NN2,48,New York Cubans
+1936,PH5,NN2,75,Philadelphia Stars
+1936,PTC,NN2,83,Pittsburgh Crawfords
+1936,WEG,NN2,63,Washington Elite Giants
+1937,ATN,NAL,17,Atlanta Black Crackers
+1937,BIR,NAL,38,Birmingham Black Barons
+1937,CAG,NAL,66,Chicago American Giants
+1937,CI1,NAL,67,Cincinnati Tigers
+1937,DT2,NAL,45,Detroit Stars
+1937,IN6,NAL,44,Indianapolis Athletics
+1937,KCM,NAL,69,Kansas City Monarchs
+1937,MEM,NAL,48,Memphis Red Sox
+1937,SSA,NAL,41,St. Louis Stars
+1937,HOM,NN2,66,Homestead Grays
+1937,NW2,NN2,61,Newark Eagles
+1937,NY5,NN2,56,New York Black Yankees
+1937,PH5,NN2,66,Philadelphia Stars
+1937,PTC,NN2,58,Pittsburgh Crawfords
+1937,WEG,NN2,68,Washington Elite Giants
+1938,ATN,NAL,50,Atlanta Black Crackers
+1938,BIR,NAL,46,Birmingham Black Barons
+1938,CAG,NAL,65,Chicago American Giants
+1938,IN7,NAL,35,Indianapolis ABCs
+1938,JAX,NAL,26,Jacksonville Red Caps
+1938,KCM,NAL,62,Kansas City Monarchs
+1938,MEM,NAL,60,Memphis Red Sox
+1938,BFA,NN2,2,Buffalo Black Aces
+1938,BLG,NN2,52,Baltimore Elite Giants
+1938,HOM,NN2,62,Homestead Grays
+1938,NW2,NN2,48,Newark Eagles
+1938,NY5,NN2,35,New York Black Yankees
+1938,PH5,NN2,71,Philadelphia Stars
+1938,PTC,NN2,53,Pittsburgh Crawfords
+1938,WBS,NN2,19,Washington Black Senators
+1939,ATN,NAL,16,Atlanta Black Crackers
+1939,CAG,NAL,57,Chicago American Giants
+1939,CV9,NAL,43,Cleveland Bears
+1939,KCM,NAL,58,Kansas City Monarchs
+1939,MEM,NAL,63,Memphis Red Sox
+1939,SSA,NAL,44,St. Louis Stars
+1939,BLG,NN2,46,Baltimore Elite Giants
+1939,HOM,NN2,46,Homestead Grays
+1939,NW2,NN2,50,Newark Eagles
+1939,NY5,NN2,41,New York Black Yankees
+1939,NY6,NN2,31,New York Cubans
+1939,PH5,NN2,61,Philadelphia Stars
+1940,BIR,NAL,42,Birmingham Black Barons
+1940,CAG,NAL,47,Chicago American Giants
+1940,CV9,NAL,37,Cleveland Bears
+1940,IN8,NAL,32,Indianapolis Crawfords
+1940,KCM,NAL,52,Kansas City Monarchs
+1940,MEM,NAL,52,Memphis Red Sox
+1940,SNO,NAL,46,St. Louis - New Orleans Stars
+1940,BLG,NN2,44,Baltimore Elite Giants
+1940,HOM,NN2,51,Homestead Grays
+1940,NW2,NN2,47,Newark Eagles
+1940,NY5,NN2,32,New York Black Yankees
+1940,NY6,NN2,35,New York Cubans
+1940,PH5,NN2,55,Philadelphia Stars
+1941,BIR,NAL,45,Birmingham Black Barons
+1941,CAG,NAL,28,Chicago American Giants
+1941,JAX,NAL,38,Jacksonville Red Caps
+1941,KCM,NAL,47,Kansas City Monarchs
+1941,MEM,NAL,42,Memphis Red Sox
+1941,SNO,NAL,38,St. Louis - New Orleans Stars
+1941,BLG,NN2,46,Baltimore Elite Giants
+1941,HOM,NN2,67,Homestead Grays
+1941,NW2,NN2,49,Newark Eagles
+1941,NY5,NN2,33,New York Black Yankees
+1941,NY6,NN2,41,New York Cubans
+1941,PH5,NN2,56,Philadelphia Stars
+1942,BIR,NAL,43,Birmingham Black Barons
+1942,CAG,NAL,42,Chicago American Giants
+1942,CCB,NAL,55,Cincinnati-Cleveland Buckeyes
+1942,JAX,NAL,30,Jacksonville Red Caps
+1942,KCM,NAL,51,Kansas City Monarchs
+1942,MEM,NAL,60,Memphis Red Sox
+1942,BLG,NN2,46,Baltimore Elite Giants
+1942,HOM,NN2,38,Homestead Grays
+1942,NW2,NN2,42,Newark Eagles
+1942,NY5,NN2,26,New York Black Yankees
+1942,NY6,NN2,26,New York Cubans
+1942,PH5,NN2,47,Philadelphia Stars
+1943,BIR,NAL,61,Birmingham Black Barons
+1943,CAG,NAL,62,Chicago American Giants
+1943,CI2,NAL,73,Cincinnati Clowns
+1943,CVB,NAL,62,Cleveland Buckeyes
+1943,KCM,NAL,51,Kansas City Monarchs
+1943,MEM,NAL,77,Memphis Red Sox
+1943,BLG,NN2,40,Baltimore Elite Giants
+1943,HOM,NN2,56,Homestead Grays
+1943,HSL,NN2,16,Harrisburg - St. Louis Stars
+1943,NW2,NN2,48,Newark Eagles
+1943,NY5,NN2,25,New York Black Yankees
+1943,NY6,NN2,33,New York Cubans
+1943,PH5,NN2,48,Philadelphia Stars
+1944,BIR,NAL,78,Birmingham Black Barons
+1944,CAG,NAL,70,Chicago American Giants
+1944,CIA,NAL,79,Cincinnati-Indianapolis Clowns
+1944,CVB,NAL,84,Cleveland Buckeyes
+1944,KCM,NAL,74,Kansas City Monarchs
+1944,MEM,NAL,94,Memphis Red Sox
+1944,BLG,NN2,73,Baltimore Elite Giants
+1944,HOM,NN2,70,Homestead Grays
+1944,NW2,NN2,56,Newark Eagles
+1944,NY5,NN2,36,New York Black Yankees
+1944,NY6,NN2,52,New York Cubans
+1944,PH5,NN2,55,Philadelphia Stars
+1945,BIR,NAL,66,Birmingham Black Barons
+1945,CAG,NAL,74,Chicago American Giants
+1945,CIA,NAL,68,Cincinnati-Indianapolis Clowns
+1945,CVB,NAL,70,Cleveland Buckeyes
+1945,KCM,NAL,62,Kansas City Monarchs
+1945,MEM,NAL,75,Memphis Red Sox
+1945,BLG,NN2,63,Baltimore Elite Giants
+1945,HOM,NN2,61,Homestead Grays
+1945,NW2,NN2,46,Newark Eagles
+1945,NY5,NN2,37,New York Black Yankees
+1945,NY6,NN2,35,New York Cubans
+1945,PH5,NN2,45,Philadelphia Stars
+1946,BIR,NAL,67,Birmingham Black Barons
+1946,CAG,NAL,85,Chicago American Giants
+1946,CVB,NAL,69,Cleveland Buckeyes
+1946,IN9,NAL,73,Indianapolis Clowns
+1946,KCM,NAL,68,Kansas City Monarchs
+1946,MEM,NAL,74,Memphis Red Sox
+1946,BLG,NN2,69,Baltimore Elite Giants
+1946,HOM,NN2,65,Homestead Grays
+1946,NW2,NN2,69,Newark Eagles
+1946,NY5,NN2,52,New York Black Yankees
+1946,NY6,NN2,57,New York Cubans
+1946,PH5,NN2,64,Philadelphia Stars
+1947,BIR,NAL,80,Birmingham Black Barons
+1947,CAG,NAL,80,Chicago American Giants
+1947,CVB,NAL,68,Cleveland Buckeyes
+1947,IN9,NAL,82,Indianapolis Clowns
+1947,KCM,NAL,76,Kansas City Monarchs
+1947,MEM,NAL,87,Memphis Red Sox
+1947,BLG,NN2,78,Baltimore Elite Giants
+1947,HOM,NN2,70,Homestead Grays
+1947,NW2,NN2,82,Newark Eagles
+1947,NY5,NN2,51,New York Black Yankees
+1947,NY6,NN2,62,New York Cubans
+1947,PH5,NN2,60,Philadelphia Stars
+1948,BIR,NAL,86,Birmingham Black Barons
+1948,CAG,NAL,83,Chicago American Giants
+1948,CVB,NAL,93,Cleveland Buckeyes
+1948,IN9,NAL,87,Indianapolis Clowns
+1948,KCM,NAL,89,Kansas City Monarchs
+1948,MEM,NAL,89,Memphis Red Sox
+1948,BLG,NN2,78,Baltimore Elite Giants
+1948,HOM,NN2,61,Homestead Grays
+1948,NW2,NN2,62,Newark Eagles
+1948,NY5,NN2,45,New York Black Yankees
+1948,NY6,NN2,47,New York Cubans
+1948,PH5,NN2,62,Philadelphia Stars

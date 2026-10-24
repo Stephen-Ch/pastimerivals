@@ -11,6 +11,9 @@ public static class Shrinkage
     //                                        K    BB   HBP   1B    2B    3B    HR   (OIP is the remainder)
     public static readonly double[] Batter  = { 65,  86, 215,  215,  600, 1000,  130 };
     public static readonly double[] Pitcher = { 55, 130, 580, 1700, 2000, 3000,  550 };
+    // Plan 41: Negro Leagues seasons (short, from surviving box scores). Set from split-half reliability on 1933-1948 data.
+    public static readonly double[] NglBatter  = { 65, 130, 1000, 1000, 600, 1000, 130 };
+    public static readonly double[] NglPitcher = { 140, 200, 580, 1700, 2000, 3000, 900 };
 
     public static Rates Apply(SeasonCounts c, Rates league, double[] k)
     {
