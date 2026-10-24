@@ -5,7 +5,10 @@ import { ArtManifest, eraOf, preloadImages, SideArt, sideArt, WindupArt, windupA
 import { sideLine } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
-import { PitchScene } from './pitch-scene';
+import { PitchScene, SceneCue } from './pitch-scene';
+import { announcerOn } from './announcer-setting';
+import { intro, IntroCtx, lineText, pitchLines, rawLead, recapLines, RecapAb, resultLine } from './pbp';
+import { outAt } from './inning';
 import { HowSim } from './how-sim';
 import { pushEntry } from './nav';
 import {
@@ -565,6 +568,7 @@ export class ChallengeFlow {
   protected async pitch() {
     const ab = this.nextAtBat();
     if (!ab || this.scene() || this.loadingArt()) return;
+    this.pbpLine.set('');
     this.lastPlay.set(null);
     const token = ++this.pitchToken;
     const m = this.manifest();
@@ -582,6 +586,7 @@ export class ChallengeFlow {
     }
     // Skip, Watch again or leaving during the wait cancels this pitch.
     if (token !== this.pitchToken || this.step() !== 'play' || this.nextAtBat() !== ab) return;
+    this.pbpLine.set(''); this.pbpResultShown = false; this.pbpTypeWord = false;
     this.scene.set({ ab, art: ok ? art : null, windup: ok && windOk ? wind : null });
   }
 
@@ -591,9 +596,99 @@ export class ChallengeFlow {
       d === '3' ? playFacts(ab, this.names()) : null);
   }
 
+  // ---- Plan 42: play-by-play (inning and friend games) ----
+  protected readonly announcer = announcerOn;
+  protected readonly pbpLine = signal('');
+  private pbpResultShown = false;
+  private pbpTypeWord = false;
+
+  private introCtxFor(i: number): IntroCtx | null {
+    const g = this.game(), ab = g?.atBats[i];
+    if (!g || !ab) return null;
+    const prev = i > 0 ? g.atBats[i - 1] : null;
+    const inn = this.isInningGame();
+    const firstOfHalf = !prev || prev.inning !== ab.inning || prev.battingSide !== ab.battingSide;
+    const before: [number, number] = [0, 0];
+    g.atBats.slice(0, i).forEach(a => (before[a.battingSide] += a.points));
+    return {
+      key: ab.seed, index: i, batter: { id: ab.batter.id, name: ab.batter.name }, pitcher: { id: ab.pitcher.id, name: ab.pitcher.name },
+      showPitcher: !prev || prev.pitcher.id !== ab.pitcher.id || (inn && firstOfHalf), pitchingSide: 1 - ab.battingSide,
+      situation: inn ? { outs: ab.outsBefore ?? 0, bases: ab.basesBefore ?? [null, null, null], inning: ab.inning ?? 1, battingSide: ab.battingSide,
+        firstOfHalf, deficit: before[1 - ab.battingSide] - before[ab.battingSide], lastScheduledInning: 1 } : null,
+    };
+  }
+
+  /** Intro lines for the next at-bat, shown in the next-batter panel before the Pitch tap. */
+  protected readonly pbpIntro = computed(() => {
+    const n = this.nextAtBat();
+    if (!this.announcer() || !n) return [] as string[];
+    const ctx = this.introCtxFor(n.index);
+    if (!ctx) return [];
+    const prevCtx = n.index > 0 ? this.introCtxFor(n.index - 1) : null;
+    const x = intro(ctx, prevCtx ? rawLead(prevCtx) : null);
+    return [x.pitcher ? lineText(x.pitcher) : null, lineText(x.batter)].filter((t): t is string => !!t);
+  });
+
+  private pbpCtxFor(ab: CAtBat) {
+    return { key: ab.seed, index: ab.index, count: countFor(ab.outcome, ab.seed, this.deco().deco), runnersOn: (ab.basesBefore ?? []).some(Boolean),
+      throws: ab.pitcher.throws, era: eraOf(ab.pitcher.year), seed: ab.seed };
+  }
+
+  private pbpResultFor(ab: CAtBat): string {
+    const ctx = this.pbpCtxFor(ab);
+    const d = this.deco().deco;
+    return lineText(resultLine({ key: ab.seed, index: ab.index, outcome: ab.outcome, count: ctx.count, call: this.callOf(ab),
+      play: d === '3' ? playFacts(ab, this.names()) : null, era: ctx.era, seed: ab.seed, typeWord: this.pbpTypeWord }));
+  }
+
+  protected onCue(c: SceneCue) {
+    const s = this.scene();
+    if (!s || !this.announcer()) return;
+    const ctx = this.pbpCtxFor(s.ab);
+    const lines = pitchLines(ctx, c.index);
+    if (c.final) this.pbpTypeWord = lines.typeWord;
+    if (c.moment === 'windup') { if (lines.delivery) this.pbpLine.set(lineText(lines.delivery)); return; }
+    if (c.moment === 'plate' && !c.final && lines.call) { this.pbpLine.set(lineText(lines.call)); return; }
+    if ((c.moment === 'plate' && c.final) || ((c.moment === 'skipped' || c.moment === 'end') && !this.pbpResultShown)) {
+      this.pbpResultShown = true;
+      this.pbpLine.set(this.pbpResultFor(s.ab));
+    }
+  }
+
+  private recapAb(a: CAtBat): RecapAb {
+    return { outcome: a.outcome, battingSide: a.battingSide, inning: a.inning ?? 1, outsBefore: a.outsBefore ?? 0, outsAfter: a.outsAfter ?? 0,
+      basesBefore: a.basesBefore ?? [null, null, null], basesAfter: a.basesAfter ?? [null, null, null], scored: a.scored ?? [], runnersOut: a.runnersOut ?? [],
+      doublePlay: !!a.doublePlay, batterId: a.batter.id };
+  }
+
+  /** After-play recap for the play just shown (inning games); replaces the written base line while the announcer is on. */
+  protected recapFor(lp: CAtBat | null): string[] {
+    const g = this.game();
+    if (!this.announcer() || !lp || !g || !this.isInningGame()) return [];
+    const after: [number, number] = [0, 0];
+    g.atBats.slice(0, lp.index + 1).forEach(a => (after[a.battingSide] += a.points));
+    const before: [number, number] = [...after] as [number, number];
+    before[lp.battingSide] -= lp.points;
+    const next = g.atBats[lp.index + 1] ?? null;
+    const halfPlays = g.atBats.filter(a => a.inning === lp.inning && a.battingSide === lp.battingSide && a.index <= lp.index).map(a => this.recapAb(a));
+    return recapLines({
+      key: lp.seed, index: lp.index, ab: this.recapAb(lp), outAt: from => outAt(lp, from), scoreBefore: before, scoreAfter: after,
+      lastOfGame: !next, halfEnds: !next || next.inning !== lp.inning || next.battingSide !== lp.battingSide,
+      capped: (g.notes ?? []).includes(CAP_NOTE), nextIsNewHalf: !!next && (next.inning !== lp.inning || next.battingSide !== lp.battingSide),
+      halfPlays, throws: lp.pitcher.throws, lastScheduledInning: 1,
+    }).map(lineText);
+  }
+  protected readonly pbpRecap = computed(() => this.recapFor(this.lastPlay()));
+  /** The last play's recap on the final screen (walk-off, "And that's the ball game."). */
+  protected readonly pbpFinal = computed(() => {
+    const g = this.game();
+    return g && this.step() === 'final' && this.revealed() >= g.atBats.length ? this.recapFor(g.atBats[g.atBats.length - 1] ?? null) : [];
+  });
+
   protected sceneDone() {
     const s = this.scene();
     if (!s) return;
+    if (this.announcer() && !this.pbpResultShown) { this.pbpResultShown = true; this.pbpLine.set(this.pbpResultFor(s.ab)); }
     this.scene.set(null);
     const inn = this.view()?.mode === 'inning';
     this.lastCall.set(`${this.callOf(s.ab).text}${!inn && s.ab.points ? ` +${s.ab.points}` : ''}`);
@@ -649,9 +744,9 @@ export class ChallengeFlow {
     if (this.revealed() >= total) this.step.set('final');
   }
 
-  protected skipToFinal() { this.pitchToken++; this.scene.set(null); this.lastPlay.set(null); this.advance(this.game()?.atBats.length ?? 0); }
+  protected skipToFinal() { this.pitchToken++; this.scene.set(null); this.pbpLine.set(''); this.lastPlay.set(null); this.advance(this.game()?.atBats.length ?? 0); }
 
-  protected watchAgain() { this.pitchToken++; this.scene.set(null); this.revealed.set(0); this.lastCall.set(null); this.lastPlay.set(null); if (this.current()) setWatched(this.current()!, 0); this.step.set('play'); }
+  protected watchAgain() { this.pitchToken++; this.scene.set(null); this.pbpLine.set(''); this.revealed.set(0); this.lastCall.set(null); this.lastPlay.set(null); if (this.current()) setWatched(this.current()!, 0); this.step.set('play'); }
 
   protected eraOf = eraOf;
 

@@ -393,6 +393,9 @@ export function prefersReducedMotion(): boolean {
 }
 
 /** Side-on view of the whole at-bat: a short count for show, then the real result. */
+/** Plan 42: index = pitch (leadUp.length = the final pitch). */
+export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'enter' | 'plate' | 'end' | 'skipped'; }
+
 @Component({
   selector: 'pr-pitch-scene',
   template: `
@@ -432,7 +435,7 @@ export function prefersReducedMotion(): boolean {
       </div>
     }
     <div class="under">
-      <span class="caption" aria-live="polite"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span>@if (board().caption) { · {{ board().caption }} }</span>
+      <span class="caption" [attr.aria-live]="quietCaption() ? 'off' : 'polite'"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span>@if (board().caption && !quietCaption()) { · {{ board().caption }} }</span>
       <button type="button" class="skip" (click)="finish()">Skip to result</button>
     </div>
   `,
@@ -484,6 +487,10 @@ export class PitchScene {
   /** Plan 21: the announcer call for the final pitch (trajectory and field). */
   readonly call = input<Call | null>(null);
   readonly done = output<void>();
+  /** Plan 42: moments the announcer follows (fired in the same tick as the board update). */
+  readonly cue = output<SceneCue>();
+  /** Plan 42: the announcer line replaces the short caption (count stays; caption no longer read aloud). */
+  readonly quietCaption = input(false);
 
   protected readonly count = computed(() => countFor(this.outcome(), this.seed(), this.deco()));
   /** Index into the lead-up pitches; equal to their length means the final pitch. */
@@ -533,6 +540,8 @@ export class PitchScene {
     let cleared = false, called = false;
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: FrameRequestCallback) => setTimeout(() => fn(performance.now()), 16) as unknown as number;
     const lead0 = plan.s.windup ? WINDUP_S : 0;
+    const idx = this.step();
+    if (plan.s.windup) this.cue.emit({ index: idx, final, moment: 'windup' });
     const start = performance.now();
     const tick = () => {
       const el = (performance.now() - start) / 1000;
@@ -540,11 +549,12 @@ export class PitchScene {
       this.windFrame.set(-1);
       const t = Math.min(plan.tl.end, el - lead0);
       if (this.side()) this.frame.set(frameAt(plan, t));
-      if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); }
+      if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); this.cue.emit({ index: idx, final, moment: 'enter' }); }
       if (!called && t >= plan.p.tPlate) {
         called = true;
         if (lead) this.board.set({ balls: lead.balls, strikes: lead.strikes, caption: PITCH_CAPTION[lead.kind] });
         else if (fin) this.board.update(b => ({ ...b, caption: fin }));
+        this.cue.emit({ index: idx, final, moment: 'plate' });
       }
       if (!this.finished && t < plan.tl.end) this.raf = raf(tick);
     };
@@ -556,7 +566,7 @@ export class PitchScene {
     if (this.finished) return;
     const plan = this.runPitch();
     const ms = (plan.tl.end + (plan.s.windup ? WINDUP_S : 0)) * 1000 + (this.isFinal() ? 0 : 60);
-    if (this.isFinal()) { this.timer = setTimeout(() => this.finish(), ms); return; }
+    if (this.isFinal()) { this.timer = setTimeout(() => this.finish(false), ms); return; }
     this.timer = setTimeout(() => {
       const p = this.count().leadUp[this.step()];
       this.board.set({ balls: p.balls, strikes: p.strikes, caption: this.board().caption || PITCH_CAPTION[p.kind] });
@@ -565,12 +575,14 @@ export class PitchScene {
     }, ms);
   }
 
-  /** Ends the scene once, whether by timer or the Skip button. */
-  finish() {
+  /** Ends the scene once, whether by timer or the Skip button (or reduced motion: skipped). */
+  finish(skipped = true) {
     if (this.finished) return;
     this.finished = true;
     clearTimeout(this.timer);
     this.clearFrames();
+    const c = this.count();
+    this.cue.emit({ index: c.leadUp.length, final: true, moment: skipped ? 'skipped' : 'end' });
     this.done.emit();
   }
 }

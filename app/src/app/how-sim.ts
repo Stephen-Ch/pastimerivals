@@ -1,5 +1,6 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, input, output } from '@angular/core';
+import { announcerOn, setAnnouncer } from './announcer-setting';
 
 /** Plan 38/39: short info sheets over the current screen. */
 export type InfoKind = 'how' | 'sim' | 'art';
@@ -37,6 +38,8 @@ export const RETROSHEET_NOTICE = 'The information used here was obtained free of
             </ul>
             <h3>About the art</h3>
             <ng-container *ngTemplateOutlet="art" />
+            <p class="pbp-switch">Announcer (play-by-play):
+              <button type="button" class="toggle" role="switch" [attr.aria-checked]="on()" (click)="flip()">{{ on() ? 'On' : 'Off' }}</button></p>
           }
         }
         <ng-template #art>
@@ -59,10 +62,14 @@ export const RETROSHEET_NOTICE = 'The information used here was obtained free of
     h3 { margin: 4px 0 6px; font-size: .95rem; }
     ul { margin: 0 0 14px; padding-left: 1.2em; display: grid; gap: 6px; font-size: .9rem; line-height: 1.4; }
     button { width: 100%; min-height: 44px; }
+    .pbp-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 14px; font-size: .9rem; }
+    .pbp-switch .toggle { width: auto; min-width: 72px; }
   `],
 })
 export class HowSim {
   readonly kind = input<InfoKind>('how');
   readonly close = output<void>();
   protected readonly notice = RETROSHEET_NOTICE;
+  protected readonly on = announcerOn;
+  protected flip() { setAnnouncer(!announcerOn()); }
 }

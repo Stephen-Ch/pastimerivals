@@ -210,23 +210,26 @@
         <span class="team-score"><strong>{{ sc[1] }}</strong> <span class="tname">{{ sideName(1) }}</span></span>
       </div>
       @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
+      @if (announcer()) { <p class="pbp-row" aria-live="polite">{{ pbpLine() }}</p> }
       <main class="flex scene-wrap">
         <h1 #stepTitle tabindex="-1" class="sr-only">Play the game</h1>
         @if (scene(); as s) {
           @for (k of [s.ab.index]; track k) {
             <pr-pitch-scene [era]="eraOf(s.ab.pitcher.year)" [throws]="s.ab.pitcher.throws" [bats]="hitsFrom(s.ab.batter.bats, s.ab.pitcher.throws)" [outcome]="s.ab.outcome"
-                            [seed]="s.ab.seed" [deco]="deco().deco" [side]="artFor(s)" [windup]="s.windup" [call]="callOf(s.ab)" (done)="sceneDone()" />
+                            [seed]="s.ab.seed" [deco]="deco().deco" [side]="artFor(s)" [windup]="s.windup" [call]="callOf(s.ab)" [quietCaption]="announcer()" (cue)="onCue($event)" (done)="sceneDone()" />
           }
         } @else {
           <section class="result">
             @if (lastCall()) { <p class="outcome-tag" role="status">{{ lastCall() }}</p> }
-            @if (baseText()) { <p class="base-line">{{ baseText() }}</p> }
+            @if (pbpRecap().length) { <p class="base-line">{{ pbpRecap().join(' ') }}</p> }
+            @else if (baseText()) { <p class="base-line">{{ baseText() }}</p> }
             @if (halfCard()) { <p class="half-card">{{ halfCard() }}</p> }
             @if (revealed() === 0) { <p class="note">Tap Pitch to see each at-bat.</p> }
             @if (nextAtBat(); as n) {
               <p class="muted">{{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) : roundLabel(n) }} · {{ sideName(n.battingSide) }} batting</p>
               <p class="call">{{ n.batter.name }} <span class="muted">{{ n.batter.year }}</span></p>
               <p class="how">vs {{ n.pitcher.name }} {{ n.pitcher.year }}</p>
+              @if (pbpIntro().length) { <p class="pbp-intro">{{ pbpIntro().join(' ') }}</p> }
             }
           </section>
         }
@@ -246,6 +249,7 @@
       </div>
       <main class="flex">
         <h1 #stepTitle tabindex="-1" class="call">{{ finalText() }}</h1>
+        @if (announcer() && pbpFinal().length) { <p class="pbp-result">{{ pbpFinal().join(' ') }}</p> }
         @if (view()?.vsCpu && yourSide() === 0) {
           <p class="level-hint">{{ levelHint() }}</p>
           @if (!youWon() && gameLevel() > 1) {
