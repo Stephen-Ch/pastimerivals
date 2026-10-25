@@ -1,0 +1,329 @@
+{
+ "cell": [
+  360,
+  420
+ ],
+ "footY": 410,
+ "frames": [
+  "ready",
+  "run",
+  "catchHigh",
+  "scoop",
+  "throw",
+  "stretch",
+  "catcherUp",
+  "catcherCatch"
+ ],
+ "sheets": {
+  "1901": {
+   "scale": 1.0569,
+   "frames": [
+    {
+     "w": 175,
+     "h": 280,
+     "x": 96,
+     "y": 130,
+     "clipped": false
+    },
+    {
+     "w": 164,
+     "h": 304,
+     "x": 93,
+     "y": 106,
+     "clipped": false
+    },
+    {
+     "w": 129,
+     "h": 390,
+     "x": 116,
+     "y": 20,
+     "clipped": false
+    },
+    {
+     "w": 185,
+     "h": 238,
+     "x": 84,
+     "y": 172,
+     "clipped": false
+    },
+    {
+     "w": 172,
+     "h": 318,
+     "x": 81,
+     "y": 92,
+     "clipped": false
+    },
+    {
+     "w": 249,
+     "h": 305,
+     "x": 51,
+     "y": 105,
+     "clipped": false
+    },
+    {
+     "w": 119,
+     "h": 356,
+     "x": 122,
+     "y": 54,
+     "clipped": false
+    },
+    {
+     "w": 157,
+     "h": 272,
+     "x": 97,
+     "y": 138,
+     "clipped": false
+    }
+   ],
+   "shoePixels": 201
+  },
+  "1920": {
+   "scale": 1.0773,
+   "frames": [
+    {
+     "w": 173,
+     "h": 281,
+     "x": 96,
+     "y": 129,
+     "clipped": false
+    },
+    {
+     "w": 166,
+     "h": 304,
+     "x": 93,
+     "y": 106,
+     "clipped": false
+    },
+    {
+     "w": 120,
+     "h": 390,
+     "x": 117,
+     "y": 20,
+     "clipped": false
+    },
+    {
+     "w": 187,
+     "h": 236,
+     "x": 82,
+     "y": 174,
+     "clipped": false
+    },
+    {
+     "w": 172,
+     "h": 325,
+     "x": 81,
+     "y": 85,
+     "clipped": false
+    },
+    {
+     "w": 254,
+     "h": 308,
+     "x": 49,
+     "y": 102,
+     "clipped": false
+    },
+    {
+     "w": 125,
+     "h": 360,
+     "x": 118,
+     "y": 50,
+     "clipped": false
+    },
+    {
+     "w": 161,
+     "h": 271,
+     "x": 94,
+     "y": 139,
+     "clipped": false
+    }
+   ],
+   "shoePixels": 65
+  },
+  "1946": {
+   "scale": 1.1111,
+   "frames": [
+    {
+     "w": 179,
+     "h": 283,
+     "x": 92,
+     "y": 127,
+     "clipped": false
+    },
+    {
+     "w": 173,
+     "h": 307,
+     "x": 89,
+     "y": 103,
+     "clipped": false
+    },
+    {
+     "w": 124,
+     "h": 390,
+     "x": 113,
+     "y": 20,
+     "clipped": false
+    },
+    {
+     "w": 193,
+     "h": 239,
+     "x": 79,
+     "y": 171,
+     "clipped": false
+    },
+    {
+     "w": 177,
+     "h": 324,
+     "x": 77,
+     "y": 86,
+     "clipped": false
+    },
+    {
+     "w": 262,
+     "h": 306,
+     "x": 45,
+     "y": 104,
+     "clipped": false
+    },
+    {
+     "w": 129,
+     "h": 356,
+     "x": 116,
+     "y": 54,
+     "clipped": false
+    },
+    {
+     "w": 167,
+     "h": 272,
+     "x": 90,
+     "y": 138,
+     "clipped": false
+    }
+   ],
+   "shoePixels": 148
+  },
+  "1970": {
+   "scale": 1.0894,
+   "frames": [
+    {
+     "w": 176,
+     "h": 278,
+     "x": 95,
+     "y": 132,
+     "clipped": false
+    },
+    {
+     "w": 168,
+     "h": 304,
+     "x": 92,
+     "y": 106,
+     "clipped": false
+    },
+    {
+     "w": 127,
+     "h": 390,
+     "x": 113,
+     "y": 20,
+     "clipped": false
+    },
+    {
+     "w": 190,
+     "h": 236,
+     "x": 80,
+     "y": 174,
+     "clipped": false
+    },
+    {
+     "w": 173,
+     "h": 320,
+     "x": 79,
+     "y": 90,
+     "clipped": false
+    },
+    {
+     "w": 257,
+     "h": 301,
+     "x": 45,
+     "y": 109,
+     "clipped": false
+    },
+    {
+     "w": 123,
+     "h": 365,
+     "x": 121,
+     "y": 45,
+     "clipped": false
+    },
+    {
+     "w": 161,
+     "h": 266,
+     "x": 94,
+     "y": 144,
+     "clipped": false
+    }
+   ],
+   "shoePixels": 177
+  },
+  "1990": {
+   "scale": 1.1175,
+   "frames": [
+    {
+     "w": 181,
+     "h": 282,
+     "x": 93,
+     "y": 128,
+     "clipped": false
+    },
+    {
+     "w": 171,
+     "h": 308,
+     "x": 91,
+     "y": 102,
+     "clipped": false
+    },
+    {
+     "w": 126,
+     "h": 390,
+     "x": 112,
+     "y": 20,
+     "clipped": false
+    },
+    {
+     "w": 194,
+     "h": 238,
+     "x": 78,
+     "y": 172,
+     "clipped": false
+    },
+    {
+     "w": 179,
+     "h": 326,
+     "x": 76,
+     "y": 84,
+     "clipped": false
+    },
+    {
+     "w": 264,
+     "h": 307,
+     "x": 45,
+     "y": 103,
+     "clipped": false
+    },
+    {
+     "w": 129,
+     "h": 358,
+     "x": 117,
+     "y": 52,
+     "clipped": false
+    },
+    {
+     "w": 169,
+     "h": 274,
+     "x": 89,
+     "y": 136,
+     "clipped": false
+    }
+   ],
+   "shoePixels": 138
+  }
+ }
+}

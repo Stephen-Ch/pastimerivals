@@ -1,6 +1,10 @@
-import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
-import { Era, SideArt, WindupArt } from './art';
-import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, Trajectory } from './logic';
+import { Component, computed, DestroyRef, inject, input, output, signal, viewChild } from '@angular/core';
+import { Era, FielderArt, SideArt, SideLook, WindupArt } from './art';
+import { BallparkView } from './ballpark-view';
+import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, PlayFacts, Trajectory } from './logic';
+import { buildPlay, hasPark, ParkPlay } from './park';
+import { FielderSheet } from './park-draw';
+import { parkOn } from './park-setting';
 
 // Plan 32C: side-on pitch scene. Batter only, seen from the first-base side (right-handed) or the third-base side
 // (left-handed: the whole panel is mirrored). Units are panel units: 760 x 480, x grows toward the pitcher.
@@ -369,24 +373,46 @@ export function frameAt(pl: Plan, t: number): Frame {
     const u = clamp01((t - p.tSwing + 0.03) / (BURST_S + 0.03));
     fx.burst = { x: p.target.x, y: p.target.y, points: starPoints(p.target.x, p.target.y, 44 + 14 * Math.min(1, u * 3)), o: 1 };
   }
-  const words = s.isFinal ? fxWord(s.outcome, s.m, tr, !!s.call?.insideTheParkHr) : null;
-  const w0 = Math.max(p.tTarget + 0.2, pl.exitT + 0.02);
-  if (words && t >= w0 && w0 < pl.tl.end - 0.15) {
-    const u = (t - w0) / 0.15;
-    const longest = Math.max(...words.map(x => x.length));
-    const size = Math.min(s.outcome === 'hr' ? 72 : 62, 290 / (longest * 0.66));
-    fx.word = {
-      lines: words, x: 175, y: words.length > 1 ? 385 : 418, size, rot: (pl.r[1] - 0.5) * 8,
-      scale: u < 0.6 ? 0.6 + (u / 0.6) * 0.55 : u < 1 ? 1.15 - ((u - 0.6) / 0.4) * 0.15 : 1,
-      o: t > pl.tl.end - 0.2 ? Math.max(0, (pl.tl.end - t) / 0.2) : 1, fill: s.outcome === 'hr' && !s.call?.insideTheParkHr ? '#ffd23f' : '#ffffff',
-    };
-  }
-  if ((s.outcome === 'hr' && s.m === 'hit') || s.m === 'hbp') {
-    const u = (t - p.tTarget) / 0.2;
-    if (u >= 0 && u < 1 && s.isFinal) fx.shake = Math.round(3 * Math.sin(u * Math.PI * 4) * (1 - u) * 100) / 100;
-  }
+  const word = wordAt(pl, t, pl.tl.end);
+  if (word) fx.word = word;
+  fx.shake = shakeAt(pl, t);
   return { ball, batter, fx };
 }
+
+/** The impact word at time t; it fades out at `end` (the side view's end, or the park view's end in plan 44). */
+export function wordAt(pl: Plan, t: number, end: number): FxWord | undefined {
+  const { p, s } = pl;
+  const tr = s.call?.trajectory ?? null;
+  const words = s.isFinal ? fxWord(s.outcome, s.m, tr, !!s.call?.insideTheParkHr) : null;
+  const w0 = Math.max(p.tTarget + 0.2, pl.exitT + 0.02);
+  if (!words || t < w0 || w0 >= end - 0.15) return undefined;
+  const u = (t - w0) / 0.15;
+  const longest = Math.max(...words.map(x => x.length));
+  const size = Math.min(s.outcome === 'hr' ? 72 : 62, 290 / (longest * 0.66));
+  return {
+    lines: words, x: 175, y: words.length > 1 ? 385 : 418, size, rot: (pl.r[1] - 0.5) * 8,
+    scale: u < 0.6 ? 0.6 + (u / 0.6) * 0.55 : u < 1 ? 1.15 - ((u - 0.6) / 0.4) * 0.15 : 1,
+    o: t > end - 0.2 ? Math.max(0, (end - t) / 0.2) : 1, fill: s.outcome === 'hr' && !s.call?.insideTheParkHr ? '#ffd23f' : '#ffffff',
+  };
+}
+
+/** Home-run and hit-by-pitch shake (px) at time t. */
+export function shakeAt(pl: Plan, t: number): number {
+  const { p, s } = pl;
+  if (!s.isFinal || !((s.outcome === 'hr' && s.m === 'hit') || s.m === 'hbp')) return 0;
+  const u = (t - p.tTarget) / 0.2;
+  return u >= 0 && u < 1 ? Math.round(3 * Math.sin(u * Math.PI * 4) * (1 - u) * 100) / 100 : 0;
+}
+
+/** Plan 44: the park view takes over at the final pitch's plate time and runs for the play's fixed length. */
+export interface ParkTiming { play: ParkPlay; tPark: number; end: number; }
+export function parkTiming(pl: Plan, play: ParkPlay | null): ParkTiming | null {
+  if (!play) return null;
+  const tPark = pl.p.tPlate;
+  return { play, tPark, end: Math.max(pl.tl.end, tPark + play.len) };
+}
+/** Fade-in of the park view over 120 ms. */
+export const PARK_FADE = 0.12;
 
 export function prefersReducedMotion(): boolean {
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
@@ -394,10 +420,11 @@ export function prefersReducedMotion(): boolean {
 
 /** Side-on view of the whole at-bat: a short count for show, then the real result. */
 /** Plan 42: index = pitch (leadUp.length = the final pitch). */
-export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'enter' | 'plate' | 'end' | 'skipped'; }
+export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'enter' | 'plate' | 'park' | 'end' | 'skipped'; }
 
 @Component({
   selector: 'pr-pitch-scene',
+  imports: [BallparkView],
   template: `
     @if (side(); as a) {
       <div class="stage">
@@ -424,6 +451,20 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
           </svg>
         }
       </div>
+      @if (park(); as pk) {
+        <div class="park" aria-hidden="true" [style.opacity]="parkFade()" [style.transform]="parkShake() ? 'translateX(' + parkShake() + 'px)' : null">
+          <pr-ballpark-view [play]="pk.play" [sheet]="sheet()" />
+          @if (parkWord(); as w) {
+            <svg class="words" viewBox="0 0 760 480" preserveAspectRatio="none">
+              <g class="word" [attr.transform]="'translate(' + w.x + ' ' + w.y + ') rotate(' + w.rot + ') scale(' + w.scale + ')'" [attr.opacity]="w.o">
+                <text text-anchor="middle" [attr.font-size]="w.size" [attr.fill]="w.fill" [attr.stroke-width]="w.size * 0.16">
+                  @for (line of w.lines; track $index) { <tspan x="0" [attr.dy]="$index === 0 ? (w.lines.length > 1 ? -w.size * 0.15 : w.size * 0.35) : w.size * 0.95">{{ line }}</tspan> }
+                </text>
+              </g>
+            </svg>
+          }
+        </div>
+      }
       @if (windFrame() >= 0 && windup(); as w) {
         <div class="windup" aria-hidden="true">
           <div class="pit" [class.mirror]="w.mirror" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windFrame()"></div>
@@ -442,6 +483,8 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
   styles: `
     :host { display: block; margin-top: 14px; }
     .stage { position: relative; width: 100%; max-width: 560px; margin: 0 auto; }
+    .park { position: absolute; left: 0; top: 0; width: 100%; aspect-ratio: 760 / 480; z-index: 4; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: #5c8a44; }
+    .park .words { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
     .windup { position: absolute; inset: 0; z-index: 5; overflow: hidden; border: 1px solid var(--border); border-radius: 14px;
       background: linear-gradient(#cfd9e3 0 58%, #7d9a5f 58% 100%); }
     .windup::after { content: ''; position: absolute; left: 25%; right: 25%; bottom: 0; height: 12%; border-radius: 50% 50% 0 0; background: #b48a5a; }
@@ -491,6 +534,38 @@ export class PitchScene {
   readonly cue = output<SceneCue>();
   /** Plan 42: the announcer line replaces the short caption (count stays; caption no longer read aloud). */
   readonly quietCaption = input(false);
+  /** Plan 44: fielder sheet for the pitcher's era (null = no park view). */
+  readonly fielders = input<FielderArt | null>(null);
+  /** Plan 44: the batter's look (park walls, crowd, signs). */
+  readonly look = input<SideLook | null>(null);
+  /** Plan 44: what the server decided about the play (inning and friend games; practice passes null). */
+  readonly play = input<PlayFacts | null>(null);
+  protected readonly park = signal<ParkTiming | null>(null);
+  protected readonly parkFade = signal(0);
+  protected readonly parkWord = signal<FxWord | null>(null);
+  protected readonly parkShake = signal(0);
+  private readonly parkView = viewChild(BallparkView);
+  private sheetImg: HTMLImageElement | null = null;
+  protected readonly sheet = computed<FielderSheet>(() => {
+    const f = this.fielders();
+    return { img: this.sheetImg, cell: f?.cell ?? [360, 420], footY: f?.footY ?? 410, era: f?.era ?? this.era() };
+  });
+  /** Starts loading the fielder sheet with the at-bat; if it is not loaded by contact, fielders are drawn as silhouettes. */
+  private loadSheet() {
+    const f = this.fielders();
+    if (!f || this.sheetImg || typeof Image === 'undefined') return;
+    const img = new Image();
+    img.src = f.sheet;
+    this.sheetImg = img;
+  }
+  /** Plan 44: the park play for the final pitch, or null (not in play, no art, switched off). */
+  private parkPlayFor(m: Motion): ParkPlay | null {
+    const call = this.call(), look = this.look();
+    if (!this.side() || !this.fielders() || !look || !call || !parkOn()) return null;
+    if (m !== 'hit' && m !== 'out') return null;
+    if (!hasPark(this.outcome(), call)) return null;
+    return buildPlay({ outcome: this.outcome(), call, play: this.play(), seed: this.seed(), look });
+  }
 
   protected readonly count = computed(() => countFor(this.outcome(), this.seed(), this.deco()));
   /** Index into the lead-up pitches; equal to their length means the final pitch. */
@@ -527,7 +602,7 @@ export class PitchScene {
     return c ? { x: c[0] - CELL_X0, y: c[1] } : { x: 372, y: 200 };
   }
 
-  private runPitch(): Plan {
+  private runPitch(): { plan: Plan; end: number } {
     this.clearFrames();
     const final = this.isFinal(), m = this.motion();
     const lead = final ? null : this.count().leadUp[this.step()];
@@ -537,7 +612,10 @@ export class PitchScene {
       call: final ? this.call() : null, contact: this.contactPoint(), seed: this.seed(), index: this.step(),
       windup: !!this.windup() && !!this.side(), tip: this.batTip() });
     const fin = final ? finalCaption(this.outcome(), this.count().finalKind, this.deco()) : '';
-    let cleared = false, called = false;
+    const pk = final ? parkTiming(plan, this.parkPlayFor(m)) : null;
+    if (pk) { this.sheet(); this.park.set(pk); }
+    const end = pk ? pk.end : plan.tl.end;
+    let cleared = false, called = false, parked = false;
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: FrameRequestCallback) => setTimeout(() => fn(performance.now()), 16) as unknown as number;
     const lead0 = plan.s.windup ? WINDUP_S : 0;
     const idx = this.step();
@@ -547,8 +625,8 @@ export class PitchScene {
       const el = (performance.now() - start) / 1000;
       if (el < lead0) { const wb = windupBlendAt(el); this.windBlend.set(wb); this.windFrame.set(wb.base); this.frame.set(frameAt(plan, 0)); if (!this.finished) this.raf = raf(tick); return; }
       this.windFrame.set(-1);
-      const t = Math.min(plan.tl.end, el - lead0);
-      if (this.side()) this.frame.set(frameAt(plan, t));
+      const t = Math.min(end, el - lead0);
+      if (this.side() && (!pk || t < pk.tPark)) this.frame.set(frameAt(plan, Math.min(plan.tl.end, t)));   // the side view holds its last frame under the park
       if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); this.cue.emit({ index: idx, final, moment: 'enter' }); }
       if (!called && t >= plan.p.tPlate) {
         called = true;
@@ -556,16 +634,25 @@ export class PitchScene {
         else if (fin) this.board.update(b => ({ ...b, caption: fin }));
         this.cue.emit({ index: idx, final, moment: 'plate' });
       }
-      if (!this.finished && t < plan.tl.end) this.raf = raf(tick);
+      if (pk && t >= pk.tPark) {
+        if (!parked) { parked = true; this.cue.emit({ index: idx, final, moment: 'park' }); }
+        const pt = t - pk.tPark;
+        this.parkFade.set(Math.min(1, pt / PARK_FADE));
+        this.parkView()?.draw(Math.min(pk.play.len, pt));
+        this.parkWord.set(wordAt(plan, t, end) ?? null);
+        this.parkShake.set(shakeAt(plan, t));
+      }
+      if (!this.finished && t < end) this.raf = raf(tick);
     };
     tick();
-    return plan;
+    return { plan, end };
   }
 
   private next() {
     if (this.finished) return;
-    const plan = this.runPitch();
-    const ms = (plan.tl.end + (plan.s.windup ? WINDUP_S : 0)) * 1000 + (this.isFinal() ? 0 : 60);
+    this.loadSheet();
+    const { plan, end } = this.runPitch();
+    const ms = (end + (plan.s.windup ? WINDUP_S : 0)) * 1000 + (this.isFinal() ? 0 : 60);
     if (this.isFinal()) { this.timer = setTimeout(() => this.finish(false), ms); return; }
     this.timer = setTimeout(() => {
       const p = this.count().leadUp[this.step()];

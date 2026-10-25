@@ -1,7 +1,7 @@
 import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, effect, ElementRef, input, output, signal, viewChild } from '@angular/core';
 import { api, PlayerHit, SeasonItem } from './api';
-import { ArtManifest, eraOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
+import { ArtManifest, eraOf, fielderArt, lookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
 import { sideLine } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
@@ -751,6 +751,10 @@ export class ChallengeFlow {
   protected eraOf = eraOf;
 
   protected artFor(s: { ab: CAtBat; art: SideArt | null }) { return s.art; }
+  /** Plan 44: fielders wear the pitcher's era uniform; the park follows the batter's look. */
+  protected fieldersFor(ab: CAtBat) { return fielderArt(this.manifest(), eraOf(ab.pitcher.year)); }
+  protected readonly lookOf = lookOf;
+  protected playOf(ab: CAtBat) { return this.deco().deco === '3' ? playFacts(ab, this.names()) : null; }
 
   /** "2 of 6" during the regular at-bats; "Extra round 1" after, so the counter never hints at a tie. */
   protected readonly progress = computed(() => {

@@ -64,6 +64,19 @@ def main():
             side['sheets'][f'{look}/{tone}'] = url
             side['frames'][f'{look}/{tone}'] = sm['sheets'][f'{look}-{tone}']['frames']
     man['side'] = side
+    # Plan 44: fielder sheets by the pitcher's era (hybrid look), at half size: fielders are always small on screen
+    fm = json.load(open('art/sprites/fielder/fielder-meta.json'))
+    fl = {'cell': [fm['cell'][0] // 2, fm['cell'][1] // 2], 'footY': fm['footY'] // 2, 'sheets': {}}
+    for short, era in ERAS.items():
+        p = f'art/sprites/fielder/{short}-hybrid.png'
+        if not os.path.exists(p): errors.append(f'missing {p}'); continue
+        im = Image.open(p).convert('RGBA')
+        im = im.resize((im.width // 2, im.height // 2), Image.LANCZOS)
+        url, n = save_hashed(im, f'fielder-{short}', 80)
+        total += n
+        if n >= 120_000: errors.append(f'too big {p} {n}')
+        fl['sheets'][era] = url
+    man['fielder'] = fl
     json.dump(man, open('app/public/art-manifest.json', 'w'), separators=(',', ':'))
     print(f"sheets {len(man['sheets'])}, cards {len(man['cards'])}, tones {len(man['tones'])}, art bytes {total}")
     if errors: print('ERRORS', errors); sys.exit(1)

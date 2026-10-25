@@ -88,7 +88,7 @@
       <main class="flex scene-wrap">
         <h1 #screenTitle tabindex="-1" class="sr-only">At bat</h1>
         @if (pending(); as pr) {
-          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [side]="sceneArt()" [windup]="sceneWindup()" [call]="sceneCall()" [quietCaption]="announcer()" (cue)="onCue($event)" (done)="sceneDone()" />
+          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [side]="sceneArt()" [windup]="sceneWindup()" [call]="sceneCall()" [fielders]="sceneFielders()" [look]="sceneLook()" [quietCaption]="announcer()" (cue)="onCue($event)" (done)="sceneDone()" />
         }
       </main>
     }

@@ -109,6 +109,8 @@ export interface ArtManifest {
   tones: Record<string, Tone>;      // player id -> researched tone
   /** Plan 32B: side-on batter sheets. */
   side?: { cell: [number, number]; footY: number; sheets: Record<string, string>; frames: Record<string, SideFrame[]> };
+  /** Plan 44: fielder sheets by the pitcher's era (hybrid look: uniform colors, pen-and-ink skin). */
+  fielder?: { cell: [number, number]; footY: number; sheets: Record<string, string> };
 }
 
 export interface PlayerArt { sheet: string; card: string; mirror: boolean; }
@@ -185,4 +187,11 @@ export function preloadImages(urls: string[]): Promise<boolean> {
     img.onerror = () => res(false);
     img.src = u;
   }))).then(r => r.every(Boolean));
+}
+
+/** Plan 44: the fielding team is the pitcher's team, so fielders wear the pitcher's era uniform. */
+export interface FielderArt { sheet: string; cell: [number, number]; footY: number; era: Era; }
+export function fielderArt(m: ArtManifest | null, era: Era): FielderArt | null {
+  const f = m?.fielder, sheet = f?.sheets[era];
+  return f && sheet ? { sheet, cell: f.cell, footY: f.footY, era } : null;
 }

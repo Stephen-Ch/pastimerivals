@@ -1,6 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, input, output } from '@angular/core';
 import { announcerOn, setAnnouncer } from './announcer-setting';
+import { parkOn, setPark } from './park-setting';
 
 /** Plan 38/39: short info sheets over the current screen. */
 export type InfoKind = 'how' | 'sim' | 'art';
@@ -40,6 +41,8 @@ export const RETROSHEET_NOTICE = 'The information used here was obtained free of
             <ng-container *ngTemplateOutlet="art" />
             <p class="pbp-switch">Announcer (play-by-play):
               <button type="button" class="toggle" role="switch" [attr.aria-checked]="on()" (click)="flip()">{{ on() ? 'On' : 'Off' }}</button></p>
+            <p class="pbp-switch">Follow the ball:
+              <button type="button" class="toggle" role="switch" [attr.aria-checked]="parkIsOn()" (click)="flipPark()">{{ parkIsOn() ? 'On' : 'Off' }}</button></p>
           }
         }
         <ng-template #art>
@@ -72,4 +75,6 @@ export class HowSim {
   protected readonly notice = RETROSHEET_NOTICE;
   protected readonly on = announcerOn;
   protected flip() { setAnnouncer(!announcerOn()); }
+  protected readonly parkIsOn = parkOn;
+  protected flipPark() { setPark(!parkOn()); }
 }

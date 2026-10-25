@@ -12,7 +12,7 @@ import { sideLine } from './side-line';
 import { announcerOn } from './announcer-setting';
 import { intro, lineText, pitchLines, rawLead, resultLine } from './pbp';
 import { SceneCue } from './pitch-scene';
-import { ArtManifest, Era, eraOf, figure, isFirstVisit, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, WindupArt, windupArt } from './art';
+import { ArtManifest, Era, eraOf, fielderArt, figure, isFirstVisit, lookOf, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, SideLook, WindupArt, windupArt } from './art';
 import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
@@ -295,6 +295,9 @@ export class App {
     return b ? sideArt(this.manifest(), b.id, b.year) : null;
   });
   private readonly sideOk = signal(false);
+  /** Plan 44: fielders in the pitcher's era uniform; park by the batter's look (practice: no play facts). */
+  protected readonly sceneFielders = computed(() => fielderArt(this.manifest(), this.pitcherEra()));
+  protected readonly sceneLook = computed<SideLook | null>(() => { const y = this.batter()?.year; return y ? lookOf(y) : null; });
   private sideReady: Promise<boolean> = Promise.resolve(false);
 
   protected cardFor(r: { id: string; role: string }): PlayerArt | null {
