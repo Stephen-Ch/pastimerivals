@@ -61,6 +61,31 @@ const SHORT = {
 const STILL_TWO = [def('foul.still', 'Fouled off, still two strikes.'), def('foul.stays', 'Fouled back, still two strikes.')];
 const TYPE: Record<PitchType, string> = { fast: def('type.fast', 'Fastball,'), curve: def('type.curve', 'Curve,'), change: def('type.change', 'Change-up,'), slider: def('type.breaking', 'Breaking ball,') };
 
+// Plan 46: short audio-only lead-up pitch calls. Never used by a text line (separate table from PHRASES).
+export interface AudioPhrase { t: string; m: Mood; fallback: string | null; }
+export const AUDIO_PHRASES: Record<string, AudioPhrase> = {};
+const adef = (k: string, t: string, fallback: string | null = null, m: Mood = 'calm') => { AUDIO_PHRASES[k] = { t, m, fallback }; return k; };
+for (let n = 1; n <= 3; n++) adef(`a.ball.${n}`, `Ball ${W[n]}.`);
+adef('a.full', 'Full count.');
+adef('a.fouloff', 'Fouled off.');
+adef('a.ball.full', 'Ball three, full count.', 'a.full', 'rising');
+for (let n = 1; n <= 2; n++) {
+  adef(`a.strike.${n}`, `Strike ${W[n]}.`);
+  adef(`a.swing.${n}`, `Swinging strike ${W[n]}.`, `a.strike.${n}`);
+  adef(`a.foul.${n}`, `Foul, strike ${W[n]}.`, `a.strike.${n}`);
+}
+adef('a.strike.full', 'Strike two, full count.', 'a.full');
+adef('a.foul.full', 'Foul, full count.', 'a.full', 'rising');
+adef('a.still', 'Foul, still two.', 'a.fouloff');
+
+/** Plan 46: the audio phrase for a lead-up pitch, from the pitch facts only (no random draws). Rule order matters. */
+export function audioCall(p: CountPitch, before: { balls: number; strikes: number }): string {
+  if (p.kind === 'foul' && before.strikes === 2) return 'a.still';
+  if (p.kind === 'ball') return p.balls === 3 && p.strikes === 2 ? 'a.ball.full' : `a.ball.${p.balls}`;
+  if (p.balls === 3 && p.strikes === 2) return p.kind === 'foul' ? 'a.foul.full' : 'a.strike.full';
+  return p.kind === 'called' ? `a.strike.${p.strikes}` : p.kind === 'swinging' ? `a.swing.${p.strikes}` : `a.foul.${p.strikes}`;
+}
+
 // Pitcher delivery lines (role words only; never "he").
 const DELIV: Record<string, string[]> = {};
 for (const r of ROLES) {
@@ -243,7 +268,8 @@ export function intro(ctx: IntroCtx, prevLead: string | null): Intro {
 
 // ---------------- Pitches ----------------
 export interface PitchCtx { key: string; index: number; count: AtBatCount; runnersOn: boolean; throws: string | null | undefined; era: Era; seed: string; }
-export interface PitchLines { delivery: PbpLine | null; call: PbpLine | null; typeWord: boolean; }
+/** audio (plan 46): the short spoken call for a lead-up pitch; null on the final pitch. */
+export interface PitchLines { delivery: PbpLine | null; call: PbpLine | null; typeWord: boolean; audio: string | null; }
 
 /** Lines for pitch i (0-based; i === leadUp.length is the final pitch, whose call is the result line). */
 export function pitchLines(ctx: PitchCtx, i: number): PitchLines {
@@ -262,7 +288,7 @@ export function pitchLines(ctx: PitchCtx, i: number): PitchLines {
     else opts = DELIV[`${ctx.runnersOn ? 'stretch' : 'windup'}.${role}`];
     delivery = line([P(pick(r, opts))]);
   }
-  if (i >= lead.length) return { delivery, call: null, typeWord: wantType };
+  if (i >= lead.length) return { delivery, call: null, typeWord: wantType, audio: null };
   const p = lead[i];
   const segs: Seg[] = [];
   const sayCount = p.strikes === 2 || p.balls === 3;
@@ -275,7 +301,7 @@ export function pitchLines(ctx: PitchCtx, i: number): PitchLines {
   const typed = segs.length > 1 && 'p' in segs[0] && segs[0].p.startsWith('type.');
   let call = line(segs);
   if (typed && wordCount(call) > 7) call = line(segs.slice(1));   // keep pitch lines at 7 words or fewer
-  return { delivery, call, typeWord: wantType };
+  return { delivery, call, typeWord: wantType, audio: audioCall(p, before) };   // after all random draws
 }
 
 function numbered(r: () => number, p: CountPitch): string {
@@ -408,4 +434,9 @@ export function recapLines(ctx: RecapCtx): PbpLine[] {
 
 // ---------------- Checks used by tests ----------------
 export const ALL_KEYS = () => Object.keys(PHRASES);
+/** Plan 46: text-only call keys (lead-up pitch calls are spoken from AUDIO_PHRASES instead). Matched at the start of the key. */
+export const TEXT_ONLY_PREFIXES = ['ball.', 'called.', 'strike.', 'corner.', 'swing.', 'swungthrough.', 'foul.', 'foulst.', 's.', 'count.'];
+export const isTextOnly = (k: string) => TEXT_ONLY_PREFIXES.some(x => k.startsWith(x));
+/** Plan 46: every clip the recorder makes: spoken text phrases plus the audio-only calls. */
+export const spokenKeys = () => [...ALL_KEYS().filter(k => !isTextOnly(k)), ...Object.keys(AUDIO_PHRASES)];
 export const wordCount = (l: PbpLine) => lineText(l).split(/\s+/).filter(Boolean).length;
