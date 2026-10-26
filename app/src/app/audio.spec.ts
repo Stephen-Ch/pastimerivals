@@ -1,19 +1,24 @@
 import { bedFor, CACHE_MAX, loopRange, reactionFor, VoiceManifest, VoicePlayer, voiceFor } from './audio';
-import { PbpLine } from './pbp';
+import { intro, PbpLine } from './pbp';
 
 /** Plan 50 F: the voice player with a fake AudioContext, fetch and timers. */
 class FakeParam { value = 0; setValueAtTime() { return this; } linearRampToValueAtTime() { return this; } cancelScheduledValues() { return this; } }
 class FakeCtx {
   currentTime = 0; state = 'suspended'; destination = {};
   starts: { url?: string; t: number; dur: number }[] = [];
+  nodes: any[] = [];
   resume() { this.state = 'running'; return Promise.resolve(); }
   createGain() { return { gain: new FakeParam(), connect() { /* */ } }; }
   createBuffer(_c: number, len: number, sr: number) { return { duration: len / sr, sampleRate: sr, getChannelData: () => new Float32Array(len) }; }
   createBufferSource() {
     const ctx = this;
-    return { buffer: null as any, loop: false, loopStart: 0, loopEnd: 0, onended: null as any, connect() { /* */ },
-      start(t = 0) { if (this.buffer?.url) ctx.starts.push({ url: this.buffer.url, t, dur: this.buffer.duration }); }, stop() { /* */ } };
+    const n = { buffer: null as any, loop: false, loopStart: 0, loopEnd: 0, onended: null as any, connect() { /* */ },
+      start(t = 0) { if (this.buffer?.url) ctx.starts.push({ url: this.buffer.url, t, dur: this.buffer.duration }); }, stop() { this.onended?.(); } };
+    this.nodes.push(n);
+    return n;
   }
+  /** Ends every started clip that was not stopped (as the browser does at its end time). */
+  endAll() { for (const n of this.nodes) if (n.buffer?.url && !n.ended) { n.ended = true; n.onended?.(); } }
   decodeAudioData(buf: ArrayBuffer) {
     const s = new TextDecoder().decode(buf);
     const [url, dur] = s.split('|');
@@ -75,8 +80,35 @@ describe('VoicePlayer (plan 50)', () => {
     await p.enable(); p.ensure();
     p.prefetch([INTRO], 'classic', true); await flush();
     expect(await p.say(INTRO, 'intro', 'classic')).toBe(true);
-    expect(ctx.starts.map(s => s.t)).toEqual([0, 1.2]);
+    expect(ctx.starts.map(s => s.t)).toEqual([0, 1]);   // plan 50B: no added pause
     expect(await p.say(L({ p: 'lead.b.now' }, { name: 'Nobody', id: 'nobod001' }), 'intro', 'classic')).toBe(false);
+  });
+
+  it('plan 50B: a real intro line (PAUSE_NAME 350) plays the name right after the lead-in', async () => {
+    const x = intro({ key: 'k', index: 0, batter: { id: 'ruthb101', name: 'Babe Ruth' }, pitcher: { id: 'nobod001', name: 'Nobody' }, showPitcher: false, pitchingSide: null, situation: null }, null);
+    expect(x.batter.segs.some(s => 'pause' in s)).toBe(true);
+    const key = (x.batter.segs[0] as { p: string }).p;
+    const m2 = { ...M, phrases: { ...M.phrases, classic: { ...M.phrases['classic'], [key]: 'zz' } } };
+    const b = setup({ manifest: JSON.stringify(m2) });
+    await b.p.enable(); b.p.ensure();
+    expect(b.p.items(x.batter, 'classic')?.length).toBe(2);   // the pause is not a clip
+    b.p.prefetch([x.batter], 'classic', true); await flush();
+    expect(await b.p.say(x.batter, 'intro', 'classic')).toBe(true);
+    expect(b.ctx.starts.map(s => s.t)).toEqual([0, 1]);
+  });
+
+  it('plan 50B: a name counts as heard only when it played to the end', async () => {
+    const a = setup();
+    await a.p.enable(); a.p.ensure();
+    a.p.prefetch([INTRO], 'classic', true); await flush();
+    await a.p.say(INTRO, 'intro', 'classic');
+    expect(a.p.nameHeard('classic', 'ruthb101')).toBe(false);
+    a.p.stop();   // Pitch tapped before the end
+    a.ctx.endAll();
+    expect(a.p.nameHeard('classic', 'ruthb101')).toBe(false);
+    await a.p.say(INTRO, 'intro', 'classic');
+    a.ctx.endAll();
+    expect(a.p.nameHeard('classic', 'ruthb101')).toBe(true);
   });
 
   it('a missing name in one voice skips only that intro line', async () => {

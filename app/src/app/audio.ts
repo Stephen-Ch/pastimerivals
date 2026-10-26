@@ -44,7 +44,7 @@ export interface VoiceDeps {
   setTimeout: (fn: () => void, ms: number) => unknown;
 }
 
-type Item = { url: string } | { pause: number };
+type Item = { url: string };   // plan 50B: pauses add no time (Test 2: names join the lead-in directly)
 
 export class VoicePlayer {
   private ctx: AudioContext | null = null;
@@ -61,6 +61,8 @@ export class VoicePlayer {
   private sources: AudioBufferSourceNode[] = [];
   private fx: AudioBufferSourceNode[] = [];
   private busyUntil = 0;
+  private readonly stopped = new WeakSet<AudioBufferSourceNode>();
+  private readonly done = new Set<string>();
   private voiceGain: GainNode | null = null;
   private bedGain: GainNode | null = null;
   private fxGain: GainNode | null = null;
@@ -113,6 +115,8 @@ export class VoicePlayer {
   }
 
   hasVoice() { return !!this.manifest; }
+  /** Plan 50B: this player's name clip has played to the end this visit (not cut by Pitch, Skip or leaving). */
+  nameHeard(v: Voice, id: string) { const u = this.nameUrl(v, id); return !!u && this.done.has(u); }
 
   private phraseUrl(v: Voice, k: string) { const h = this.manifest?.phrases[v]?.[k]; return h ? `/audio/p/${v}/${k}.${h}.mp3` : null; }
   private nameUrl(v: Voice, id: string) { const h = this.manifest?.names[v]?.[id]; return h ? `/audio/n/${v}/${id}.${h}.mp3` : null; }
@@ -132,7 +136,7 @@ export class VoicePlayer {
   items(line: PbpLine, v: Voice): Item[] | null {
     const out: Item[] = [];
     for (const s of line.segs) {
-      if ('pause' in s) { out.push({ pause: s.pause }); continue; }
+      if ('pause' in s) continue;
       const url = 'p' in s ? this.phraseUrl(v, s.p) : this.nameUrl(v, s.id);
       if (!url) return null;
       out.push({ url });
@@ -190,7 +194,7 @@ export class VoicePlayer {
     if (!this.manifest) return;
     for (const l of lines) {
       if (!l) continue;
-      for (const it of this.items(l, v) ?? []) if ('url' in it) void (decode ? this.decode(it.url) : this.load(it.url));
+      for (const it of this.items(l, v) ?? []) void (decode ? this.decode(it.url) : this.load(it.url));
     }
   }
 
@@ -204,7 +208,7 @@ export class VoicePlayer {
     if (this.d.reduced() && kind !== 'result') return Promise.resolve(false);
     const its = this.items(line, v);
     if (!its) return Promise.resolve(false);
-    const urls = its.filter((i): i is { url: string } => 'url' in i).map(i => i.url);
+    const urls = its.map(i => i.url);
     const g = this.gen;
     if (urls.every(u => this.buffer(u))) return Promise.resolve(this.play(its, kind));
     const wait = WAIT_MS[kind] ?? 0;
@@ -229,12 +233,14 @@ export class VoicePlayer {
     let t = Math.max(now, this.busyUntil);
     const start = t;
     for (const it of its) {
-      if ('pause' in it) { t += it.pause; continue; }
       const b = this.buffer(it.url)!;
       const s = c.createBufferSource();
       s.buffer = b; s.connect(this.voiceGain); s.start(t);
       this.sources.push(s); this.started.push(it.url);
-      s.onended = () => { this.sources = this.sources.filter(x => x !== s); };
+      s.onended = () => {
+        this.sources = this.sources.filter(x => x !== s);
+        if (!this.stopped.has(s)) this.done.add(it.url);   // plan 50B: played to the end
+      };
       t += b.duration;
     }
     this.busyUntil = t;
@@ -255,7 +261,7 @@ export class VoicePlayer {
   /** Stops the voice queue at once (Pitch, Skip, Skip to final, leaving). Waiting lines are dropped. */
   stop() {
     this.gen++;
-    for (const s of [...this.sources, ...this.fx]) { try { s.stop(); } catch { /* not started */ } }
+    for (const s of [...this.sources, ...this.fx]) { this.stopped.add(s); try { s.stop(); } catch { /* not started */ } }
     this.sources = []; this.fx = [];
     this.busyUntil = 0;
     const g = this.bedGain?.gain, c = this.ctx;

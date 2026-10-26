@@ -545,11 +545,11 @@ export class App {
       throws: this.pitcherReport()?.throws ?? m?.pitcher.hand, era: this.pitcherEra(), seed: r.seed };
   }
 
-  private pbpResultLine(r: PitchResult): PbpLine | null {
+  private pbpResultLine(r: PitchResult, typeWord = this.pbpTypeWord): PbpLine | null {
     const call = this.sceneCall();
     if (!call) return null;
     const ctx = this.pbpCtx(r);
-    return resultLine({ key: r.seed, index: 0, outcome: r.outcome, count: ctx.count, call, play: null, era: ctx.era, seed: r.seed, typeWord: this.pbpTypeWord });
+    return resultLine({ key: r.seed, index: 0, outcome: r.outcome, count: ctx.count, call, play: null, era: ctx.era, seed: r.seed, typeWord });
   }
   private pbpResultText(r: PitchResult): string { const l = this.pbpResultLine(r); return l ? lineText(l) : ''; }
 
@@ -574,6 +574,17 @@ export class App {
   /** Newest season of the matchup picks the voice and the crowd. */
   private newestYear() { return Math.max(this.pitcher()?.year ?? 2000, this.batter()?.year ?? 2000); }
   private practiceVoice() { return voiceFor(this.newestYear()); }
+  /** Plan 50B: the spoken intro on the result screen: the shown lines, plus the pitcher line (audio only) when this pitcher's
+   *  name has not been heard to the end this visit. The text intro is unchanged. */
+  private resultIntroLines(v: ReturnType<typeof voiceFor>): PbpLine[] {
+    const lines = this.pbpIntroLines(), p = this.pitcher();
+    if (!p || lines.length !== 1 || voice.nameHeard(v, p.id)) return lines;
+    const n = this.practiceN(), ctx = this.introCtx(n);
+    if (!ctx) return lines;
+    const prev = n > 0 ? rawLead({ ...ctx, index: n - 1 }) : null;
+    const x = intro({ ...ctx, showPitcher: true }, prev);
+    return x.pitcher ? [x.pitcher, lines[0]] : lines;
+  }
   private introKey() { return `${this.introCtx(0)?.key ?? ''}:${this.practiceN()}`; }
   private windupSeen = new Set<number>();
   private spokenIntro = '';
@@ -585,10 +596,9 @@ export class App {
     try {
       const v = this.practiceVoice(), ctx = this.pbpCtx(r), n = ctx.count.leadUp.length;
       voice.bedStart(bedFor(this.newestYear()));
-      const lines: (PbpLine | null)[] = [this.pbpResultLine(r)];
+      const lines: (PbpLine | null)[] = [this.pbpResultLine(r, pitchLines(ctx, n).typeWord)];   // plan 50B: with the type word the final cue will use
       for (let i = 0; i <= n; i++) {
         const pl = pitchLines(ctx, i);
-        if (i === n) lines.push(pl.delivery);
         const k = pl.audio ? voice.callKey(pl.audio, v) : null;
         if (k) lines.push({ segs: [{ p: k }], mood: 'calm' });
       }
@@ -600,7 +610,8 @@ export class App {
   private voiceCue(c: SceneCue, lines: ReturnType<typeof pitchLines>, r: PitchResult) {
     if (!voiceOn()) return;
     const v = this.practiceVoice();
-    if (c.moment === 'windup') { this.windupSeen.add(c.index); if (c.final && lines.delivery) void voice.say(lines.delivery, 'delivery', v); return; }
+    // Plan 50B: the final delivery line is text only, so the result line plays during the field view.
+    if (c.moment === 'windup') { this.windupSeen.add(c.index); return; }
     if (c.moment === 'plate' && !c.final) { if (this.windupSeen.has(c.index)) void voice.sayCall(lines.audio, v); return; }
     if (c.moment === 'plate' && c.final) voice.react(reactionFor(r.outcome), r.seed, 0.3);
   }
@@ -610,7 +621,7 @@ export class App {
     if (!r) return;
     if (this.announcer() && !this.pbpResult()) this.pbpResult.set(this.pbpResultText(r));
     // Plan 50: the next intro shown on the result screen is spoken after the result line (dropped on the next Pitch).
-    if (voiceOn()) { const v = this.practiceVoice(); for (const l of this.pbpIntroLines()) void voice.say(l, 'intro', v); this.spokenIntro = this.introKey(); }
+    if (voiceOn()) { const v = this.practiceVoice(); for (const l of this.resultIntroLines(v)) void voice.say(l, 'intro', v); this.spokenIntro = this.introKey(); }
     this.pending.set(null);
     this.result.set(r);
     this.askFeedback.set(feedbackDue('p' + Date.now(), 3));   // plan 30: from the 3rd practice pitch

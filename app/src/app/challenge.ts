@@ -673,11 +673,11 @@ export class ChallengeFlow {
       throws: ab.pitcher.throws, era: eraOf(ab.pitcher.year), seed: ab.seed };
   }
 
-  private pbpResultLineFor(ab: CAtBat): PbpLine {
+  private pbpResultLineFor(ab: CAtBat, typeWord = this.pbpTypeWord): PbpLine {
     const ctx = this.pbpCtxFor(ab);
     const d = this.deco().deco;
     return resultLine({ key: ab.seed, index: ab.index, outcome: ab.outcome, count: ctx.count, call: this.callOf(ab),
-      play: d === '3' ? playFacts(ab, this.names()) : null, era: ctx.era, seed: ab.seed, typeWord: this.pbpTypeWord });
+      play: d === '3' ? playFacts(ab, this.names()) : null, era: ctx.era, seed: ab.seed, typeWord });
   }
   private pbpResultFor(ab: CAtBat): string { return lineText(this.pbpResultLineFor(ab)); }
 
@@ -708,10 +708,9 @@ export class ChallengeFlow {
   private atBatLines(ab: CAtBat): (PbpLine | null)[] {
     try {
       const ctx = this.pbpCtxFor(ab), v = this.gameVoice(), n = ctx.count.leadUp.length;
-      const out: (PbpLine | null)[] = [this.pbpResultLineFor(ab), ...this.recapLinesFor(ab)];
+      const out: (PbpLine | null)[] = [this.pbpResultLineFor(ab, pitchLines(ctx, n).typeWord), ...this.recapLinesFor(ab)];
       for (let i = 0; i <= n; i++) {
         const pl = pitchLines(ctx, i);
-        if (i === n) out.push(pl.delivery);
         const k = pl.audio ? voice.callKey(pl.audio, v) : null;
         if (k) out.push({ segs: [{ p: k }], mood: 'calm' });
       }
@@ -727,7 +726,7 @@ export class ChallengeFlow {
   private voiceCue(c: SceneCue, lines: ReturnType<typeof pitchLines>, ab: CAtBat) {
     if (!voiceOn()) return;
     const v = this.gameVoice();
-    if (c.moment === 'windup') { this.windupSeen.add(c.index); if (c.final && lines.delivery) void voice.say(lines.delivery, 'delivery', v); return; }
+    if (c.moment === 'windup') { this.windupSeen.add(c.index); return; }   // plan 50B: final delivery is text only
     if (c.moment === 'plate' && !c.final) { if (this.windupSeen.has(c.index)) void voice.sayCall(lines.audio, v); return; }
     if (c.moment === 'plate' && c.final) voice.react(reactionFor(ab.outcome, { error: ab.outType === 'error', walkOff: this.walkOff(ab) }), ab.seed, 0.3);
   }
