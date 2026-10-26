@@ -6,6 +6,8 @@ Usage (repo root, on the laptop):
   python3 tools/record-announcer.py phrases classic|modern  -> records missing phrases (data/audio/spoken-phrases.json)
   python3 tools/record-announcer.py retake <voice> <key>... -> records those phrases again with a new seed (old take kept in _raw/rejected)
   python3 tools/record-announcer.py names [max_clips]       -> records name clips down data/audio/name-priority.csv
+  python3 tools/record-announcer.py retake-names voice:id... [--floor N] -> plan 49: retakes those names with the respelling table
+  python3 tools/record-announcer.py unskip voice:id...      -> plan 49: removes those lines from the skip list (after Whisper passes)
 Store: _audio/el/<voice>/<key>.mp3, _audio/el/<voice>/names/<id>.mp3; raw takes in _audio/el/_raw. Resumable: existing clips are skipped.
 Budget guard: before each batch of 200 clips the remaining credits are read; a batch that would leave under 300 is refused
 (plan 48: estimate 0.5 credit per character, measured 0.4). Name clips must be 0.4-2.5 s (plan 48).
@@ -27,6 +29,7 @@ FLOOR = 300           # credits always left untouched (plan 48; was 1,500)
 EST_PER_CHAR = 0.5    # plan 48: measured about 0.4 credit per character on eleven_v4
 NAME_MAX = 2.5        # plan 48: longest name clip in seconds (was 2.0)
 SKIP = os.path.join(AUD, 'el', 'names-skip.txt')
+RESPELL = os.path.join(ROOT, 'data', 'audio', 'name-respell.csv')   # plan 49
 BATCH = 200
 PARALLEL = 4
 RETAKE_SHARE = 0.10   # phrases: 10% of the estimate held back for retakes
@@ -50,8 +53,21 @@ def voice_ids():
 def phrase_text(k, p):
     return ('' if k.startswith('lead.') else TAG[p['m']]) + p['t']
 
-def name_text(nm):
+def legacy_name_text(nm):
+    """The text every clip before plan 49 was recorded with (Test 2 and recording sessions 1-2). Frozen."""
     return f'And now... {nm.upper()}!'
+
+def load_respell(path=RESPELL):
+    """Plan 49: word -> spoken spelling (whole word, case-insensitive). Missing file = empty table."""
+    if not os.path.exists(path): return {}
+    return {r['word'].strip().lower(): r['send'].strip() for r in csv.DictReader(open(path, encoding='utf-8'))}
+
+def name_text(nm, respell=None):
+    """Plan 49: with a table, whole plain words are respelled; words with dots, digits or hyphens are never looked up."""
+    if not respell: return legacy_name_text(nm)
+    # A table word is sent exactly as written in the table (its own case); every other word in capitals.
+    words = [respell[w.lower()] if re.fullmatch(r'[A-Za-z]+', w) and w.lower() in respell else w.upper() for w in nm.split(' ')]
+    return f'And now... {" ".join(words)}!'
 
 # ---------- budget ----------
 def remaining():
@@ -135,16 +151,17 @@ def name_cut(pcm):
     return (g[0][0] + g[0][1]) / 2 if g else None
 
 # ---------- jobs ----------
-def run_batches(jobs, estimate_of):
-    """jobs: list of callables with .chars. Batches of 200; credits read before each batch."""
+def run_batches(jobs, estimate_of, floor=None):
+    """jobs: list of callables with .chars. Batches of 200; credits read before each batch. floor: plan 49 one-run override."""
+    floor = FLOOR if floor is None else floor
     done = 0
     for i in range(0, len(jobs), BATCH):
         batch = jobs[i:i + BATCH]
         est = sum(estimate_of(j) for j in batch)
         left = remaining()
-        if not batch_allowed(left, est):
+        if not batch_allowed(left, est, floor):
             # Take only what fits, then stop.
-            fit = fit_jobs(left, batch, estimate_of)
+            fit = fit_jobs(left, batch, estimate_of, floor)
             print(f'BUDGET STOP: {left} credits left, batch needs {est}; recording {len(fit)} more, then stopping.', flush=True)
             batch = fit
         with ThreadPoolExecutor(PARALLEL) as ex:
@@ -173,10 +190,10 @@ def phrase_job(voice, k, p, seed=SEED, retake=False):
     job.chars = len(text)
     return job
 
-def name_job(voice, pid, nm, seed=SEED):
+def name_job(voice, pid, nm, seed=SEED, text=None):
     out = os.path.join(EL, voice, 'names', pid + '.mp3')
     raw = os.path.join(RAW, voice, 'names', pid + '.pcm')
-    text = name_text(nm)
+    text = text or legacy_name_text(nm)   # plan 49: the text sent is the text logged
     def job():
         if os.path.exists(out): return None
         os.makedirs(os.path.dirname(raw), exist_ok=True)
@@ -192,6 +209,35 @@ def name_job(voice, pid, nm, seed=SEED):
         return f'{voice} {pid} {d:.2f}s'
     job.chars = len(text)
     return job
+
+def last_seed(voice, pid):
+    """Seed of the newest build-log record for this name clip, else SEED (Test 2 and imports)."""
+    s = SEED
+    if os.path.exists(BLOG):
+        for l in open(BLOG, encoding='utf-8'):
+            try: r = json.loads(l)
+            except ValueError: continue
+            if r.get('kind') == 'name' and r.get('voice') == voice and r.get('key') == pid and 'seed' in r: s = r['seed']
+    return s
+
+def reject_name(voice, pid):
+    """Plan 49 B: moves the raw take and any mp3 to _raw/rejected/<voice>/names/<id>.s<seed>.* (never deleted or overwritten).
+    Returns the attempt number = rejected raw takes for this id after the move."""
+    rej = os.path.join(RAW, 'rejected', voice, 'names'); os.makedirs(rej, exist_ok=True)
+    seed = last_seed(voice, pid)
+    for src, ext in ((os.path.join(RAW, voice, 'names', pid + '.pcm'), '.pcm'), (os.path.join(EL, voice, 'names', pid + '.mp3'), '.mp3')):
+        if not os.path.exists(src): continue
+        dst, i = os.path.join(rej, f'{pid}.s{seed}{ext}'), 1
+        while os.path.exists(dst): dst = os.path.join(rej, f'{pid}.s{seed}.{i}{ext}'); i += 1
+        shutil.move(src, dst)
+    return len([f for f in os.listdir(rej) if f.startswith(pid + '.s') and f.endswith('.pcm')])
+
+def unskip(pairs):
+    """Plan 49 B: removes only the given (voice, id) lines from the skip list."""
+    lines = open(SKIP, encoding='utf-8').readlines() if os.path.exists(SKIP) else []
+    keep = [l for l in lines if tuple(l.rstrip('\n').split('\t')[:2]) not in pairs]
+    open(SKIP, 'w', encoding='utf-8').writelines(keep)
+    return len(lines) - len(keep)
 
 def fail(voice, pid, nm, why):
     with _lock: open(os.path.join(EL, 'names-fail.txt'), 'a').write(f'{voice}\t{pid}\t{nm}\t{why}\n')
@@ -237,7 +283,7 @@ def do_import_names():
             src = os.path.join(T2, v, k + '.pcm'); cut = name_cut(src)
             if cut is None: fail(v, pid, nm, 'NO GAP (test2)'); continue
             d = encode(src, out, v, start=cut)
-            log(f'{v} name {pid} import', 0, voice=v, voice_id=voice_ids()[v], key=pid, text=name_text(nm), seed=SEED, kind='name', source='test2 take', gain_db=GAIN_DB[v], dur=round(d, 3))
+            log(f'{v} name {pid} import', 0, voice=v, voice_id=voice_ids()[v], key=pid, text=legacy_name_text(nm), seed=SEED, kind='name', source='test2 take', gain_db=GAIN_DB[v], dur=round(d, 3))
             n += 1
     print('imported names', n)
 
@@ -274,10 +320,30 @@ if __name__ == '__main__':
         people = {r['id']: f"{r['first']} {r['last']}" for r in csv.DictReader(open(os.path.join(ROOT, 'data', 'outall', 'people.csv'), encoding='utf-8'))}
         pri = list(csv.DictReader(open(os.path.join(ROOT, 'data', 'audio', 'name-priority.csv'))))
         pri.sort(key=lambda r: int(r['rank']))
-        skip = skip_set()
-        jobs = [name_job(r['voice'], r['id'], people[r['id']]) for r in pri if (r['voice'], r['id']) not in skip
+        skip = skip_set(); table = load_respell()   # plan 49: table live for new names (Stephen yes, 2026-10-26)
+        jobs = [name_job(r['voice'], r['id'], people[r['id']], text=name_text(people[r['id']], table)) for r in pri if (r['voice'], r['id']) not in skip
                 and not os.path.exists(os.path.join(EL, r['voice'], 'names', r['id'] + '.mp3'))][:limit]
         n, stopped = run_batches(jobs, lambda j: est_chars(j.chars))
         print(f'done {n}; remaining credits {remaining()}' + ('; STOPPED by budget guard' if stopped else ''), flush=True)
+    elif cmd == 'retake-names':
+        args = sys.argv[2:]; floor = FLOOR
+        if '--floor' in args:
+            i = args.index('--floor'); floor = int(args[i + 1]); del args[i:i + 2]
+        people = {r['id']: f"{r['first']} {r['last']}" for r in csv.DictReader(open(os.path.join(ROOT, 'data', 'outall', 'people.csv'), encoding='utf-8'))}
+        table = load_respell()
+        pairs = [tuple(a.split(':')) for a in args]
+        texts = {(v, pid): name_text(people[pid], table) for v, pid in pairs}
+        total = sum(est_chars(len(t)) for t in texts.values()); left = remaining()
+        if not batch_allowed(left, total, floor):
+            print(f'BUDGET STOP: {left} credits left, retakes need about {total}, floor {floor}. Nothing moved.', flush=True); sys.exit(1)
+        jobs = []
+        for v, pid in pairs:
+            att = reject_name(v, pid)
+            jobs.append(name_job(v, pid, people[pid], seed=SEED + att, text=texts[(v, pid)]))
+            print(f'{v} {pid}: attempt {att}, seed {SEED + att}, text {texts[(v, pid)]!r}', flush=True)
+        n, stopped = run_batches(jobs, lambda j: est_chars(j.chars), floor)
+        print(f'retaken {n}; remaining credits {remaining()}', flush=True)
+    elif cmd == 'unskip':
+        print('unskipped', unskip({tuple(a.split(':')) for a in sys.argv[2:]}))
     else:
         print(__doc__)
