@@ -111,6 +111,39 @@ describe('VoicePlayer (plan 50)', () => {
     expect(a.p.nameHeard('classic', 'ruthb101')).toBe(true);
   });
 
+  it('plan 50C: sayLines plays lines in order once all are decoded, even when the second decodes first', async () => {
+    const hold = new Set(['/audio/p/classic/lead.b.now.aa.mp3']);
+    const { p, ctx, held } = setup({ hold });
+    await p.enable(); p.ensure();
+    p.prefetch([RESULT], 'classic', true); await flush();
+    const said = p.sayLines([INTRO, RESULT], 'intro', 'classic');
+    await flush();
+    held.get('/audio/p/classic/lead.b.now.aa.mp3')!(); await flush();
+    expect(await said).toBe(true);
+    expect(ctx.starts.map(s => s.url)).toEqual(['/audio/p/classic/lead.b.now.aa.mp3', '/audio/n/classic/ruthb101.11.mp3', '/audio/p/classic/r.k.bb.mp3']);
+    expect(ctx.starts.map(s => s.t)).toEqual([0, 1, 2]);
+  });
+
+  it('plan 50C: idle waits for the queue, ends at once on stop, and at maxMs at the latest', async () => {
+    const { p, ctx, timers } = setup();
+    await p.enable(); p.ensure();
+    p.prefetch([RESULT], 'classic', true); await flush();
+    await p.say(RESULT, 'result', 'classic');   // busy until 1 s
+    let done = false;
+    const w = p.idle(5000).then(() => { done = true; });
+    timers.shift()!(); await flush();
+    expect(done).toBe(false);
+    ctx.currentTime = 1.01; timers.shift()!(); await w;
+    expect(done).toBe(true);
+    await p.say(RESULT, 'result', 'classic');
+    let d2 = false; const w2 = p.idle(5000).then(() => { d2 = true; });
+    p.stop(); timers.shift()!(); await w2; expect(d2).toBe(true);
+    await p.say(RESULT, 'result', 'classic');
+    let d3 = false; const w3 = p.idle(200).then(() => { d3 = true; });
+    timers.shift()!(); await flush(); expect(d3).toBe(false);
+    timers.shift()!(); await w3; expect(d3).toBe(true);   // frozen clock: ends at the cap (200 ms)
+  });
+
   it('a missing name in one voice skips only that intro line', async () => {
     const { p } = setup();
     await p.enable(); p.ensure();

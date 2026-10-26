@@ -1,6 +1,6 @@
 import { HowSim, InfoKind } from './how-sim';
 import { isCold, navDepth, pushEntry, stampBase } from './nav';
-import { Component, computed, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, effect, ElementRef, inject, signal, untracked, viewChild } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResult } from './api';
 import { ReportView } from './report';
@@ -156,6 +156,7 @@ export class App {
 
   /** Plan 27/39: from the matchup (home). vs null opens "Your games". */
   protected openChallenge(vs: 'cpu' | 'friend' | null = null) {
+    this.throwToken++;   // plan 50C
     if (this.firstView()) { try { this.storage()?.setItem(SEEN_KEY, '1'); } catch { /* fine */ } }   // plan 39 R8
     if (this.canHistory()) pushEntry('challenge', vs ? `/c/new?vs=${vs}` : '/c/new');
     this.challengeVs.set(vs);
@@ -182,6 +183,7 @@ export class App {
   protected readonly info = signal<InfoKind | null>(null);
 
   protected goHome() {
+    this.throwToken++;   // plan 50C
     this.overlay.set(null); this.pending.set(null); this.info.set(null);
     this.playPushed = false; this.overlayPushed = false;   // plan 39 X1: the next Pitch pushes its own entry
     this.screen.set('matchup');
@@ -227,7 +229,7 @@ export class App {
     this.screen.set('atbat');
   }
 
-  private toMatchup() { voice.stopAll(); this.pending.set(null); this.screen.set('matchup'); }
+  private toMatchup() { this.throwToken++; voice.stopAll(); this.pending.set(null); this.screen.set('matchup'); }
 
   /** On-screen back (standalone PWAs have no browser Back). */
   protected goBack() {
@@ -323,21 +325,11 @@ export class App {
       vv?.addEventListener('resize', setVh);
     }
     effect(() => { this.screen(); setTimeout(() => this.screenTitle()?.nativeElement.focus({ preventScroll: true }), 0); });
-    // Plan 50: the practice intro on the matchup screen, spoken once per (matchup, pitch), 1 s after the last pick change,
-    // only after a tap this visit (audio unlocked). Its clips start loading at once.
-    let introTimer: ReturnType<typeof setTimeout> | undefined;
+    // Plan 50C: a new matchup's intro clips load (and decode once audio is unlocked) as soon as it shows; it is spoken on the Pitch tap.
     effect(() => {
-      const lines = this.pbpIntroLines(), on = voiceOn(), scr = this.screen(), m = this.matchup(), first = this.firstView();
-      clearTimeout(introTimer);
-      if (!on || scr !== 'matchup' || !m || !lines.length || first) return;
-      const v = this.practiceVoice(), key = this.introKey();
-      voice.prefetch(lines, v);
-      if (key === this.spokenIntro) return;
-      introTimer = setTimeout(() => {
-        if (!voiceOn() || !voice.running() || this.screen() !== 'matchup' || this.introKey() !== key) return;
-        this.spokenIntro = key;
-        for (const l of lines) void voice.say(l, 'intro', v);
-      }, 1000);
+      const on = voiceOn(), m = this.matchup();
+      if (!on || !m) return;
+      untracked(() => { if (!this.introduced.has(this.matchKey())) voice.prefetch(this.audioIntroLines(), this.practiceVoice(), voice.running()); });
     });
     const manifestLoad: Promise<ArtManifest | null> = (typeof fetch === 'function' ? fetch('/art-manifest.json') : Promise.reject())
       .then(r => (r.ok ? r.json() : null)).then(m => (m && m.tones && m.sheets && m.cards ? (m as ArtManifest) : null)).catch(() => null);
@@ -481,20 +473,28 @@ export class App {
   }
 
   protected async throwPitch(seed?: string) {
+    if (this.busy()) return;   // plan 50C: a double tap never stops the intro or throws twice
     if (voiceOn()) { voice.ensure(); voice.stop(); }   // plan 50: unlock first, before any await; the Pitch tap stops the queue
     const p = this.pick();
     if (!p) return;
+    const throwId = ++this.throwToken;
+    // Plan 50C: a new matchup's intro is spoken first (built now, before any await, so it matches the text), then the pitch.
+    const key = this.matchKey();
+    const intro = voiceOn() && !seed && !this.introduced.has(key) ? this.speakIntro() : null;   // a tap: ensure() above unlocked the audio
     try {
       this.busy.set(true); this.result.set(null); this.shareNote.set(null);
       if (!seed) this.deco.set(DECORATION_VERSION);
       const r = await api.pitch(p, seed);
       if (!seed) api.event('pitch', this.session);
+      const waits: Promise<unknown>[] = intro ? [intro] : [];
       if (this.side() && !this.sideOk()) {
         // Wait up to 3 s for the batter's sheet; otherwise this pitch shows text only (never swap mid-pitch).
         this.artWaiting.set(true);
-        await Promise.race([Promise.all([this.sideReady, this.windupReady]), new Promise(res => setTimeout(res, 3000))]);
-        this.artWaiting.set(false);
+        waits.push(Promise.race([Promise.all([this.sideReady, this.windupReady]), new Promise(res => setTimeout(res, 3000))]).then(() => this.artWaiting.set(false)));
       }
+      await Promise.all(waits);
+      // Plan 50C: left the matchup or changed the pick during the wait: drop this pitch.
+      if (throwId !== this.throwToken || this.pick() !== p) return;
       this.sceneArt.set(this.sideOk() ? this.side() : null);
       this.sceneWindup.set(this.sideOk() && this.windupOk() ? this.windup() : null);   // both or neither
       if (!seed && this.firstView()) {
@@ -504,6 +504,7 @@ export class App {
       if (!seed) { this.lastPitcherShown.set(this.pitcher()?.id ?? null); }
       this.pbpLine.set(''); this.pbpResult.set(''); this.pbpTypeWord = false;
       this.pending.set(r);   // the scene plays, then sceneDone() reveals the result
+      if (intro) this.introduced.add(key);
       this.voicePitch(r);
       if (!seed) this.practiceN.update(n => n + 1);
       this.enterPlay();
@@ -574,20 +575,24 @@ export class App {
   /** Newest season of the matchup picks the voice and the crowd. */
   private newestYear() { return Math.max(this.pitcher()?.year ?? 2000, this.batter()?.year ?? 2000); }
   private practiceVoice() { return voiceFor(this.newestYear()); }
-  /** Plan 50B: the spoken intro on the result screen: the shown lines, plus the pitcher line (audio only) when this pitcher's
-   *  name has not been heard to the end this visit. The text intro is unchanged. */
-  private resultIntroLines(v: ReturnType<typeof voiceFor>): PbpLine[] {
-    const lines = this.pbpIntroLines(), p = this.pitcher();
-    if (!p || lines.length !== 1 || voice.nameHeard(v, p.id)) return lines;
+  private windupSeen = new Set<number>();
+  /** Plan 50C: matchups whose intro was spoken this visit (pitcher id:year + batter id:year). */
+  private readonly introduced = new Set<string>();
+  private throwToken = 0;
+  private matchKey() { const p = this.pitcher(), b = this.batter(); return `${p?.id}:${p?.year}:${b?.id}:${b?.year}`; }
+  /** The spoken intro: pitcher line, then batter line (audio only; the text keeps its own rules). */
+  private audioIntroLines(): PbpLine[] {
     const n = this.practiceN(), ctx = this.introCtx(n);
-    if (!ctx) return lines;
+    if (!ctx) return [];
     const prev = n > 0 ? rawLead({ ...ctx, index: n - 1 }) : null;
     const x = intro({ ...ctx, showPitcher: true }, prev);
-    return x.pitcher ? [x.pitcher, lines[0]] : lines;
+    return [x.pitcher, x.batter].filter((l): l is PbpLine => !!l);
   }
-  private introKey() { return `${this.introCtx(0)?.key ?? ''}:${this.practiceN()}`; }
-  private windupSeen = new Set<number>();
-  private spokenIntro = '';
+  /** Speaks the intro and resolves when it has finished (at most 6 s after the tap). */
+  private speakIntro(): Promise<void> {
+    const t0 = Date.now(), v = this.practiceVoice();
+    return voice.sayLines(this.audioIntroLines(), 'intro', v).then(() => voice.idle(Math.max(0, 6000 - (Date.now() - t0))));
+  }
 
   /** On the Pitch result: the crowd starts, and every clip this at-bat will speak starts loading. */
   private voicePitch(r: PitchResult) {
@@ -620,8 +625,6 @@ export class App {
     const r = this.pending();
     if (!r) return;
     if (this.announcer() && !this.pbpResult()) this.pbpResult.set(this.pbpResultText(r));
-    // Plan 50: the next intro shown on the result screen is spoken after the result line (dropped on the next Pitch).
-    if (voiceOn()) { const v = this.practiceVoice(); for (const l of this.resultIntroLines(v)) void voice.say(l, 'intro', v); this.spokenIntro = this.introKey(); }
     this.pending.set(null);
     this.result.set(r);
     this.askFeedback.set(feedbackDue('p' + Date.now(), 3));   // plan 30: from the 3rd practice pitch

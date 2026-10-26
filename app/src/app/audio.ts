@@ -218,6 +218,37 @@ export class VoicePlayer {
     return Promise.race([all, limit]).then(() => g === this.gen && urls.every(u => this.buffer(u)) ? this.play(its, kind) : false);
   }
 
+  /** Plan 50C: speak several lines in order. Every clip is decoded first (up to the line kind's wait); then the lines whose
+   *  clips are ready are queued one after the other. Resolves true when anything was queued. */
+  sayLines(lines: (PbpLine | null | undefined)[], kind: LineKind, v: Voice): Promise<boolean> {
+    if (!this.manifest || !this.ctx || (this.d.reduced() && kind !== 'result')) return Promise.resolve(false);
+    const sets = lines.filter((l): l is PbpLine => !!l).map(l => this.items(l, v)).filter((x): x is Item[] => !!x);
+    const urls = sets.flat().map(i => i.url);
+    if (!urls.length) return Promise.resolve(false);
+    const g = this.gen;
+    const all = Promise.all(urls.map(u => this.decode(u)));
+    const limit = new Promise<null>(res => this.d.setTimeout(() => res(null), WAIT_MS[kind] ?? 0));
+    return Promise.race([all, limit]).then(() => {
+      if (g !== this.gen) return false;
+      let any = false;
+      for (const its of sets) if (its.every(i => this.buffer(i.url))) any = this.play(its, kind) || any;
+      return any;
+    });
+  }
+
+  /** Plan 50C: resolves when the voice queue is empty, when it was stopped, or after maxMs (checked every 100 ms). */
+  idle(maxMs: number): Promise<void> {
+    const g = this.gen, c = this.ctx;
+    return new Promise(res => {
+      let waited = 0;
+      const tick = () => {
+        if (!c || g !== this.gen || c.currentTime >= this.busyUntil || waited >= maxMs) { res(); return; }
+        waited += 100; this.d.setTimeout(tick, 100);
+      };
+      tick();
+    });
+  }
+
   /** Speak a lead-up call by its audio key (alias applied). */
   sayCall(key: string | null | undefined, v: Voice): Promise<boolean> {
     const k = key ? this.callKey(key, v) : null;
