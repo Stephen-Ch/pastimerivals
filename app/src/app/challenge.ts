@@ -12,7 +12,8 @@ import { bedFor, reactionFor, voice, voiceFor } from './audio';
 import { voiceOn } from './voice-setting';
 import { VoiceButton } from './voice-button';
 import { outAt } from './inning';
-import { HowSim } from './how-sim';
+import { artNoteDue, markArtNoteShown } from './art-note';
+import { HowSim, InfoKind } from './how-sim';
 import { pushEntry } from './nav';
 import {
   CAtBat, capi, CEra, ChallengeError, CClash, CMine, CPlayer, CSlot, CView, GameMode, keyFor, links, saveKey, setWatched, takeKeyFromHash, toBody, watched,
@@ -29,6 +30,13 @@ export const INNING_ROWS = ['Your pitcher', ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n
 /** Plan 26 computer levels; index = level (1-4). */
 const LEVEL_NAMES = ['', 'Random players', 'Good players', 'Hall of Famers', 'Legends'];
 const LEVEL_KEY = 'pr_cpu_level';
+function sessionId(): string {
+  try {
+    let s = sessionStorage.getItem('pr-session');
+    if (!s) { s = crypto.randomUUID(); sessionStorage.setItem('pr-session', s); }
+    return s;
+  } catch { return 'no-storage'; }
+}
 function savedLevel(): number {
   try { const n = Number(localStorage.getItem(LEVEL_KEY)); return n >= 1 && n <= 4 ? Math.floor(n) : 1; } catch { return 1; }
 }
@@ -70,7 +78,10 @@ export class ChallengeFlow {
   protected readonly sittingOut = signal<CSlot | null>(null);
   protected readonly flipNote = signal<string | null>(null);
   protected readonly updateNeeded = signal(false);
-  protected readonly showHow = signal(false);
+  protected readonly info = signal<InfoKind | null>(null);
+  private infoReturnFocus: HTMLElement | null = null;
+  private infoAfterClose: (() => void) | null = null;
+  private readonly session = sessionId();
   /** Batters this team needs: 3 classic; inning 9 with the DH, 8 when the pitcher bats (9 until the rules are known). */
   protected readonly batters = computed(() => !this.inning() ? 3 : (this.isHome() ? this.era()?.batters : this.view()?.era?.batters) ?? 9);
   protected readonly rulesLine = computed(() => {
@@ -525,9 +536,7 @@ export class ChallengeFlow {
     pushEntry('challenge', `/c/${r.code}`);
     this.mode.set('cpu');
     this.step.set('play');
-    let session = 'no-storage';
-    try { session = sessionStorage.getItem('pr-session') ?? session; } catch { /* fine */ }
-    api.event('cpu_game', session);
+    api.event('cpu_game', this.session);
   }
 
   /** Same team against a new computer team at a level (default: this game's level). Next and easier also save the new level. */
@@ -602,6 +611,12 @@ export class ChallengeFlow {
   protected async pitch() {
     const ab = this.nextAtBat();
     if (!ab || this.scene() || this.loadingArt()) return;
+    if (this.step() === 'play' && this.revealed() === 0 && artNoteDue()) {
+      markArtNoteShown();
+      api.event('art_note_shown', this.session, 'challenge');
+      this.openInfo('artIntro', () => { void this.pitch(); });
+      return;
+    }
     if (voiceOn()) { voice.ensure(); voice.stop(); voice.bedStart(bedFor(this.newestYear())); this.windupSeen = new Set(); }   // plan 50: before any await
     this.pbpLine.set('');
     this.lastPlay.set(null);
@@ -845,6 +860,25 @@ export class ChallengeFlow {
   protected roundLabel(ab: CAtBat) { return ab.round > 0 ? `Extra round ${ab.round}` : `At-bat ${ab.index + 1}`; }
 
   protected newChallenge() { this.startFresh('friend'); }
+
+  protected openInfo(kind: InfoKind, afterClose: (() => void) | null = null) {
+    if (!this.info() && typeof document !== 'undefined') this.infoReturnFocus = document.activeElement as HTMLElement | null;
+    this.infoAfterClose = afterClose;
+    this.info.set(kind);
+  }
+
+  protected closeInfo() {
+    this.info.set(null);
+    const run = this.infoAfterClose;
+    this.infoAfterClose = null;
+    if (run) run();
+    queueMicrotask(() => this.infoReturnFocus?.focus({ preventScroll: true }));
+  }
+
+  protected moreArtInfo() {
+    api.event('art_note_more', this.session);
+    this.info.set('art');
+  }
 
   protected openMine(code: string) {
     pushEntry('challenge', `/c/${code}`);

@@ -1,7 +1,8 @@
+import { resetArtNoteVisit } from './art-note';
 import { DOWN_REASONS, feedbackDue, markFeedbackAsked, resetFeedbackVisit, UP_REASONS } from './feedback';
 
 describe('feedbackDue (plan 30)', () => {
-  beforeEach(() => { localStorage.clear(); resetFeedbackVisit(); });
+  beforeEach(() => { localStorage.clear(); resetFeedbackVisit(); resetArtNoteVisit(); });
 
   it('asks from the 2nd game, counts a game once, then not again this visit', () => {
     const t = 1_800_000_000_000;

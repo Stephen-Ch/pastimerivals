@@ -16,6 +16,7 @@ import { voiceOn } from './voice-setting';
 import { VoiceButton } from './voice-button';
 import { SceneCue } from './pitch-scene';
 import { ArtManifest, Era, eraOf, fielderArt, figure, isFirstVisit, lookOf, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, SideLook, WindupArt, windupArt } from './art';
+import { artNoteDue, artNoteShownThisVisit, markArtNoteShown } from './art-note';
 import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
@@ -181,6 +182,9 @@ export class App {
   protected readonly myGames = signal(0);
   /** Plan 38/39: info sheets (How the sim works, Simulate, About the art). */
   protected readonly info = signal<InfoKind | null>(null);
+  protected readonly artNoteShownThisVisit = artNoteShownThisVisit;
+  private infoReturnFocus: HTMLElement | null = null;
+  private infoAfterClose: (() => void) | null = null;
 
   protected goHome() {
     this.throwToken++;   // plan 50C
@@ -331,6 +335,11 @@ export class App {
       if (!on || !m) return;
       untracked(() => { if (!this.introduced.has(this.matchKey())) voice.prefetch(this.audioIntroLines(), this.practiceVoice(), voice.running()); });
     });
+    effect(() => {
+      const m = this.matchup(), p = this.pair(), sc = this.screen();
+      if (!m || !p || sc !== 'matchup' || this.challenge() !== undefined) return;
+      untracked(() => this.maybeShowArtNote('home'));
+    });
     const manifestLoad: Promise<ArtManifest | null> = (typeof fetch === 'function' ? fetch('/art-manifest.json') : Promise.reject())
       .then(r => (r.ok ? r.json() : null)).then(m => (m && m.tones && m.sheets && m.cards ? (m as ArtManifest) : null)).catch(() => null);
     manifestLoad.then(m => this.manifest.set(m));
@@ -365,7 +374,10 @@ export class App {
       this.batter.set({ id: shared.pick.b, name: shared.pick.b, year: shared.pick.by, line: '' });
       this.pitcher.set({ id: shared.pick.p, name: shared.pick.p, year: shared.pick.py, line: '' });
       api.event('share_open', this.session);
-      this.load().then(() => this.throwPitch(shared.seed));
+      this.load().then(() => {
+        if (this.maybeShowArtNote('share', () => this.throwPitch(shared.seed))) return;
+        void this.throwPitch(shared.seed);
+      });
     } else {
       const first = isFirstVisit(false, this.storage());
       if (first) this.load();
@@ -470,6 +482,33 @@ export class App {
     (role === 'pit' ? this.pitcher : this.batter).set(chosen);
     this.closeOverlay();
     this.load();
+  }
+
+  protected openInfo(kind: InfoKind, afterClose: (() => void) | null = null) {
+    if (!this.info() && typeof document !== 'undefined') this.infoReturnFocus = document.activeElement as HTMLElement | null;
+    this.infoAfterClose = afterClose;
+    this.info.set(kind);
+  }
+
+  protected closeInfo() {
+    this.info.set(null);
+    const run = this.infoAfterClose;
+    this.infoAfterClose = null;
+    if (run) run();
+    queueMicrotask(() => this.infoReturnFocus?.focus({ preventScroll: true }));
+  }
+
+  protected moreArtInfo() {
+    api.event('art_note_more', this.session);
+    this.info.set('art');
+  }
+
+  private maybeShowArtNote(entry: 'home' | 'share', afterClose: (() => void) | null = null): boolean {
+    if (!artNoteDue()) return false;
+    markArtNoteShown();
+    api.event('art_note_shown', this.session, entry);
+    this.openInfo('artIntro', afterClose);
+    return true;
   }
 
   protected async throwPitch(seed?: string) {

@@ -10,7 +10,7 @@
       <main class="flex">
         <h1 #stepTitle tabindex="-1">Play a game</h1>
         <p class="how">Pick a pitcher and a batting order from any season. One inning: your hitters bat until 3 outs, then theirs. Most runs wins.</p>
-        <button type="button" class="link small how-link" (click)="showHow.set(true)">How the sim works</button>
+        <button type="button" class="link small how-link" (click)="openInfo('how')">How the sim works</button>
         @if (mine().length) {
           <h2 class="sub">Your games</h2>
           <ul class="list">
@@ -336,6 +336,6 @@
       </div>
     }
   }
-  @if (showHow()) { <pr-how-sim (close)="showHow.set(false)" /> }
+  @if (info(); as k) { <pr-how-sim [kind]="k" (more)="moreArtInfo()" (close)="closeInfo()" /> }
   <footer class="notice">The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.</footer>
 </div>

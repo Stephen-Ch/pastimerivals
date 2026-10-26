@@ -1,4 +1,5 @@
 import { Component, input, signal } from '@angular/core';
+import { artNoteShownThisVisit } from './art-note';
 import { capi } from './challenge-api';
 
 /** Plan 30 reason keys and labels. Thumbs up asks what they like; thumbs down asks what would make it better. */
@@ -14,6 +15,7 @@ function write(k: string, v: string) { try { localStorage.setItem(k, v); } catch
 
 /** Counts a finished game once per game code (or practice pitch) and says whether to ask now. */
 export function feedbackDue(gameKey: string, needed: number, now = Date.now()): boolean {
+  if (artNoteShownThisVisit()) return false;
   if (askedThisVisit) return false;
   if (read(SEEN_KEY) !== gameKey) {
     write(SEEN_KEY, gameKey);
