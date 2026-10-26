@@ -6,9 +6,16 @@ rec = importlib.util.module_from_spec(spec); spec.loader.exec_module(rec)
 
 class Recorder(unittest.TestCase):
     def test_budget_guard(self):
-        self.assertTrue(rec.batch_allowed(10000, 8500))
-        self.assertFalse(rec.batch_allowed(10000, 8501))
-        self.assertFalse(rec.batch_allowed(1400, 0))
+        self.assertTrue(rec.batch_allowed(10000, 9700))
+        self.assertFalse(rec.batch_allowed(10000, 9701))
+        self.assertFalse(rec.batch_allowed(299, 0))
+    def test_fit_jobs_stops_at_first_misfit(self):   # plan 48
+        self.assertEqual(rec.fit_jobs(1000, [300, 300, 500, 10], lambda j: j), [300, 300])
+    def test_estimate(self):
+        self.assertEqual(rec.est_chars(25), 13); self.assertEqual(rec.est_chars(100, 0.10), 55)
+    def test_name_len(self):   # plan 48
+        self.assertTrue(rec.name_len_ok(2.4)); self.assertTrue(rec.name_len_ok(2.5))
+        self.assertFalse(rec.name_len_ok(2.51)); self.assertFalse(rec.name_len_ok(0.39))
     def test_never_reads_old_clips(self):
         src = open(os.path.join(ROOT, 'tools', 'record-announcer.py')).read().split('"""', 2)[2]
         self.assertNotIn("'clips'", src); self.assertNotIn('_old-openai-clips', src)

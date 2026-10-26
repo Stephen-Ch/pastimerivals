@@ -7,9 +7,11 @@ Usage (repo root, on the laptop):
   python3 tools/record-announcer.py retake <voice> <key>... -> records those phrases again with a new seed (old take kept in _raw/rejected)
   python3 tools/record-announcer.py names [max_clips]       -> records name clips down data/audio/name-priority.csv
 Store: _audio/el/<voice>/<key>.mp3, _audio/el/<voice>/names/<id>.mp3; raw takes in _audio/el/_raw. Resumable: existing clips are skipped.
-Budget guard: before each batch of 200 clips the remaining credits are read; a batch that would leave under 1,500 is refused.
+Budget guard: before each batch of 200 clips the remaining credits are read; a batch that would leave under 300 is refused
+(plan 48: estimate 0.5 credit per character, measured 0.4). Name clips must be 0.4-2.5 s (plan 48).
+Skip list _audio/el/names-skip.txt (voice<TAB>id per line): names never re-cut or recorded (failed the Whisper check).
 Key from secrets/deploy.local.json ("elevenKey"), never printed. Cost per clip to _audio/cost.log; clip details to _audio/el/build-log.jsonl."""
-import json, os, re, subprocess, sys, time, threading, csv, shutil, urllib.request, urllib.error
+import json, math, os, re, subprocess, sys, time, threading, csv, shutil, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -21,7 +23,10 @@ COST = os.path.join(AUD, 'cost.log')
 BLOG = os.path.join(EL, 'build-log.jsonl')
 MODEL = 'eleven_v4'
 SEED = 7
-FLOOR = 1500          # credits always left untouched
+FLOOR = 300           # credits always left untouched (plan 48; was 1,500)
+EST_PER_CHAR = 0.5    # plan 48: measured about 0.4 credit per character on eleven_v4
+NAME_MAX = 2.5        # plan 48: longest name clip in seconds (was 2.0)
+SKIP = os.path.join(AUD, 'el', 'names-skip.txt')
 BATCH = 200
 PARALLEL = 4
 RETAKE_SHARE = 0.10   # phrases: 10% of the estimate held back for retakes
@@ -57,6 +62,24 @@ def remaining():
 def batch_allowed(left, estimate, floor=FLOOR):
     """Plan 47 C: refuse a batch when remaining credits minus its estimate would go under the floor."""
     return left - estimate >= floor
+
+def est_chars(chars, share=0.0):
+    return math.ceil(round(chars * EST_PER_CHAR * (1 + share), 6))
+
+def fit_jobs(left, jobs, estimate_of, floor=FLOOR):
+    """Jobs in order up to the first one that would take credits under the floor."""
+    fit, s = [], 0
+    for j in jobs:
+        if left - (s + estimate_of(j)) < floor: break
+        fit.append(j); s += estimate_of(j)
+    return fit
+
+def name_len_ok(d):
+    return 0.4 <= d <= NAME_MAX
+
+def skip_set():
+    if not os.path.exists(SKIP): return set()
+    return {tuple(l.rstrip('\n').split('\t')[:2]) for l in open(SKIP) if l.strip()}
 
 # ---------- requests ----------
 def post(path, body):
@@ -121,10 +144,7 @@ def run_batches(jobs, estimate_of):
         left = remaining()
         if not batch_allowed(left, est):
             # Take only what fits, then stop.
-            fit, s = [], 0
-            for j in batch:
-                if left - (s + estimate_of(j)) < FLOOR: break
-                fit.append(j); s += estimate_of(j)
+            fit = fit_jobs(left, batch, estimate_of)
             print(f'BUDGET STOP: {left} credits left, batch needs {est}; recording {len(fit)} more, then stopping.', flush=True)
             batch = fit
         with ThreadPoolExecutor(PARALLEL) as ex:
@@ -167,7 +187,7 @@ def name_job(voice, pid, nm, seed=SEED):
         cut = name_cut(raw)
         if cut is None: return fail(voice, pid, nm, 'NO GAP')
         d = encode(raw, out, voice, start=cut)
-        if not 0.4 <= d <= 2.0:
+        if not name_len_ok(d):
             os.remove(out); return fail(voice, pid, nm, f'CUT FAIL {d:.2f}')
         return f'{voice} {pid} {d:.2f}s'
     job.chars = len(text)
@@ -240,22 +260,24 @@ if __name__ == '__main__':
     elif cmd == 'phrases':
         voice = sys.argv[2]; P = phrases()
         jobs = [phrase_job(voice, k, p) for k, p in P.items() if not os.path.exists(os.path.join(EL, voice, k + '.mp3'))]
-        est = lambda j: int(j.chars * (1 + RETAKE_SHARE))
+        est = lambda j: est_chars(j.chars, RETAKE_SHARE)
         print(f'{voice}: {len(jobs)} phrases to record, about {sum(j.chars for j in jobs)} credits', flush=True)
         n, stopped = run_batches(jobs, est)
         print(f'done {n}; remaining credits {remaining()}' + ('; STOPPED by budget guard' if stopped else ''), flush=True)
     elif cmd == 'retake':
         voice = sys.argv[2]; P = phrases()
         jobs = [phrase_job(voice, k, P[k], seed=SEED + 1 + int(time.time()) % 1000, retake=True) for k in sys.argv[3:]]
-        n, stopped = run_batches(jobs, lambda j: j.chars)
+        n, stopped = run_batches(jobs, lambda j: est_chars(j.chars))
         print(f'retaken {n}; remaining credits {remaining()}', flush=True)
     elif cmd == 'names':
         limit = int(sys.argv[2]) if len(sys.argv) > 2 else 10 ** 9
         people = {r['id']: f"{r['first']} {r['last']}" for r in csv.DictReader(open(os.path.join(ROOT, 'data', 'outall', 'people.csv'), encoding='utf-8'))}
         pri = list(csv.DictReader(open(os.path.join(ROOT, 'data', 'audio', 'name-priority.csv'))))
         pri.sort(key=lambda r: int(r['rank']))
-        jobs = [name_job(r['voice'], r['id'], people[r['id']]) for r in pri if not os.path.exists(os.path.join(EL, r['voice'], 'names', r['id'] + '.mp3'))][:limit]
-        n, stopped = run_batches(jobs, lambda j: j.chars)
+        skip = skip_set()
+        jobs = [name_job(r['voice'], r['id'], people[r['id']]) for r in pri if (r['voice'], r['id']) not in skip
+                and not os.path.exists(os.path.join(EL, r['voice'], 'names', r['id'] + '.mp3'))][:limit]
+        n, stopped = run_batches(jobs, lambda j: est_chars(j.chars))
         print(f'done {n}; remaining credits {remaining()}' + ('; STOPPED by budget guard' if stopped else ''), flush=True)
     else:
         print(__doc__)
