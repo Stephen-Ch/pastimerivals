@@ -336,8 +336,8 @@ export class App {
       untracked(() => { if (!this.introduced.has(this.matchKey())) voice.prefetch(this.audioIntroLines(), this.practiceVoice(), voice.running()); });
     });
     effect(() => {
-      const m = this.matchup(), p = this.pair(), sc = this.screen();
-      if (!m || !p || sc !== 'matchup' || this.challenge() !== undefined) return;
+      const m = this.matchup(), sc = this.screen();
+      if (!m || !this.pitcherReport() || !this.batterReport() || sc !== 'matchup' || this.challenge() !== undefined) return;   // plan 51: players are on screen (card art or fallback figure)
       untracked(() => this.maybeShowArtNote('home'));
     });
     const manifestLoad: Promise<ArtManifest | null> = (typeof fetch === 'function' ? fetch('/art-manifest.json') : Promise.reject())

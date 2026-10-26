@@ -76,6 +76,7 @@ export const RETROSHEET_NOTICE = 'The information used here was obtained free of
     .how-card { box-sizing: border-box; width: 100%; max-width: 440px; max-height: 90%; overflow-y: auto; padding: 16px 16px 20px; border-radius: 16px 16px 0 0;
       background: var(--surface-0, #fbfaf7); color: var(--text-primary, #222); }
     h2 { margin: 0 0 8px; font-size: 1.1rem; }
+    h2:focus { outline: none; }
     h3 { margin: 4px 0 6px; font-size: .95rem; }
     p { margin: 0 0 14px; font-size: .9rem; line-height: 1.4; }
     ul { margin: 0 0 14px; padding-left: 1.2em; display: grid; gap: 6px; font-size: .9rem; line-height: 1.4; }

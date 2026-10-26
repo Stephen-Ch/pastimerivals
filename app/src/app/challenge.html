@@ -278,7 +278,7 @@
               </ol>
             }
           </div>
-          <button type="button" class="link small how-link" (click)="showHow.set(true)">How the sim works</button>
+          <button type="button" class="link small how-link" (click)="openInfo('how')">How the sim works</button>
         } @else {
         @if (g?.notes?.length) { <p class="note">Both of you picked the same player. The challenger picked first, so a backup stepped in.</p> }
         <ol class="plays">
