@@ -2,6 +2,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, input, output } from '@angular/core';
 import { announcerOn, setAnnouncer } from './announcer-setting';
 import { parkOn, setPark } from './park-setting';
+import { setVoice, voiceOn } from './voice-setting';
 
 /** Plan 38/39: short info sheets over the current screen. */
 export type InfoKind = 'how' | 'sim' | 'art';
@@ -36,11 +37,14 @@ export const RETROSHEET_NOTICE = 'The information used here was obtained free of
               <li>When pitchers bat, they use their real batting line that season (or the average pitcher of their decade).</li>
               <li>Left-handed batters stand on the other side of the plate, so the view flips. Switch hitters usually bat from the side opposite the pitcher's arm.</li>
               <li>Not in this version: steals, bunts, pinch hitters and relief pitchers.</li>
+              <li>Announcer voices are computer-generated, not real broadcasters. Not every player's name is recorded yet. Turn off silent mode if you hear nothing.</li>
             </ul>
             <h3>About the art</h3>
             <ng-container *ngTemplateOutlet="art" />
             <p class="pbp-switch">Announcer (play-by-play):
               <button type="button" class="toggle" role="switch" [attr.aria-checked]="on()" (click)="flip()">{{ on() ? 'On' : 'Off' }}</button></p>
+            <p class="pbp-switch">Announcer voice:
+              <button type="button" class="toggle" role="switch" [attr.aria-checked]="voiceIsOn()" (click)="flipVoice()">{{ voiceIsOn() ? 'On' : 'Off' }}</button></p>
             <p class="pbp-switch">Follow the ball:
               <button type="button" class="toggle" role="switch" [attr.aria-checked]="parkIsOn()" (click)="flipPark()">{{ parkIsOn() ? 'On' : 'Off' }}</button></p>
           }
@@ -77,4 +81,6 @@ export class HowSim {
   protected flip() { setAnnouncer(!announcerOn()); }
   protected readonly parkIsOn = parkOn;
   protected flipPark() { setPark(!parkOn()); }
+  protected readonly voiceIsOn = voiceOn;
+  protected flipVoice() { setVoice(!voiceOn()); }
 }

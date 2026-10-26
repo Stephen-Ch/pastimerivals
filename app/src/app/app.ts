@@ -10,7 +10,10 @@ import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
 import { sideLine } from './side-line';
 import { announcerOn } from './announcer-setting';
-import { intro, lineText, pitchLines, rawLead, resultLine } from './pbp';
+import { intro, lineText, PbpLine, pitchLines, rawLead, resultLine } from './pbp';
+import { bedFor, reactionFor, voice, voiceFor } from './audio';
+import { voiceOn } from './voice-setting';
+import { VoiceButton } from './voice-button';
 import { SceneCue } from './pitch-scene';
 import { ArtManifest, Era, eraOf, fielderArt, figure, isFirstVisit, lookOf, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, SideLook, WindupArt, windupArt } from './art';
 import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
@@ -60,7 +63,7 @@ function sessionId(): string {
 
 @Component({
   selector: 'app-root',
-  imports: [ReportView, PitchScene, ChallengeFlow, Feedback, HowSim],
+  imports: [ReportView, PitchScene, ChallengeFlow, Feedback, HowSim, VoiceButton],
   styleUrls: ['./app.css', './sims.css', './home.css'],
   templateUrl: './app.html',
 })
@@ -224,7 +227,7 @@ export class App {
     this.screen.set('atbat');
   }
 
-  private toMatchup() { this.pending.set(null); this.screen.set('matchup'); }
+  private toMatchup() { voice.stopAll(); this.pending.set(null); this.screen.set('matchup'); }
 
   /** On-screen back (standalone PWAs have no browser Back). */
   protected goBack() {
@@ -320,6 +323,22 @@ export class App {
       vv?.addEventListener('resize', setVh);
     }
     effect(() => { this.screen(); setTimeout(() => this.screenTitle()?.nativeElement.focus({ preventScroll: true }), 0); });
+    // Plan 50: the practice intro on the matchup screen, spoken once per (matchup, pitch), 1 s after the last pick change,
+    // only after a tap this visit (audio unlocked). Its clips start loading at once.
+    let introTimer: ReturnType<typeof setTimeout> | undefined;
+    effect(() => {
+      const lines = this.pbpIntroLines(), on = voiceOn(), scr = this.screen(), m = this.matchup(), first = this.firstView();
+      clearTimeout(introTimer);
+      if (!on || scr !== 'matchup' || !m || !lines.length || first) return;
+      const v = this.practiceVoice(), key = this.introKey();
+      voice.prefetch(lines, v);
+      if (key === this.spokenIntro) return;
+      introTimer = setTimeout(() => {
+        if (!voiceOn() || !voice.running() || this.screen() !== 'matchup' || this.introKey() !== key) return;
+        this.spokenIntro = key;
+        for (const l of lines) void voice.say(l, 'intro', v);
+      }, 1000);
+    });
     const manifestLoad: Promise<ArtManifest | null> = (typeof fetch === 'function' ? fetch('/art-manifest.json') : Promise.reject())
       .then(r => (r.ok ? r.json() : null)).then(m => (m && m.tones && m.sheets && m.cards ? (m as ArtManifest) : null)).catch(() => null);
     manifestLoad.then(m => this.manifest.set(m));
@@ -462,6 +481,7 @@ export class App {
   }
 
   protected async throwPitch(seed?: string) {
+    if (voiceOn()) { voice.ensure(); voice.stop(); }   // plan 50: unlock first, before any await; the Pitch tap stops the queue
     const p = this.pick();
     if (!p) return;
     try {
@@ -484,6 +504,7 @@ export class App {
       if (!seed) { this.lastPitcherShown.set(this.pitcher()?.id ?? null); }
       this.pbpLine.set(''); this.pbpResult.set(''); this.pbpTypeWord = false;
       this.pending.set(r);   // the scene plays, then sceneDone() reveals the result
+      this.voicePitch(r);
       if (!seed) this.practiceN.update(n => n + 1);
       this.enterPlay();
     } catch (e) { this.error.set((e as Error).message); this.toMatchup(); }
@@ -507,15 +528,16 @@ export class App {
       showPitcher: this.lastPitcherShown() !== p.id, pitchingSide: null, situation: null };
   }
 
-  /** Intro shown before the Pitch tap: pitcher line (first time this pitcher is shown) and batter line. */
-  protected readonly pbpIntro = computed(() => {
-    if (!this.announcer()) return [] as string[];
+  /** Intro before the Pitch tap: pitcher line (first time this pitcher is shown) and batter line (plan 50: as lines for the voice). */
+  protected readonly pbpIntroLines = computed(() => {
+    if (!this.announcer()) return [] as PbpLine[];
     const n = this.practiceN(), ctx = this.introCtx(n);
     if (!ctx) return [];
     const prev = n > 0 ? rawLead({ ...ctx, index: n - 1 }) : null;
     const x = intro(ctx, prev);
-    return [x.pitcher ? lineText(x.pitcher) : null, lineText(x.batter)].filter((t): t is string => !!t);
+    return [x.pitcher, x.batter].filter((l): l is PbpLine => !!l);
   });
+  protected readonly pbpIntro = computed(() => this.pbpIntroLines().map(lineText));
 
   private pbpCtx(r: PitchResult) {
     const m = this.matchup();
@@ -523,12 +545,13 @@ export class App {
       throws: this.pitcherReport()?.throws ?? m?.pitcher.hand, era: this.pitcherEra(), seed: r.seed };
   }
 
-  private pbpResultText(r: PitchResult): string {
+  private pbpResultLine(r: PitchResult): PbpLine | null {
     const call = this.sceneCall();
-    if (!call) return '';
+    if (!call) return null;
     const ctx = this.pbpCtx(r);
-    return lineText(resultLine({ key: r.seed, index: 0, outcome: r.outcome, count: ctx.count, call, play: null, era: ctx.era, seed: r.seed, typeWord: this.pbpTypeWord }));
+    return resultLine({ key: r.seed, index: 0, outcome: r.outcome, count: ctx.count, call, play: null, era: ctx.era, seed: r.seed, typeWord: this.pbpTypeWord });
   }
+  private pbpResultText(r: PitchResult): string { const l = this.pbpResultLine(r); return l ? lineText(l) : ''; }
 
   /** Follows the scene: the pitcher's delivery with the windup, each call at the plate, the result on the final pitch (or at once on Skip). */
   protected onCue(c: SceneCue) {
@@ -537,18 +560,57 @@ export class App {
     const ctx = this.pbpCtx(r);
     const lines = pitchLines(ctx, c.index);
     if (c.final) this.pbpTypeWord = lines.typeWord;
+    this.voiceCue(c, lines, r);
     if (c.moment === 'windup') { if (lines.delivery) this.pbpLine.set(lineText(lines.delivery)); return; }
     if (c.moment === 'plate' && !c.final && lines.call) { this.pbpLine.set(lineText(lines.call)); return; }
     if ((c.moment === 'plate' && c.final) || ((c.moment === 'skipped' || c.moment === 'end') && !this.pbpResult())) {
       const t = this.pbpResultText(r);
       this.pbpLine.set(t); this.pbpResult.set(t);
+      if (voiceOn()) { if (c.moment === 'skipped') voice.stop(); void voice.say(this.pbpResultLine(r), 'result', this.practiceVoice()); }
     }
+  }
+
+  // ---- Plan 50: announcer voice (practice) ----
+  /** Newest season of the matchup picks the voice and the crowd. */
+  private newestYear() { return Math.max(this.pitcher()?.year ?? 2000, this.batter()?.year ?? 2000); }
+  private practiceVoice() { return voiceFor(this.newestYear()); }
+  private introKey() { return `${this.introCtx(0)?.key ?? ''}:${this.practiceN()}`; }
+  private windupSeen = new Set<number>();
+  private spokenIntro = '';
+
+  /** On the Pitch result: the crowd starts, and every clip this at-bat will speak starts loading. */
+  private voicePitch(r: PitchResult) {
+    this.windupSeen = new Set();
+    if (!voiceOn()) return;
+    try {
+      const v = this.practiceVoice(), ctx = this.pbpCtx(r), n = ctx.count.leadUp.length;
+      voice.bedStart(bedFor(this.newestYear()));
+      const lines: (PbpLine | null)[] = [this.pbpResultLine(r)];
+      for (let i = 0; i <= n; i++) {
+        const pl = pitchLines(ctx, i);
+        if (i === n) lines.push(pl.delivery);
+        const k = pl.audio ? voice.callKey(pl.audio, v) : null;
+        if (k) lines.push({ segs: [{ p: k }], mood: 'calm' });
+      }
+      voice.prefetch(lines, v, true);
+    } catch { /* never blocks the pitch */ }
+  }
+
+  /** Voice for each scene moment (plan 50 D): calls only with windup art, the final delivery, the crowd reaction. */
+  private voiceCue(c: SceneCue, lines: ReturnType<typeof pitchLines>, r: PitchResult) {
+    if (!voiceOn()) return;
+    const v = this.practiceVoice();
+    if (c.moment === 'windup') { this.windupSeen.add(c.index); if (c.final && lines.delivery) void voice.say(lines.delivery, 'delivery', v); return; }
+    if (c.moment === 'plate' && !c.final) { if (this.windupSeen.has(c.index)) void voice.sayCall(lines.audio, v); return; }
+    if (c.moment === 'plate' && c.final) voice.react(reactionFor(r.outcome), r.seed, 0.3);
   }
 
   protected sceneDone() {
     const r = this.pending();
     if (!r) return;
     if (this.announcer() && !this.pbpResult()) this.pbpResult.set(this.pbpResultText(r));
+    // Plan 50: the next intro shown on the result screen is spoken after the result line (dropped on the next Pitch).
+    if (voiceOn()) { const v = this.practiceVoice(); for (const l of this.pbpIntroLines()) void voice.say(l, 'intro', v); this.spokenIntro = this.introKey(); }
     this.pending.set(null);
     this.result.set(r);
     this.askFeedback.set(feedbackDue('p' + Date.now(), 3));   // plan 30: from the 3rd practice pitch

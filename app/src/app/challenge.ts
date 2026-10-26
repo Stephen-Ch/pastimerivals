@@ -1,5 +1,5 @@
 import { Feedback, feedbackDue } from './feedback';
-import { Component, computed, effect, ElementRef, input, output, signal, viewChild } from '@angular/core';
+import { Component, computed, DestroyRef, effect, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { api, PlayerHit, SeasonItem } from './api';
 import { ArtManifest, eraOf, fielderArt, lookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
 import { sideLine } from './side-line';
@@ -7,7 +7,10 @@ import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
 import { PitchScene, SceneCue } from './pitch-scene';
 import { announcerOn } from './announcer-setting';
-import { intro, IntroCtx, lineText, pitchLines, rawLead, recapLines, RecapAb, resultLine } from './pbp';
+import { intro, IntroCtx, lineText, PbpLine, pitchLines, rawLead, recapLines, RecapAb, resultLine } from './pbp';
+import { bedFor, reactionFor, voice, voiceFor } from './audio';
+import { voiceOn } from './voice-setting';
+import { VoiceButton } from './voice-button';
 import { outAt } from './inning';
 import { HowSim } from './how-sim';
 import { pushEntry } from './nav';
@@ -33,7 +36,7 @@ function saveLevel(n: number) { try { localStorage.setItem(LEVEL_KEY, String(n))
 
 @Component({
   selector: 'pr-challenge',
-  imports: [PitchScene, Feedback, HowSim],
+  imports: [PitchScene, Feedback, HowSim, VoiceButton],
   templateUrl: './challenge.html',
   styleUrls: ['./app.css', './challenge.css'],
 })
@@ -186,6 +189,37 @@ export class ChallengeFlow {
       this.askFeedback.set(feedbackDue(code, 2));
     });
     effect(() => { this.step(); this.slotIndex(); this.editRank(); setTimeout(() => this.title()?.nativeElement.focus({ preventScroll: true }), 0); });
+    // Plan 50: the voice. Leaving the game screens stops everything; each game loads all its intros; the next-batter panel
+    // speaks its intro once (after a tap this visit) and starts loading that at-bat's clips.
+    voice.stopAll();
+    inject(DestroyRef).onDestroy(() => voice.stopAll());
+    effect(() => { const st = this.step(); if (st !== 'play' && st !== 'final') untracked(() => voice.stopAll()); });
+    effect(() => {
+      const g = this.game(), on = voiceOn();
+      if (!g || !on) return;
+      untracked(() => { void voice.enable().then(() => voice.prefetch(g.atBats.flatMap((_, i) => this.introLinesFor(i)), this.gameVoice())); });
+    });
+    effect(() => {
+      const n = this.nextAtBat(), st = this.step(), sc = this.scene(), on = voiceOn();
+      if (!on || st !== 'play' || sc || !n) return;
+      untracked(() => {
+        const v = this.gameVoice();
+        voice.prefetch(this.atBatLines(n), v, true);
+        if (this.spokenIntro === n.index || !voice.running()) return;
+        this.spokenIntro = n.index;
+        for (const l of this.introLinesFor(n.index)) void voice.say(l, 'intro', v);
+      });
+    });
+    effect(() => {
+      const f = this.pbpFinalLines(), on = voiceOn(), g = this.game();
+      if (!on || !f.length || !g) return;
+      untracked(() => {
+        const last = g.atBats.length - 1;
+        if (this.spokenRecap === last) return;
+        this.spokenRecap = last;
+        for (const l of f) void voice.say(l, 'recap', this.gameVoice());
+      });
+    });
     queueMicrotask(() => this.start());
   }
 
@@ -568,6 +602,7 @@ export class ChallengeFlow {
   protected async pitch() {
     const ab = this.nextAtBat();
     if (!ab || this.scene() || this.loadingArt()) return;
+    if (voiceOn()) { voice.ensure(); voice.stop(); voice.bedStart(bedFor(this.newestYear())); this.windupSeen = new Set(); }   // plan 50: before any await
     this.pbpLine.set('');
     this.lastPlay.set(null);
     const token = ++this.pitchToken;
@@ -618,15 +653,19 @@ export class ChallengeFlow {
     };
   }
 
+  /** Plan 50: intro lines of at-bat i (pitcher line when shown, batter line). */
+  private introLinesFor(i: number): PbpLine[] {
+    const ctx = this.introCtxFor(i);
+    if (!ctx) return [];
+    const prevCtx = i > 0 ? this.introCtxFor(i - 1) : null;
+    const x = intro(ctx, prevCtx ? rawLead(prevCtx) : null);
+    return [x.pitcher, x.batter].filter((l): l is PbpLine => !!l);
+  }
   /** Intro lines for the next at-bat, shown in the next-batter panel before the Pitch tap. */
   protected readonly pbpIntro = computed(() => {
     const n = this.nextAtBat();
     if (!this.announcer() || !n) return [] as string[];
-    const ctx = this.introCtxFor(n.index);
-    if (!ctx) return [];
-    const prevCtx = n.index > 0 ? this.introCtxFor(n.index - 1) : null;
-    const x = intro(ctx, prevCtx ? rawLead(prevCtx) : null);
-    return [x.pitcher ? lineText(x.pitcher) : null, lineText(x.batter)].filter((t): t is string => !!t);
+    return this.introLinesFor(n.index).map(lineText);
   });
 
   private pbpCtxFor(ab: CAtBat) {
@@ -634,12 +673,13 @@ export class ChallengeFlow {
       throws: ab.pitcher.throws, era: eraOf(ab.pitcher.year), seed: ab.seed };
   }
 
-  private pbpResultFor(ab: CAtBat): string {
+  private pbpResultLineFor(ab: CAtBat): PbpLine {
     const ctx = this.pbpCtxFor(ab);
     const d = this.deco().deco;
-    return lineText(resultLine({ key: ab.seed, index: ab.index, outcome: ab.outcome, count: ctx.count, call: this.callOf(ab),
-      play: d === '3' ? playFacts(ab, this.names()) : null, era: ctx.era, seed: ab.seed, typeWord: this.pbpTypeWord }));
+    return resultLine({ key: ab.seed, index: ab.index, outcome: ab.outcome, count: ctx.count, call: this.callOf(ab),
+      play: d === '3' ? playFacts(ab, this.names()) : null, era: ctx.era, seed: ab.seed, typeWord: this.pbpTypeWord });
   }
+  private pbpResultFor(ab: CAtBat): string { return lineText(this.pbpResultLineFor(ab)); }
 
   protected onCue(c: SceneCue) {
     const s = this.scene();
@@ -647,12 +687,49 @@ export class ChallengeFlow {
     const ctx = this.pbpCtxFor(s.ab);
     const lines = pitchLines(ctx, c.index);
     if (c.final) this.pbpTypeWord = lines.typeWord;
+    this.voiceCue(c, lines, s.ab);
     if (c.moment === 'windup') { if (lines.delivery) this.pbpLine.set(lineText(lines.delivery)); return; }
     if (c.moment === 'plate' && !c.final && lines.call) { this.pbpLine.set(lineText(lines.call)); return; }
     if ((c.moment === 'plate' && c.final) || ((c.moment === 'skipped' || c.moment === 'end') && !this.pbpResultShown)) {
       this.pbpResultShown = true;
       this.pbpLine.set(this.pbpResultFor(s.ab));
+      if (voiceOn()) { if (c.moment === 'skipped') voice.stop(); void voice.say(this.pbpResultLineFor(s.ab), 'result', this.gameVoice()); }
     }
+  }
+
+  // ---- Plan 50: announcer voice (games) ----
+  private windupSeen = new Set<number>();
+  private spokenIntro = -1;
+  private spokenRecap = -1;
+  /** Newest season among both lineups picks the voice and the crowd, fixed for the game. */
+  private readonly newestYear = computed(() => Math.max(1901, ...(this.game()?.atBats ?? []).flatMap(a => [a.batter.year, a.pitcher.year])));
+  private gameVoice() { return voiceFor(this.newestYear()); }
+  /** Every clip an at-bat may speak (calls with aliases, final delivery, result, recap). */
+  private atBatLines(ab: CAtBat): (PbpLine | null)[] {
+    try {
+      const ctx = this.pbpCtxFor(ab), v = this.gameVoice(), n = ctx.count.leadUp.length;
+      const out: (PbpLine | null)[] = [this.pbpResultLineFor(ab), ...this.recapLinesFor(ab)];
+      for (let i = 0; i <= n; i++) {
+        const pl = pitchLines(ctx, i);
+        if (i === n) out.push(pl.delivery);
+        const k = pl.audio ? voice.callKey(pl.audio, v) : null;
+        if (k) out.push({ segs: [{ p: k }], mood: 'calm' });
+      }
+      return out;
+    } catch { return []; }
+  }
+  private walkOff(ab: CAtBat) {
+    const g = this.game();
+    if (!g || !this.isInningGame() || ab.index !== g.atBats.length - 1 || ab.battingSide !== 0) return false;
+    const t = [0, 0]; g.atBats.forEach(a => (t[a.battingSide] += a.points));
+    return ab.points > 0 && t[0] > t[1];
+  }
+  private voiceCue(c: SceneCue, lines: ReturnType<typeof pitchLines>, ab: CAtBat) {
+    if (!voiceOn()) return;
+    const v = this.gameVoice();
+    if (c.moment === 'windup') { this.windupSeen.add(c.index); if (c.final && lines.delivery) void voice.say(lines.delivery, 'delivery', v); return; }
+    if (c.moment === 'plate' && !c.final) { if (this.windupSeen.has(c.index)) void voice.sayCall(lines.audio, v); return; }
+    if (c.moment === 'plate' && c.final) voice.react(reactionFor(ab.outcome, { error: ab.outType === 'error', walkOff: this.walkOff(ab) }), ab.seed, 0.3);
   }
 
   private recapAb(a: CAtBat): RecapAb {
@@ -662,7 +739,8 @@ export class ChallengeFlow {
   }
 
   /** After-play recap for the play just shown (inning games); replaces the written base line while the announcer is on. */
-  protected recapFor(lp: CAtBat | null): string[] {
+  protected recapFor(lp: CAtBat | null): string[] { return this.recapLinesFor(lp).map(lineText); }
+  private recapLinesFor(lp: CAtBat | null): PbpLine[] {
     const g = this.game();
     if (!this.announcer() || !lp || !g || !this.isInningGame()) return [];
     const after: [number, number] = [0, 0];
@@ -676,14 +754,15 @@ export class ChallengeFlow {
       lastOfGame: !next, halfEnds: !next || next.inning !== lp.inning || next.battingSide !== lp.battingSide,
       capped: (g.notes ?? []).includes(CAP_NOTE), nextIsNewHalf: !!next && (next.inning !== lp.inning || next.battingSide !== lp.battingSide),
       halfPlays, throws: lp.pitcher.throws, lastScheduledInning: 1,
-    }).map(lineText);
+    });
   }
   protected readonly pbpRecap = computed(() => this.recapFor(this.lastPlay()));
   /** The last play's recap on the final screen (walk-off, "And that's the ball game."). */
-  protected readonly pbpFinal = computed(() => {
+  private readonly pbpFinalLines = computed(() => {
     const g = this.game();
-    return g && this.step() === 'final' && this.revealed() >= g.atBats.length ? this.recapFor(g.atBats[g.atBats.length - 1] ?? null) : [];
+    return g && this.step() === 'final' && this.revealed() >= g.atBats.length ? this.recapLinesFor(g.atBats[g.atBats.length - 1] ?? null) : [];
   });
+  protected readonly pbpFinal = computed(() => this.pbpFinalLines().map(lineText));
 
   protected sceneDone() {
     const s = this.scene();
@@ -693,6 +772,7 @@ export class ChallengeFlow {
     const inn = this.view()?.mode === 'inning';
     this.lastCall.set(`${this.callOf(s.ab).text}${!inn && s.ab.points ? ` +${s.ab.points}` : ''}`);
     if (inn) this.lastPlay.set(s.ab);
+    if (voiceOn() && inn) { this.spokenRecap = s.ab.index; for (const l of this.recapLinesFor(s.ab)) void voice.say(l, 'recap', this.gameVoice()); }
     this.advance(this.revealed() + 1);
   }
 
@@ -744,9 +824,9 @@ export class ChallengeFlow {
     if (this.revealed() >= total) this.step.set('final');
   }
 
-  protected skipToFinal() { this.pitchToken++; this.scene.set(null); this.pbpLine.set(''); this.lastPlay.set(null); this.advance(this.game()?.atBats.length ?? 0); }
+  protected skipToFinal() { voice.stop(); this.pitchToken++; this.scene.set(null); this.pbpLine.set(''); this.lastPlay.set(null); this.advance(this.game()?.atBats.length ?? 0); }
 
-  protected watchAgain() { this.pitchToken++; this.scene.set(null); this.pbpLine.set(''); this.revealed.set(0); this.lastCall.set(null); this.lastPlay.set(null); if (this.current()) setWatched(this.current()!, 0); this.step.set('play'); }
+  protected watchAgain() { voice.stop(); this.spokenIntro = -1; this.spokenRecap = -1; this.pitchToken++; this.scene.set(null); this.pbpLine.set(''); this.revealed.set(0); this.lastCall.set(null); this.lastPlay.set(null); if (this.current()) setWatched(this.current()!, 0); this.step.set('play'); }
 
   protected eraOf = eraOf;
 

@@ -193,6 +193,7 @@
       <header class="bar">
         <button type="button" class="link" (click)="leave()">‹ Home</button>
         <span class="vs-line">{{ isInningGame() ? inningProgress() : progress() }}</span>
+        <pr-voice-button />
       </header>
       <div class="scoreboard">
         <span class="team-score"><span class="tname">{{ sideName(0) }}</span> <strong>{{ sc[0] }}</strong></span>

@@ -19,3 +19,5 @@ art/sprites/**/*.gif
 art/sprites/_check*.png
 __pycache__/
 _xfer/
+_audio/
+src/PastimeRivals.Api/wwwroot/audio/

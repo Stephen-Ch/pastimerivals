@@ -13,6 +13,7 @@
         <span class="bar-links">
           <button type="button" class="link how-head" (click)="info.set('how')">How it works</button>
           <button type="button" class="link" (click)="openOverlay('details')" [disabled]="!matchup()">Details</button>
+          <pr-voice-button />
         </span>
       </header>
       <main class="flex">
@@ -82,6 +83,7 @@
       <header class="bar">
         <button type="button" class="link" (click)="goBack()">‹ Matchup</button>
         <span class="vs-line">{{ pitcher()?.name }} vs {{ batter()?.name }}</span>
+        <pr-voice-button />
       </header>
       @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
       @if (announcer()) { <p class="pbp-row" aria-live="polite">{{ pbpLine() }}</p> }
@@ -96,6 +98,7 @@
       <header class="bar">
         <button type="button" class="link" (click)="goBack()">‹ Matchup</button>
         <span class="vs-line">{{ pitcher()?.name }} {{ pitcher()?.year }} vs {{ batter()?.name }} {{ batter()?.year }}</span>
+        <pr-voice-button />
       </header>
       @if (matchup()) {
         <div class="bar-odds slim" role="img" [attr.aria-label]="'Outcome probabilities: ' + topText()">

@@ -59,8 +59,16 @@ app.Use(async (ctx, next) =>
 app.UseDefaultFiles();
 // Plan 39: the app page and the few unversioned files are always checked for a newer copy; versioned files (main-*.js, art) are not touched.
 static bool AlwaysCheck(PathString p) => p.Equals("/index.html", StringComparison.OrdinalIgnoreCase) || p.Equals("/sw.js", StringComparison.OrdinalIgnoreCase)
-    || p.Equals("/manifest.webmanifest", StringComparison.OrdinalIgnoreCase) || p.Equals("/art-manifest.json", StringComparison.OrdinalIgnoreCase);
-app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = c => { if (AlwaysCheck(c.Context.Request.Path)) c.Context.Response.Headers.CacheControl = "no-cache"; } });
+    || p.Equals("/manifest.webmanifest", StringComparison.OrdinalIgnoreCase) || p.Equals("/art-manifest.json", StringComparison.OrdinalIgnoreCase)
+    || p.Equals("/voice-manifest.json", StringComparison.OrdinalIgnoreCase);   // plan 50
+// Plan 50: announcer clips carry a content hash in their name, so they never change.
+static bool Immutable(PathString p) => p.StartsWithSegments("/audio", StringComparison.OrdinalIgnoreCase);
+app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = c =>
+{
+    var path = c.Context.Request.Path;
+    if (AlwaysCheck(path)) c.Context.Response.Headers.CacheControl = "no-cache";
+    else if (Immutable(path)) c.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+} });
 app.UseRateLimiter();
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", engineVersion = EngineInfo.Version }));
