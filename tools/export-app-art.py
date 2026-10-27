@@ -39,6 +39,11 @@ def tones():
         for r in csv.DictReader(open('data/tone/tones-photo.csv', encoding='utf-8-sig')):
             if r['tone'] not in ('light', 'darkbrown'): raise SystemExit(f"bad tone in tones-photo.csv: {r}")
             t.setdefault(r['id'], r['tone'])
+    # Plan 55: SABR biography states whole-family heritage, two reviews agreed, Stephen's spot check (light only so far). Fill-only
+    if os.path.exists('data/tone/tones-sabr.csv'):
+        for r in csv.DictReader(open('data/tone/tones-sabr.csv', encoding='utf-8-sig')):
+            if r['tone'] not in ('light', 'darkbrown'): raise SystemExit(f"bad tone in tones-sabr.csv: {r}")
+            t.setdefault(r['id'], r['tone'])
     for r in csv.DictReader(open('data/tone/tones-researched.csv', encoding='utf-8-sig')):
         t.pop(r['id'], None)
         if r['tone'] in ('light', 'olive', 'mediumbrown', 'darkbrown'): t[r['id']] = r['tone']
