@@ -1,18 +1,18 @@
 {
  "batter-1901-a": {
-  "hand": false,
+  "hand": true,
   "source_sha256": "9550abb9b1c702a035aaf13ca9adb29235bb5883d002c5b55d081d7a4fdc5185"
  },
  "batter-1901-b": {
-  "hand": false,
+  "hand": true,
   "source_sha256": "3a25e4f1db24a0a80486507923f6866808273dfae161e7c5f123e058b8188586"
  },
  "batter-1920-a": {
-  "hand": false,
+  "hand": true,
   "source_sha256": "530c5e42078ca1e7f7e4b1deaa306aedbc37e75429e18a5bd20587bcea31cd7d"
  },
  "batter-1920-b": {
-  "hand": false,
+  "hand": true,
   "source_sha256": "66e464c2ac3a861c54b6c9876f71b8450c95895f23f5b3a8be17975d637e4c7f"
  },
  "batter-1946-a": {
@@ -20,11 +20,11 @@
   "source_sha256": "ac1125ed1ef5c52fef11bff90960983f9374d22111c0f18d600b4976dea8520a"
  },
  "batter-1946-b": {
-  "hand": false,
+  "hand": true,
   "source_sha256": "dbcc4ac74afbf15e503f9426630f4f2934f3ba099ff216388b127e718e248099"
  },
  "batter-1970-a": {
-  "hand": false,
+  "hand": true,
   "source_sha256": "cb578f1d66787d49fb9d0a081e9a38feb1097cae38a221cce1f92fe51e991881"
  },
  "batter-1970-b": {
@@ -44,7 +44,7 @@
   "source_sha256": "e8d6010dc5ce28f3e4159c4b960f895a1e0d5deae345383b5def668b43a06584"
  },
  "pitcher-1901-b": {
-  "hand": false,
+  "hand": true,
   "source_sha256": "466c5588fb3e89e11c00fd918a3d8562951569e52bbb59de4ed8497837db7336"
  },
  "pitcher-1920-a": {
@@ -52,19 +52,19 @@
   "source_sha256": "12319bbe280e8bba731b0197f87054b023cfc4c44fcb6e83db711ce3cb357928"
  },
  "pitcher-1920-b": {
-  "hand": false,
+  "hand": true,
   "source_sha256": "36cf061d9f225fc7c2e0132e52d6621ce3e881921be1057a4d32c1b6940c0269"
  },
  "pitcher-1946-a": {
-  "hand": false,
+  "hand": true,
   "source_sha256": "4832a2da8f419a9007652a578b5052d871009915c662d262a3b82687b897cd1d"
  },
  "pitcher-1946-b": {
-  "hand": false,
+  "hand": true,
   "source_sha256": "9268d9f9c0ea4eff4d42fabf194a92e92705eb5e6c4285af0b1e5d81c77f4791"
  },
  "pitcher-1970-a": {
-  "hand": false,
+  "hand": true,
   "source_sha256": "f323cd86d2e104c3068fa2c87ef3bff55c6086eb75f1af4d1f519b09a2f507ca"
  },
  "pitcher-1970-b": {

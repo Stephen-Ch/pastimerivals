@@ -350,7 +350,7 @@ export class App {
       const key = `${p.id}/${p.year}|${b.id}/${b.year}`;
       if (key === this.fallbackSent) return;
       const a = this.pair();
-      const detail = a ? (a.pit.line ? 'blank' : null) : 'missing';
+      const detail = a ? (a.pit.line || a.bat.line ? 'blank' : null) : 'missing';
       untracked(() => { this.fallbackSent = key; if (detail) api.event('art_fallback', this.session, detail); });
     });
     effect(() => {

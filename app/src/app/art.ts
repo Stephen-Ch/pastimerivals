@@ -45,22 +45,21 @@ export function variantFor(id: string): 'a' | 'b' {
   return h % 2 ? 'b' : 'a';
 }
 
-/** The card for one player. No researched tone (or forceLine): the blank-paper "line" card. Null only if the card is missing. */
-export function artFor(m: ArtManifest, id: string, role: Pose, era: Era, hand: string, forceLine = false): PlayerArt | null {
+/** The card for one player. No researched tone: the blank-paper "line" card. Null only if the card is missing. */
+export function artFor(m: ArtManifest, id: string, role: Pose, era: Era, hand: string): PlayerArt | null {
   const tone = m.tones?.[id];
-  const line = forceLine || !tone;
+  const line = !tone;
   const r = role === 'pit' ? 'pitcher' : 'batter';
   const t = line ? 'line' : sheetTone(tone!);
   const card = m.cards?.[`${r}/${era}/${t}/${variantFor(id)}`] ?? m.cards?.[`${r}/${era}/${t}/a`];
   return card ? { card, mirror: hand === 'L', line } : null;
 }
 
-/** One style per matchup: if either player has no tone, both get blank-paper cards (D2). Both or neither: a missing card gives null. */
+/** Plan 56 (replaces D2): each player gets his own card; only an untoned player is blank paper. A missing card gives null for both. */
 export function pairArt(m: ArtManifest | null, pit: { id: string; era: Era; hand: string }, bat: { id: string; era: Era; hand: string }): PairArt | null {
   if (!m) return null;
-  const forceLine = !m.tones?.[pit.id] || !m.tones?.[bat.id];
-  const p = artFor(m, pit.id, 'pit', pit.era, pit.hand, forceLine);
-  const b = artFor(m, bat.id, 'bat', bat.era, bat.hand, forceLine);
+  const p = artFor(m, pit.id, 'pit', pit.era, pit.hand);
+  const b = artFor(m, bat.id, 'bat', bat.era, bat.hand);
   return p && b ? { pit: p, bat: b } : null;
 }
 

@@ -37,23 +37,18 @@ describe('comic art (plan 18, plan 52)', () => {
     expect(a.card).toMatch(/^\/art\/bl[ab]\.webp$/);
   });
 
-  it('forceLine gives a toned player the blank-paper card too', () => {
-    const a = artFor(man, 'martp001', 'pit', '1990-2025', 'R', true)!;
-    expect(a.line).toBe(true);
-    expect(a.card).toMatch(/^\/art\/pl[ab]\.webp$/);
-  });
-
   it('returns null only when the card is missing', () => {
     expect(artFor(man, 'ruthb101', 'bat', '1990-2025', 'R')).toBeNull();
     expect(artFor(man, 'nobody01', 'pit', '1946-1969', 'R')).toBeNull();
   });
 
-  it('keeps one style per matchup: blank paper for both when either player has no tone', () => {
+  it('blanks only the untoned player (plan 56)', () => {
     const pit = { id: 'martp001', era: '1990-2025' as const, hand: 'R' };
     const toned = pairArt(man, pit, { id: 'ruthb101', era: '1920-1945', hand: 'L' })!;
     expect(toned.pit.line || toned.bat.line).toBe(false);
     const mixed = pairArt(man, pit, { id: 'nobody01', era: '1920-1945', hand: 'R' })!;
-    expect(mixed.pit.line && mixed.bat.line).toBe(true);
+    expect(mixed.pit.line).toBe(false);
+    expect(mixed.bat.line).toBe(true);
   });
 
   it('gives blank frames for both (null) when a card is missing or there is no manifest', () => {
