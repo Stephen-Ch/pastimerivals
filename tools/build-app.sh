@@ -25,3 +25,5 @@ else
 fi
 cp package-lock.json "$REPO/app/package-lock.json"
 echo "App built into src/PastimeRivals.Api/wwwroot"
+# Plan 52: the broken-bat card must never reach a build
+python3 "$REPO/tools/test_known_bad.py" || { echo "ERROR: known-bad scan failed"; exit 1; }

@@ -2,6 +2,8 @@
 Reads art/source/matchup (never writes there). Writes art/sprites/matchup/."""
 import glob, hashlib, json, os, re, sys
 from PIL import Image, ImageDraw
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import known_bad   # plan 52: never rewrite the fixed 1901 batter card or write the broken one
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "art", "source", "matchup")
@@ -84,7 +86,10 @@ def main():
         rec = {"era": int(era), "tone": tone, "variant": var, "source": base, "layout": layout, "splitX": sx}
         for role, box in boxes.items():
             out = os.path.join(OUT, role, key + ".webp")
-            to_card(im.crop(box)).save(out, "WEBP", quality=82, method=6)
+            if f"{role}/{key}" == "batter/1901-light-a":
+                print("kept the hand-fixed batter/1901-light-a.webp (plan 52)"); rec[role] = {"file": f"{role}/{key}.webp", "crop": list(box), "bytes": os.path.getsize(out)}; continue
+            card = to_card(im.crop(box)); known_bad.check_image(card, out)
+            card.save(out, "WEBP", quality=82, method=6)
             rec[role] = {"file": f"{role}/{key}.webp", "crop": list(box), "bytes": os.path.getsize(out)}
         index.append(rec)
     after = {f: sha(f) for f in files}

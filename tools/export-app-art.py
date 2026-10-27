@@ -2,6 +2,8 @@
 Writes app/public/art/<hashed files> and app/public/art-manifest.json. Run from the repo root."""
 import csv, glob, hashlib, io, json, os, sys
 from PIL import Image
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import known_bad   # plan 52: refuse the broken-bat card
 
 OUT = 'app/public/art'
 ERAS = {'1901': '1901-1919', '1920': '1920-1945', '1946': '1946-1969', '1970': '1970-1989', '1990': '1990-2025'}
@@ -46,7 +48,9 @@ def main():
                 for v in ('a', 'b'):
                     c = f'art/sprites/matchup/{role}/{short}-{tone}-{v}.webp'
                     if not os.path.exists(c): errors.append(f'missing {c}'); continue
-                    url, n = save_hashed(Image.open(c).convert('RGB'), f'card-{role}-{short}-{tone}-{v}', 82); total += n
+                    known_bad.check_source(c)
+                    card = Image.open(c).convert('RGB'); known_bad.check_image(card, c)
+                    url, n = save_hashed(card, f'card-{role}-{short}-{tone}-{v}', 82); total += n
                     man['cards'][f'{role}/{era}/{tone}/{v}'] = url
     # Plan 32B: side-on batter sheets, added beside the old ones (the live scene keeps the old keys until 32C)
     sm = json.load(open('art/sprites/batter-side/side-meta.json'))
