@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { App } from './app';
 import { Report } from './api';
 import { ReportView } from './report';
+import { BLANK_NOTE_TEXT } from './how-sim';
 
 const rep: Report = { id: 'nobody01', name: 'Joe Nobody', role: 'bat', year: 1927, age: 24, height: null, weight: null, bats: 'R', throws: 'R',
   position: 'RF', places: ['Boston, AL'], line: 'a line', grade: 'A', era: '1920-1945', hof: false,
@@ -66,6 +67,7 @@ describe('plan 52: app wiring', () => {
   let manifest: (() => Promise<Response>) | null = null;
 
   beforeEach(async () => {
+    history.replaceState(null, '', '/');   // other specs may leave a /c/ route behind
     localStorage.removeItem('pr_seen');   // first visit: Pedro vs Ruth load at once (no random opener)
     localStorage.setItem('pr_art_note', '1');
     events = [];
@@ -84,20 +86,23 @@ describe('plan 52: app wiring', () => {
 
   async function start() {
     const fixture = TestBed.createComponent(App);
-    for (let i = 0; i < 3; i++) { await new Promise(r => setTimeout(r, 0)); fixture.detectChanges(); await fixture.whenStable(); }
-    return { fixture, app: fixture.componentInstance as any, el: fixture.nativeElement as HTMLElement };
+    const app = fixture.componentInstance as any;
+    // wait (up to 2 s) until both reports are in, then one more round of change detection
+    for (let i = 0; i < 100 && !(app.pitcherReport() && app.batterReport()); i++) { await new Promise(r => setTimeout(r, 20)); fixture.detectChanges(); }
+    await new Promise(r => setTimeout(r, 0)); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    return { fixture, app, el: fixture.nativeElement as HTMLElement };
   }
 
   it('shows the shimmer while the manifest is still loading', async () => {
     manifest = () => new Promise<Response>(() => undefined);   // never settles
-    const { el } = await start();
-    expect(el.querySelectorAll('.pcard .skeleton').length).toBe(2);
+    const { el, app } = await start();
+    expect(el.querySelectorAll('.pcard .skeleton').length, dbg(app)).toBe(2);
     expect(el.querySelectorAll('.pcard svg').length).toBe(0);
   });
 
   it('a failed manifest gives static blank frames and one art_fallback "missing" per pair', async () => {
     const { el, app, fixture } = await start();
-    expect(el.querySelectorAll('.pcard .pblank').length).toBe(2);
+    expect(el.querySelectorAll('.pcard .pblank').length, dbg(app)).toBe(2);
     expect(el.querySelector('.pcard .pblank.skeleton')).toBeNull();
     await app.load(); fixture.detectChanges(); await fixture.whenStable();
     expect(events.filter(e => e.name === 'art_fallback')).toEqual([{ name: 'art_fallback', session: expect.any(String), source: 'missing' }]);
@@ -109,6 +114,7 @@ describe('plan 52: app wiring', () => {
     app.returnFocus = back;
     app.whyBlank();   // the card is not open in this test, so this runs the close handler itself
     expect(app.info()).toBe('blank');
+    expect(BLANK_NOTE_TEXT).toContain('race or skin color');
     expect(events.some(e => e.name === 'art_blank_why')).toBe(true);
     app.closeInfo();
     await Promise.resolve();
@@ -129,3 +135,5 @@ describe('plan 52: app wiring', () => {
   });
 });
 
+
+function dbg(app: any) { return JSON.stringify({ p: app.pitcher(), b: app.batter(), pr: !!app.pitcherReport(), err: app.error(), st: app.manifestState(), seen: localStorage.getItem('pr_seen'), ch: app.challenge?.(), screen: app.screen?.(), html: document.body.innerHTML.length, cards: document.querySelectorAll(".pcard").length, text: (document.body.textContent||"").slice(0,200) }); }

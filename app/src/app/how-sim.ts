@@ -8,8 +8,8 @@ import { setVoice, voiceOn } from './voice-setting';
 export type InfoKind = 'how' | 'sim' | 'art' | 'artIntro' | 'blank';
 export const ART_NOTE_TEXT = 'Real players\' faces belong to them and their families, so we chose not to draw them. Team uniforms and logos belong to the clubs, so ours are made up in the style of each era. Every matchup is built from the players\' real stats.';
 
-/** Plan 52: blank-paper cards (draft wording; Stephen approves, may wait for the lawyer). */
-export const BLANK_NOTE_TEXT = 'Blank faces are players we haven\'t researched yet. We don\'t guess what a real player looked like.';
+/** Plan 52: blank-paper cards (wording approved by Stephen, Oct 27). */
+export const BLANK_NOTE_TEXT = 'We don\'t guess a player\'s race or skin color. If we haven\'t found a reliable source for it, we leave it blank.';
 
 export const RETROSHEET_NOTICE = 'The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.';
 

@@ -25,6 +25,10 @@ def tones():
         for r in csv.DictReader(open(f, encoding='utf-8-sig')):
             if r['category'] == 'White': t[r['id']] = 'light'
             elif r['category'] == 'African American': t[r['id']] = 'darkbrown'
+    # Plan 52D: Negro Leagues 1933-1948 players, toned by league membership (segregated leagues); research below overrides
+    for r in csv.DictReader(open('data/tone/tones-ngl.csv', encoding='utf-8-sig')):
+        if r['tone'] not in ('light', 'olive', 'mediumbrown', 'darkbrown'): raise SystemExit(f"bad tone in tones-ngl.csv: {r}")
+        t[r['id']] = r['tone']
     for r in csv.DictReader(open('data/tone/tones-researched.csv', encoding='utf-8-sig')):
         t.pop(r['id'], None)
         if r['tone'] in ('light', 'olive', 'mediumbrown', 'darkbrown'): t[r['id']] = r['tone']
@@ -51,6 +55,18 @@ def cards_only(keys):
         old = man['cards'].get(k)
         man['cards'][k] = url
         print(f'{k} -> {url} ({n} bytes)' + (f' (was {old})' if old and old != url else ''))
+    json.dump(man, open(path, 'w'), separators=(',', ':'))
+
+def tones_only(allow_changes):
+    """Plan 52D: recompute the tone list and patch only manifest['tones']. Refuses removals or changes unless allowed."""
+    path = 'app/public/art-manifest.json'
+    man = json.load(open(path)); old = man['tones']; new = tones()
+    added = [k for k in new if k not in old]
+    removed = [k for k in old if k not in new]
+    changed = [k for k in new if k in old and new[k] != old[k]]
+    print(f'tones: {len(old)} -> {len(new)}; added {len(added)}, removed {len(removed)}, changed {len(changed)}')
+    if (removed or changed) and not allow_changes: raise SystemExit(f'refused: removed {removed[:10]} changed {changed[:10]} (use --allow-changes)')
+    man['tones'] = new
     json.dump(man, open(path, 'w'), separators=(',', ':'))
 
 def main():
@@ -111,6 +127,7 @@ def main():
     if errors: print('ERRORS', errors); sys.exit(1)
 
 if __name__ == '__main__':
-    if '--cards-only' in sys.argv: cards_only(sys.argv[sys.argv.index('--cards-only') + 1:])
+    if '--tones-only' in sys.argv: tones_only('--allow-changes' in sys.argv)
+    elif '--cards-only' in sys.argv: cards_only(sys.argv[sys.argv.index('--cards-only') + 1:])
     elif '--full' in sys.argv: main()   # deletes every webp and rebuilds everything: banned until the fielder source is fixed (plan 52)
     else: print('usage: export-app-art.py --cards-only <manifest key>... | --full'); sys.exit(2)
