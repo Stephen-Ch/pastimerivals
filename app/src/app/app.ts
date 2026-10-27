@@ -1,7 +1,6 @@
 import { HowSim, InfoKind } from './how-sim';
 import { isCold, navDepth, pushEntry, stampBase } from './nav';
 import { Component, computed, effect, ElementRef, inject, signal, untracked, viewChild } from '@angular/core';
-import { DomSanitizer } from '@angular/platform-browser';
 import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResult } from './api';
 import { ReportView } from './report';
 import { ChallengeFlow } from './challenge';
@@ -15,7 +14,7 @@ import { bedFor, reactionFor, voice, voiceFor } from './audio';
 import { voiceOn } from './voice-setting';
 import { VoiceButton } from './voice-button';
 import { SceneCue } from './pitch-scene';
-import { ArtManifest, Era, eraOf, fielderArt, figure, isFirstVisit, lookOf, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, SideLook, WindupArt, windupArt } from './art';
+import { ArtManifest, Era, eraOf, fielderArt, isFirstVisit, lookOf, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, SideLook, WindupArt, windupArt } from './art';
 import { artNoteDue, artNoteShownThisVisit, markArtNoteShown } from './art-note';
 import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
@@ -109,6 +108,8 @@ export class App {
   protected reload() { location.reload(); }  // result known, animation playing
   private readonly dialog = viewChild<ElementRef<HTMLDialogElement>>('reportDialog');
   private returnFocus: HTMLElement | null = null;
+  private closedForNote = false;   // plan 52
+  private fallbackSent = '';       // plan 52: report pair the art_fallback event was sent for
 
   private readonly session = sessionId();
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -202,7 +203,6 @@ export class App {
   protected readonly rate3 = rate3;
   protected readonly simLine = computed(() => { const s = this.sims(); return s ? battingLine(s.counts, s.n) : null; });
   private readonly screenTitle = viewChild<ElementRef<HTMLElement>>('screenTitle');
-  private readonly sanitizer = inject(DomSanitizer);
   private playPushed = false;     // history entry for the at-bat/result screens
   private overlayPushed = false;  // history entry for an open pop-up (details, why, picker)
 
@@ -218,11 +218,6 @@ export class App {
     const l = this.simLine();
     return l ? `${rate3(l.avg)} average, ${l.hr} HR, ${l.k} K in 1,000 tries` : '';
   });
-
-  // Our own generated SVG from fixed parameters only, so it is safe to trust.
-  protected figureFor(r: Report) {
-    return this.sanitizer.bypassSecurityTrustHtml(figure(eraOf(r.year), r.role, r.role === 'pit' ? r.throws : (r.bats === 'L' ? 'L' : 'R')));
-  }
 
   protected retry() { this.load(); }
 
@@ -276,7 +271,11 @@ export class App {
 
   // ---- Plan 18: comic art ----
   protected readonly manifest = signal<ArtManifest | null>(null);
-  /** Art for both players of the current matchup, or null (then both use drawn figures). */
+  /** Plan 52: loading until the manifest fetch settles; failed = no art at all (tiles show a blank frame). */
+  protected readonly manifestState = signal<'loading' | 'ok' | 'failed'>('loading');
+  /** Plan 52: a tile image that failed to load (reset whenever the pair changes). */
+  protected readonly tileFailed = signal(false);
+  /** Art for both players of the current matchup, or null (manifest not ready, or a card missing: blank frames). */
   protected readonly pair = computed<PairArt | null>(() => {
     const p = this.pitcherReport(), b = this.batterReport();
     if (!p || !b) return null;
@@ -337,12 +336,23 @@ export class App {
     });
     effect(() => {
       const m = this.matchup(), sc = this.screen();
-      if (!m || !this.pitcherReport() || !this.batterReport() || sc !== 'matchup' || this.challenge() !== undefined) return;   // plan 51: players are on screen (card art or fallback figure)
+      if (!m || !this.pitcherReport() || !this.batterReport() || sc !== 'matchup' || this.challenge() !== undefined) return;   // plan 51: players are on screen (card art or blank frame)
       untracked(() => this.maybeShowArtNote('home'));
     });
     const manifestLoad: Promise<ArtManifest | null> = (typeof fetch === 'function' ? fetch('/art-manifest.json') : Promise.reject())
       .then(r => (r.ok ? r.json() : null)).then(m => (m && m.tones && m.sheets && m.cards ? (m as ArtManifest) : null)).catch(() => null);
-    manifestLoad.then(m => this.manifest.set(m));
+    manifestLoad.then(m => { this.manifest.set(m); this.manifestState.set(m ? 'ok' : 'failed'); });
+    effect(() => { this.pair(); this.tileFailed.set(false); });
+    // Plan 52: one art_fallback per pair of reports, once the manifest state is known ('blank' or 'missing').
+    effect(() => {
+      const st = this.manifestState(), p = this.pitcherReport(), b = this.batterReport();
+      if (st === 'loading' || !p || !b) return;
+      const key = `${p.id}/${p.year}|${b.id}/${b.year}`;
+      if (key === this.fallbackSent) return;
+      const a = this.pair();
+      const detail = a ? (a.pit.line ? 'blank' : null) : 'missing';
+      untracked(() => { this.fallbackSent = key; if (detail) api.event('art_fallback', this.session, detail); });
+    });
     effect(() => {
       const a = this.pair();
       this.artOk.set(false);
@@ -420,7 +430,6 @@ export class App {
       api.event('matchup_view', this.session);
       const [br, pr] = await Promise.all([api.card(p.b, p.by, 'bat'), api.card(p.p, p.py, 'pit')]);
       this.batterReport.set(br); this.pitcherReport.set(pr);
-      if (this.manifest() && !this.pair()) api.event('art_fallback', this.session);
     } catch (e) { this.error.set((e as Error).message); }
     finally { this.busy.set(false); }
   }
@@ -484,8 +493,9 @@ export class App {
     this.load();
   }
 
-  protected openInfo(kind: InfoKind, afterClose: (() => void) | null = null) {
-    if (!this.info() && typeof document !== 'undefined') this.infoReturnFocus = document.activeElement as HTMLElement | null;
+  protected openInfo(kind: InfoKind, afterClose: (() => void) | null = null, returnTo: HTMLElement | null = null) {
+    if (kind === 'blank' && this.info()) return;   // plan 52: never replace a note (or its afterClose) that is already open
+    if (!this.info()) this.infoReturnFocus = returnTo ?? (typeof document !== 'undefined' ? document.activeElement as HTMLElement | null : null);
     this.infoAfterClose = afterClose;
     this.info.set(kind);
   }
@@ -731,7 +741,22 @@ export class App {
 
   protected onDialogClosed() {
     this.popup.set(null);
+    const forNote = this.closedForNote;
+    this.closedForNote = false;   // plan 52: cleared every time, so a normal close never opens the note
+    if (forNote) {
+      api.event('art_blank_why', this.session);
+      this.openInfo('blank', null, this.returnFocus);
+      return;
+    }
     this.returnFocus?.focus();
+  }
+
+  /** Plan 52: "Why no face?" on a blank-paper card closes the card first (it sits on top of everything), then opens the note. */
+  protected whyBlank() {
+    this.closedForNote = true;
+    const d = this.dialog()?.nativeElement;
+    if (d?.open) d.close();   // its close event runs onDialogClosed
+    else this.onDialogClosed();
   }
 
   protected onDialogClick(ev: MouseEvent) {

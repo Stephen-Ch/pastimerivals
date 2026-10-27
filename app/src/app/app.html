@@ -29,12 +29,12 @@
                   <span class="prole">{{ role === 'pit' ? 'Pitcher' : 'Batter' }}</span>
                   @if (!c) {
                     <span class="pempty">Pick a {{ role === 'pit' ? 'pitcher' : 'batter' }}</span>
-                  } @else if (!rep) {
+                  } @else if (!rep || manifestState() === 'loading') {
                     <span class="pimg skeleton" aria-hidden="true"></span>
-                  } @else if (a) {
-                    <img class="pimg" [class.mirror]="a.mirror" [src]="a.card" alt="" decoding="async">
+                  } @else if (a && !tileFailed()) {
+                    <img class="pimg" [class.mirror]="a.mirror" [src]="a.card" alt="" decoding="async" (error)="tileFailed.set(true)">
                   } @else {
-                    <span class="pimg pfig" [innerHTML]="figureFor(rep)" aria-hidden="true"></span>
+                    <span class="pimg pblank" aria-hidden="true"></span>
                   }
                   <span class="pchange" aria-hidden="true">Change</span>
                 </span>
@@ -250,7 +250,7 @@
 <dialog #reportDialog class="report-dialog" (close)="onDialogClosed()" (click)="onDialogClick($event)" aria-label="Scouting report">
   @if (popup(); as r) {
     <div class="dialog-body">
-      <pr-report [report]="r" [card]="cardFor(r)?.card ?? null" [cardMirror]="cardFor(r)?.mirror ?? false" (wrongLook)="wrongLook()" />
+      <pr-report [report]="r" [card]="cardFor(r)?.card ?? null" [cardMirror]="cardFor(r)?.mirror ?? false" [line]="cardFor(r)?.line ?? false" (wrongLook)="wrongLook()" (whyBlank)="whyBlank()" />
       <button type="button" class="close" (click)="closeReport()">Close</button>
     </div>
   }

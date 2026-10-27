@@ -1,7 +1,5 @@
-import { Component, computed, inject, input, output, signal } from '@angular/core';
-import { DomSanitizer } from '@angular/platform-browser';
+import { Component, computed, input, output, signal } from '@angular/core';
 import { Report } from './api';
-import { Era, figure } from './art';
 
 /** Scouting report (plan 10). Not styled as a trading card: no border banner, numbers or rarity. */
 @Component({
@@ -10,10 +8,10 @@ import { Era, figure } from './art';
     @let r = report();
     <article class="rep" [class.compact]="compact()" [class.back]="flipped()">
       @if (!flipped()) {
-        @if (card(); as c) {
-          <div class="art card"><img [src]="c" [class.mirror]="cardMirror()" [alt]="'Illustrated ' + (r.role === 'pit' ? 'pitcher' : 'batter') + ' in a ' + r.era + ' uniform'" width="480" height="720" decoding="async"/></div>
+        @if (shownCard(); as c) {
+          <div class="art card"><img [src]="c" [class.mirror]="cardMirror()" [alt]="'Illustrated ' + (r.role === 'pit' ? 'pitcher' : 'batter') + (line() ? ', face not shown,' : '') + ' in a ' + r.era + ' uniform'" width="480" height="720" decoding="async" (error)="failedSrc.set(c)"/></div>
         } @else {
-          <div class="art" [innerHTML]="art()"></div>
+          <div class="art blank" aria-hidden="true"></div>
         }
         <div class="id">
           <h3>{{ r.name }}</h3>
@@ -44,8 +42,12 @@ import { Era, figure } from './art';
           </dl>
         </div>
       }
-      @if (!compact() && card() && !flipped()) {
-        <button type="button" class="wrong" (click)="reportLook()">{{ lookSent() ? 'Thanks, noted' : 'Wrong look? Tell us' }}</button>
+      @if (!compact() && shownCard() && !flipped()) {
+        @if (line()) {
+          <button type="button" class="wrong" (click)="whyBlank.emit()">Why no face?</button>
+        } @else {
+          <button type="button" class="wrong" (click)="reportLook()">{{ lookSent() ? 'Thanks, noted' : 'Wrong look? Tell us' }}</button>
+        }
       }
       @if (!compact()) {
         <button type="button" class="flip" (click)="flipped.set(!flipped())">{{ flipped() ? 'Show front' : 'Show stats' }}</button>
@@ -56,6 +58,7 @@ import { Era, figure } from './art';
     .rep { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: grid; gap: 8px; color: var(--text-primary); }
     .art { background: var(--paper); border-radius: 8px; aspect-ratio: 3 / 4; display: grid; place-items: center; overflow: hidden; }
     .art :first-child { width: 100%; height: 100%; }
+    .art.blank { aspect-ratio: 2 / 3; border: 3px solid #2b2a28; border-radius: 6px; }   /* plan 52: no card or it failed */
     .compact { padding: 8px; gap: 4px; }
     .art.card, .compact .art.card { aspect-ratio: 2 / 3; border: 3px solid #2b2a28; border-radius: 6px; background: #2b2a28; }
     .art.card img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -79,20 +82,18 @@ import { Era, figure } from './art';
 export class ReportView {
   readonly report = input.required<Report>();
   readonly compact = input(false);
-  /** Plan 18: comic card image (null keeps the drawn figure). */
+  /** Plan 18: comic card image (null shows a blank paper frame, plan 52). */
   readonly card = input<string | null>(null);
+  /** Plan 52: blank-paper card (no researched tone): "Why no face?" replaces "Wrong look?". */
+  readonly line = input(false);
+  readonly whyBlank = output<void>();
+  protected readonly failedSrc = signal<string | null>(null);
+  protected readonly shownCard = computed(() => { const c = this.card(); return c && c !== this.failedSrc() ? c : null; });
   readonly cardMirror = input(false);
   readonly wrongLook = output<string>();
   protected readonly lookSent = signal(false);
   protected reportLook() { if (!this.lookSent()) { this.lookSent.set(true); this.wrongLook.emit(this.report().id); } }
   protected readonly flipped = signal(false);
-  private readonly sanitizer = inject(DomSanitizer);
-
-  // Our own generated SVG from fixed parameters only, so it is safe to trust.
-  protected readonly art = computed(() => {
-    const r = this.report();
-    return this.sanitizer.bypassSecurityTrustHtml(figure(r.era as Era, r.role, r.role === 'pit' ? r.throws : (r.bats === 'L' ? 'L' : 'R')));
-  });
 
   protected hand(h: string) { return h === 'L' ? 'left' : h === 'R' ? 'right' : h === 'B' ? 'both' : 'unknown'; }
   // League average sits at one third of the bar; 3x league fills it.

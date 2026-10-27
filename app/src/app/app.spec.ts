@@ -44,7 +44,8 @@ describe('App', () => {
     expect(el.textContent).toContain('Out in play 36%');
     expect(el.textContent).toContain('Strikeout 30%');
     expect(el.textContent).toContain('20 Sunset Rd., Newark, DE 19711');
-    expect(el.querySelectorAll('.pcard svg').length).toBe(2);   // no art in tests: drawn figures
+    expect(el.querySelectorAll('.pcard svg').length).toBe(0);   // plan 52: never a drawn figure
+    expect(el.querySelectorAll('.pcard .pblank').length).toBe(2);   // no manifest in tests: blank frames
     expect(el.textContent).toContain('Change');
   });
 

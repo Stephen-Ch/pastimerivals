@@ -8,6 +8,8 @@ import known_bad   # plan 52: refuse the broken-bat card
 OUT = 'app/public/art'
 ERAS = {'1901': '1901-1919', '1920': '1920-1945', '1946': '1946-1969', '1970': '1970-1989', '1990': '1990-2025'}
 SHEET_TONES = ('light', 'darkbrown')
+CARD_TONES = SHEET_TONES + ('line',)   # plan 52
+SHORT_OF = {era: short for short, era in ERAS.items()}
 CELL_W, CELL_H, PADX = 360, 480, 2
 
 def save_hashed(img, stem, quality):
@@ -28,6 +30,29 @@ def tones():
         if r['tone'] in ('light', 'olive', 'mediumbrown', 'darkbrown'): t[r['id']] = r['tone']
     return t
 
+def export_card(role, short, tone, v):
+    c = f'art/sprites/matchup/{role}/{short}-{tone}-{v}.webp'
+    if not os.path.exists(c): raise FileNotFoundError(f'missing {c}')
+    known_bad.check_source(c)
+    card = Image.open(c).convert('RGB'); known_bad.check_image(card, c)
+    return save_hashed(card, f'card-{role}-{short}-{tone}-{v}', 82)
+
+def cards_only(keys):
+    """Plan 52: save only the named cards (manifest keys like batter/1901-1919/line/a) and patch only those keys.
+    No deletes; tones, sheets, side and fielder entries are left exactly as they are."""
+    path = 'app/public/art-manifest.json'
+    man = json.load(open(path))
+    for k in keys:
+        try: role, era, tone, v = k.split('/')
+        except ValueError: raise SystemExit(f'bad key {k} (want role/era/tone/a|b)')
+        if role not in ('pitcher', 'batter') or era not in SHORT_OF or tone not in CARD_TONES or v not in ('a', 'b'):
+            raise SystemExit(f'bad key {k}')
+        url, n = export_card(role, SHORT_OF[era], tone, v)
+        old = man['cards'].get(k)
+        man['cards'][k] = url
+        print(f'{k} -> {url} ({n} bytes)' + (f' (was {old})' if old and old != url else ''))
+    json.dump(man, open(path, 'w'), separators=(',', ':'))
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     for old in glob.glob(os.path.join(OUT, '*.webp')): os.remove(old)
@@ -45,13 +70,13 @@ def main():
                     sheet.paste(src.crop((i * CELL_W, 0, (i + 1) * CELL_W, CELL_H)), (i * (CELL_W + 2 * PADX) + PADX, 0))
                 url, n = save_hashed(sheet, f'{role}-{short}-{tone}', 80); total += n
                 man['sheets'][f'{role}/{era}/{tone}'] = url
+    for role in ('pitcher', 'batter'):   # plan 52: cards loop on its own; 'line' = blank-paper card (no sheet)
+        for short, era in ERAS.items():
+            for tone in CARD_TONES:
                 for v in ('a', 'b'):
-                    c = f'art/sprites/matchup/{role}/{short}-{tone}-{v}.webp'
-                    if not os.path.exists(c): errors.append(f'missing {c}'); continue
-                    known_bad.check_source(c)
-                    card = Image.open(c).convert('RGB'); known_bad.check_image(card, c)
-                    url, n = save_hashed(card, f'card-{role}-{short}-{tone}-{v}', 82); total += n
-                    man['cards'][f'{role}/{era}/{tone}/{v}'] = url
+                    try: url, n = export_card(role, short, tone, v)
+                    except FileNotFoundError as e: errors.append(str(e)); continue
+                    total += n; man['cards'][f'{role}/{era}/{tone}/{v}'] = url
     # Plan 32B: side-on batter sheets, added beside the old ones (the live scene keeps the old keys until 32C)
     sm = json.load(open('art/sprites/batter-side/side-meta.json'))
     side = {'cell': sm['cell'], 'footY': sm['footY'], 'sheets': {}, 'frames': {}}
@@ -86,4 +111,6 @@ def main():
     if errors: print('ERRORS', errors); sys.exit(1)
 
 if __name__ == '__main__':
-    main()
+    if '--cards-only' in sys.argv: cards_only(sys.argv[sys.argv.index('--cards-only') + 1:])
+    elif '--full' in sys.argv: main()   # deletes every webp and rebuilds everything: banned until the fielder source is fixed (plan 52)
+    else: print('usage: export-app-art.py --cards-only <manifest key>... | --full'); sys.exit(2)

@@ -5,8 +5,11 @@ import { parkOn, setPark } from './park-setting';
 import { setVoice, voiceOn } from './voice-setting';
 
 /** Plan 38/39: short info sheets over the current screen. */
-export type InfoKind = 'how' | 'sim' | 'art' | 'artIntro';
+export type InfoKind = 'how' | 'sim' | 'art' | 'artIntro' | 'blank';
 export const ART_NOTE_TEXT = 'Real players\' faces belong to them and their families, so we chose not to draw them. Team uniforms and logos belong to the clubs, so ours are made up in the style of each era. Every matchup is built from the players\' real stats.';
+
+/** Plan 52: blank-paper cards (draft wording; Stephen approves, may wait for the lawyer). */
+export const BLANK_NOTE_TEXT = 'Blank faces are players we haven\'t researched yet. We don\'t guess what a real player looked like.';
 
 export const RETROSHEET_NOTICE = 'The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.';
 
@@ -19,6 +22,10 @@ export const RETROSHEET_NOTICE = 'The information used here was obtained free of
           @case ('artIntro') {
             <h2 #title id="how-title" tabindex="-1">Why don't the players look like the real ones?</h2>
             <p>{{ artNote }}</p>
+          }
+          @case ('blank') {
+            <h2 #title id="how-title" tabindex="-1">Why no face?</h2>
+            <p>{{ blankNote }}</p>
           }
           @case ('sim') {
             <h2 #title id="how-title" tabindex="-1">Simulate 1,000</h2>
@@ -91,6 +98,7 @@ export class HowSim implements AfterViewInit {
   readonly more = output<void>();
   protected readonly notice = RETROSHEET_NOTICE;
   protected readonly artNote = ART_NOTE_TEXT;
+  protected readonly blankNote = BLANK_NOTE_TEXT;
   private readonly title = viewChild<ElementRef<HTMLElement>>('title');
   private readonly card = viewChild<ElementRef<HTMLElement>>('howCard');
   protected readonly on = announcerOn;
