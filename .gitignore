@@ -21,3 +21,4 @@ __pycache__/
 _xfer/
 _audio/
 src/PastimeRivals.Api/wwwroot/audio/
+data/tone/_wiki-cache/

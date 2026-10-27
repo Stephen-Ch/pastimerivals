@@ -29,6 +29,11 @@ def tones():
     for r in csv.DictReader(open('data/tone/tones-ngl.csv', encoding='utf-8-sig')):
         if r['tone'] not in ('light', 'olive', 'mediumbrown', 'darkbrown'): raise SystemExit(f"bad tone in tones-ngl.csv: {r}")
         t[r['id']] = r['tone']
+    # Plan 53: Wikipedia category "African-American baseball players" (tools/tone-wiki-lookup.py); research below overrides
+    if os.path.exists('data/tone/tones-wiki.csv'):
+        for r in csv.DictReader(open('data/tone/tones-wiki.csv', encoding='utf-8-sig')):
+            if r['tone'] != 'darkbrown': raise SystemExit(f"bad tone in tones-wiki.csv: {r}")
+            t[r['id']] = r['tone']
     for r in csv.DictReader(open('data/tone/tones-researched.csv', encoding='utf-8-sig')):
         t.pop(r['id'], None)
         if r['tone'] in ('light', 'olive', 'mediumbrown', 'darkbrown'): t[r['id']] = r['tone']
