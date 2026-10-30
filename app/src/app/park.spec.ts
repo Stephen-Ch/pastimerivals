@@ -320,3 +320,44 @@ describe('plan 59 r1b: camera unchanged off the sky-only frames', () => {
     expect({ hash: fnv(out.join('|')), kept: out.length }).toEqual({ hash: '1601bd57', kept: 111286 });
   });
 });
+
+// Plan 59 Round 1b test 5: no frame run of only sky over 0.3 s (pops and high fouls exempt: the ball wins), at a portrait
+// stage (0.75) and today's panel (1.58), painter width 480 x aspect. Ball and fielder stay in frame at 0.75 too.
+describe('plan 59 r1b: camera at any stage shape', () => {
+  const MANY = cases(500).map(build);
+  const frames = (p: ParkPlay) => Array.from({ length: Math.round(p.len * 30) + 1 }, (_, i) => Math.min(p.len, i / 30));
+  it('no sky-only run over 0.3 s except pops and fouls, aspects 0.75 and 1.58', { timeout: 30_000 }, () => {
+    const bad: string[] = [];
+    for (const aspect of [0.75, 760 / 480]) for (const p of MANY) {
+      if (p.kind === 'pop' || p.kind === 'foul') continue;
+      let run = 0, worst = 0;
+      for (const t of frames(p)) { run = skyOnly(cameraAt(p, t, aspect), aspect, p.look) ? run + 1 : 0; worst = Math.max(worst, run); }
+      if (worst / 30 > 0.3) bad.push(`${aspect.toFixed(2)} ${p.kind} ${(worst / 30).toFixed(2)}s`);
+    }
+    expect(bad.length, bad.slice(0, 8).join('; ')).toBe(0);
+  });
+  it('the ball stays inside the frame at 0.75 (painter 360 x 480)', () => {
+    const w = 480 * 0.75;
+    for (const c of ALL) {
+      const p = build(c);
+      for (const t of frames(p)) {
+        const b = ballAt(p, t), s = project(cameraAt(p, t, 0.75), w, 480, b[0], b[1], b[2]);
+        expect(s, `${p.kind} t=${t}`).not.toBeNull();
+        expect(s![0], `${p.kind} ${c.call.text} t=${t}`).toBeGreaterThanOrEqual(0); expect(s![0], `${p.kind} t=${t}`).toBeLessThanOrEqual(w);
+        expect(s![1], `${p.kind} ${c.call.text} t=${t}`).toBeGreaterThanOrEqual(0); expect(s![1]).toBeLessThanOrEqual(480);
+      }
+    }
+  });
+  it('the fielder is in frame at the catch or pick-up at 0.75', () => {
+    const w = 480 * 0.75;
+    for (const c of ALL) {
+      const p = build(c);
+      if (!p.touch || !p.named || p.noTurn) continue;
+      const f = fielderAt(p.fielders.find(x => x.pos === p.named)!, p.touchT);
+      const s = project(cameraAt(p, p.touchT, 0.75), w, 480, f.at[0], f.at[1], 3);
+      expect(s, p.kind).not.toBeNull();
+      expect(s![0], `${p.kind} ${c.call.text}`).toBeGreaterThan(0); expect(s![0]).toBeLessThan(w);
+      expect(s![1], `${p.kind} ${c.call.text}`).toBeGreaterThan(0); expect(s![1]).toBeLessThan(480);
+    }
+  });
+});
