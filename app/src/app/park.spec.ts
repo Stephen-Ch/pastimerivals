@@ -300,11 +300,11 @@ describe('plan 59 determinism golden', () => {
   });
 });
 
-// Plan 59 Round 1b test 1 (characterize): at today's 760:480 panel the camera is unchanged on every frame that is not
-// sky-only. The sky fix (rule 6) may only touch frames where today's camera shows nothing but sky.
-describe('plan 59 r1b: camera unchanged off the sky-only frames', () => {
+// Plan 59 Round 1b test 1 (characterize): at today's 760:480 panel the camera is unchanged. The card allowed changes on
+// sky-only frames for a sky fix; none was needed (only pops and fouls go sky-only, and they are exempt), so every frame is hashed.
+describe('plan 59 r1b: camera unchanged at the 760:480 panel', () => {
   const fnv = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); };
-  it('hash of cameraAt(p, t, 760/480) over the grid, sky-only frames left out', () => {
+  it('hash of cameraAt(p, t, 760/480) over every frame of the grid (no sky fix was built, so nothing may change)', () => {
     const out: string[] = [];
     let sky = 0, n = 0;
     for (const c of ALL) {
@@ -312,12 +312,12 @@ describe('plan 59 r1b: camera unchanged off the sky-only frames', () => {
       for (let i = 0; i <= Math.round(p.len * 30); i++) {
         const t = Math.min(p.len, i / 30), cam = cameraAt(p, t, W / H);
         n++;
-        if (skyOnly(cam, W / H, p.look)) { sky++; continue; }
+        if (skyOnly(cam, W / H, p.look)) sky++;
         out.push(`${cam.yaw},${cam.pitch},${cam.fov}`);
       }
     }
     console.log(`plan 59 r1b test 1: ${n} frames, ${sky} sky-only`);
-    expect({ hash: fnv(out.join('|')), kept: out.length }).toEqual({ hash: '1601bd57', kept: 111286 });
+    expect({ hash: fnv(out.join('|')), kept: out.length }).toEqual({ hash: '1d9a19ad', kept: 114226 });   // hash taken on 72545a1's cameraAt
   });
 });
 
@@ -358,6 +358,29 @@ describe('plan 59 r1b: camera at any stage shape', () => {
       expect(s, p.kind).not.toBeNull();
       expect(s![0], `${p.kind} ${c.call.text}`).toBeGreaterThan(0); expect(s![0]).toBeLessThan(w);
       expect(s![1], `${p.kind} ${c.call.text}`).toBeGreaterThan(0); expect(s![1]).toBeLessThan(480);
+    }
+  });
+});
+
+// Review fix (Part A): on narrow stages the lens never goes past 70 degrees vertical or 80 horizontal (no fisheye on pops
+// hit straight back); the camera turns a little instead, so the ball stays in frame (Stephen: on pops the ball wins).
+describe('plan 59 r1b: lens limits on narrow stages', () => {
+  const frames = (p: ParkPlay) => Array.from({ length: Math.round(p.len * 30) + 1 }, (_, i) => Math.min(p.len, i / 30));
+  const vdeg = (fov: number, a: number) => 2 * Math.atan(Math.tan((fov * Math.PI) / 360) / a) * 180 / Math.PI;
+  it('vertical at most 70, horizontal at most 80, ball in frame, at aspects 0.6, 0.75 and 1.5834', () => {
+    for (const a of [0.6, 0.75, 1.5834]) {
+      const w = 480 * a;
+      for (const c of ALL) {
+        const p = build(c);
+        for (const t of frames(p)) {
+          const cam = cameraAt(p, t, a), b = ballAt(p, t), s = project(cam, w, 480, b[0], b[1], b[2]);
+          expect(cam.fov, `${a} ${p.kind} t=${t}`).toBeLessThanOrEqual(80 + 1e-9);
+          expect(vdeg(cam.fov, a), `${a} ${p.kind} t=${t}`).toBeLessThanOrEqual(70 + 1e-9);
+          expect(s, `${a} ${p.kind} t=${t}`).not.toBeNull();
+          expect(s![0], `${a} ${p.kind} t=${t}`).toBeGreaterThanOrEqual(0); expect(s![0], `${a} ${p.kind} t=${t}`).toBeLessThanOrEqual(w);
+          expect(s![1], `${a} ${p.kind} t=${t}`).toBeGreaterThanOrEqual(0); expect(s![1], `${a} ${p.kind} t=${t}`).toBeLessThanOrEqual(480);
+        }
+      }
     }
   });
 });

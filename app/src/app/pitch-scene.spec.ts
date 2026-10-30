@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Era, SideLook } from './art';
 import { callFor, countFor, Deco, OUTCOMES, PlayFacts } from './logic';
 import { buildPlay, hasPark } from './park';
-import { leadMotion, motionFor, parkTiming, PitchScene, planPitch, WINDUP_S, FOOT_Y, PANEL_H, PANEL_W, StageFit, stageFit } from './pitch-scene';
+import { leadMotion, motionFor, parkTiming, PitchScene, planPitch, WINDUP_S, ENTER_X, FOOT_Y, PANEL_H, PANEL_W, STAGE_MAX_ASPECT, StageFit, stageFit } from './pitch-scene';
 
 describe('pitch scene', () => {
   it('maps every outcome to the planned motion', () => {
@@ -114,6 +114,18 @@ describe('plan 59 r1b: stageFit', () => {
       const f = stageFit(w, h, m);
       for (const x of [Math.max(f.x0, BAT_X[0]), BAT_X[1]]) { const d = shown(f, x, m); expect(d, `${w}x${h} ${m} ${x}`).toBeGreaterThanOrEqual(-1e-6); expect(d).toBeLessThanOrEqual(w + 1e-6); }
       if (w / f.s >= PANEL_W) expect(f.left).toBeCloseTo((w - PANEL_W * f.s) / 2, 6);
+    }
+  });
+});
+
+// Review fix (Part A): the stage is never wider than STAGE_MAX_ASPECT x its height (CSS), so on the widest stage the pitch
+// enters at the pitcher-side edge and an unhit pitch leaves at the catcher-side edge (x -20), not mid-stage.
+describe('plan 59 r1b: widest stage', () => {
+  it('the ball enters and leaves within 30 panel units of the stage edges, righty and lefty', () => {
+    for (const h of [222, 254, 324, 480]) for (const m of [false, true]) {
+      const f = stageFit(STAGE_MAX_ASPECT * h, h, m);
+      expect(f.x1, `${h} ${m}`).toBeGreaterThanOrEqual(ENTER_X); expect(f.x1 - ENTER_X).toBeLessThanOrEqual(30);
+      expect(f.x0).toBeLessThanOrEqual(-20); expect(-20 - f.x0).toBeLessThanOrEqual(30);
     }
   });
 });
