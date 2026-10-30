@@ -531,7 +531,7 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
     .count { font: 600 1rem/1.2 ui-monospace, monospace; }
     /* Short landscape: the stage takes the full height on the left, caption and Skip in a 200 px column on the right. */
     @media (orientation: landscape) and (max-height: 500px) {
-      :host { display: flex; justify-content: center; gap: 14px; margin-top: 0; flex: 1 1 auto; min-height: 0; }
+      :host { display: flex; justify-content: flex-end; gap: 14px; margin-top: 0; flex: 1 1 auto; min-height: 0; }
       .stage { flex: 1 1 auto; height: auto; min-width: 0; max-width: calc(100cqh * 1.35); margin: 0; }
       .under { flex: none; width: 200px; margin-top: 0; flex-direction: column; align-items: stretch; justify-content: flex-start; }
     }
