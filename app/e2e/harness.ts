@@ -32,9 +32,9 @@ const STUBS: [RegExp, (route: Route, url: URL) => Promise<void>][] = [
 
 export interface Harness { bad: string[]; requests: string[]; }
 
-export async function serve(context: BrowserContext, opts: { storage?: Record<string, string> } = {}): Promise<Harness> {
+export async function serve(context: BrowserContext, opts: { storage?: Record<string, string | null> } = {}): Promise<Harness> {
   const h: Harness = { bad: [], requests: [] };
-  const storage = { pr_voice: 'off', pr_art_note: '1', ...(opts.storage ?? {}) };
+  const storage: Record<string, string | null> = { pr_voice: 'off', pr_art_note: '1', ...(opts.storage ?? {}) };
   await context.addInitScript(s => { if (!sessionStorage.getItem('pr-e2e-init')) { sessionStorage.setItem('pr-e2e-init', '1'); for (const [k, v] of Object.entries(s)) if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v as string); } }, storage);
   await context.route('**/*', async route => {
     const url = new URL(route.request().url());
