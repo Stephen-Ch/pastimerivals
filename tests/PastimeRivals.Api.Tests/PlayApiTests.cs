@@ -49,7 +49,9 @@ public sealed class FakeStats : IStatsSource
 public sealed class MemoryEvents : IEventSink
 {
     public List<(string Name, string Session)> Events { get; } = new();
-    public Task WriteAsync(string name, string session) { Events.Add((name, session)); return Task.CompletedTask; }
+    public List<string?> Sources { get; } = new();   // plan 52B
+    public Task WriteAsync(string name, string session) => WriteAsync(name, session, null);
+    public Task WriteAsync(string name, string session, string? source) { Events.Add((name, session)); Sources.Add(source); return Task.CompletedTask; }
 }
 
 public class PlayApiTests
@@ -152,6 +154,17 @@ public class PlayApiTests
         Assert.Equal(HttpStatusCode.NoContent, (await c.PostAsJsonAsync("/api/events", new { name = "pitch", session = "abc" })).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync("/api/events", new { name = "hack", session = "abc" })).StatusCode);
         Assert.Single(events.Events);
+    }
+
+    [Fact]
+    public async Task Events_accept_art_note_names()   // plan 52B
+    {
+        var (c, events) = Make();
+        Assert.Equal(HttpStatusCode.NoContent, (await c.PostAsJsonAsync("/api/events", new { name = "art_note_shown", session = "abc", source = "home" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await c.PostAsJsonAsync("/api/events", new { name = "art_note_more", session = "abc" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await c.PostAsJsonAsync("/api/events", new { name = "art_blank_why", session = "abc" })).StatusCode);
+        Assert.Equal(new[] { "art_note_shown", "art_note_more", "art_blank_why" }, events.Events.Select(e => e.Name));
+        Assert.Equal(new string?[] { "home", null, null }, events.Sources);
     }
 
     [Fact]
