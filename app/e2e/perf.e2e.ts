@@ -1,6 +1,7 @@
 // Plan 59 Round 1a: ?perf=1 shows the frame-time readout; without it nothing changes; it adds no network requests.
 import { expect, Page, test } from '@playwright/test';
-import { Harness, serve } from './harness';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { Harness, RIGHTY, serve } from './harness';
 
 async function playOnce(page: Page) {
   await page.getByRole('button', { name: 'Pitch', exact: true }).click();
@@ -42,4 +43,46 @@ test('the readout adds no network requests', async ({ browser }) => {
     return [...new Set(h.requests.map(r => r.replace(/^GET \/(\?.*)?$/, 'GET /')))].sort();   // distinct requests: timer-driven repeats don't count
   };
   expect(await run('/?perf=1')).toEqual(await run('/'));
+});
+
+// Plan 59 Round 1b test 11 (cloud, relative only): field-view work per frame, and the backdrop render per view.
+// Frame work = the length of each animation-frame callback while the field view shows (same wrapper on any build).
+// PERF_BASE=<json from a run on the Part A tip> makes it compare: median frame work at most 1.25 x. Results go to
+// <outputDir>/perf-r1b.json. Backdrops (performance.measure 'pr-backdrop-<view>') must render in 150 ms or less.
+test('plan 59 r1b test 11: field-view frame work vs the Part A build, backdrop render per view', async ({ context, page }, info) => {
+  test.setTimeout(120_000);
+  const h = await serve(context, { fixtures: RIGHTY });
+  await context.addInitScript(() => {
+    const w = window as unknown as { __prFrames: number[]; requestAnimationFrame: typeof requestAnimationFrame };
+    w.__prFrames = [];
+    const raf = window.requestAnimationFrame.bind(window);
+    w.requestAnimationFrame = cb => raf(t => {
+      const s = performance.now();
+      cb(t);
+      const p = document.querySelector('pr-pitch-scene .park') as HTMLElement | null;
+      if (p && +(p.style.opacity || 0) > 0) w.__prFrames.push(performance.now() - s);
+    });
+  });
+  await page.goto('/');
+  await playOnce(page);
+  for (let i = 0; i < 4; i++) {
+    await page.getByRole('button', { name: 'Pitch again' }).click();
+    await expect(page.locator('section.result')).toBeVisible({ timeout: 30_000 });
+  }
+  const r = await page.evaluate(() => {
+    const f = [...(window as unknown as { __prFrames: number[] }).__prFrames].sort((a, b) => a - b);
+    const q = (u: number) => f.length ? f[Math.min(f.length - 1, Math.floor(u * f.length))] : 0;
+    const bd: Record<string, number> = {};
+    for (const e of performance.getEntriesByType('measure')) if (e.name.startsWith('pr-backdrop-')) bd[e.name.slice(12)] = Math.max(bd[e.name.slice(12)] ?? 0, e.duration);
+    return { n: f.length, median: q(0.5), p95: q(0.95), backdropMs: bd };
+  });
+  writeFileSync(info.outputPath('perf-r1b.json'), JSON.stringify(r));
+  console.log(`perf-r1b ${info.project.name} ${JSON.stringify(r)}`);
+  expect(r.n).toBeGreaterThan(20);
+  for (const [view, ms] of Object.entries(r.backdropMs)) expect(ms, `backdrop ${view}`).toBeLessThanOrEqual(150);
+  if (process.env['PERF_BASE']) {
+    const base = JSON.parse(readFileSync(process.env['PERF_BASE'], 'utf8'))[info.project.name] as { median: number };
+    expect(r.median, `median frame work vs Part A ${base.median.toFixed(2)} ms`).toBeLessThanOrEqual(1.25 * base.median);
+  }
+  expect(h.bad).toEqual([]);
 });

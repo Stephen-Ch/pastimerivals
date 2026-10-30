@@ -289,8 +289,6 @@ export type BackdropView = 'side' | 'windup';
 export interface BackdropPlace { cam: Camera; f: number; cx: number; cy: number; }
 const backdrops = new Map<string, HTMLCanvasElement>();
 const BACKDROP_KEEP = 8;
-/** Last render times (ms) by view, for the perf log (test 11). */
-export const backdropMs: Partial<Record<BackdropView, number>> = {};
 /** The static park for one view into an offscreen canvas at the stage's size x density (capped at 2), cached by look,
  *  view, side, size and density (Last Licks reuses it across at-bats). Null when there is no canvas (jsdom). */
 export function renderBackdrop(look: ParkLook, view: BackdropView, side: 'L' | 'R', cssW: number, cssH: number, dpr: number, place: BackdropPlace): HTMLCanvasElement | null {
@@ -309,6 +307,6 @@ export function renderBackdrop(look: ParkLook, view: BackdropView, side: 'L' | '
   new ParkPainter(g).backdrop(look, place.cam, cssW, cssH, place.f, place.cx, place.cy, view !== 'side');
   backdrops.set(key, cv);
   while (backdrops.size > BACKDROP_KEEP) backdrops.delete(backdrops.keys().next().value!);
-  if (typeof performance !== 'undefined') backdropMs[view] = performance.now() - t0;
+  try { performance.measure(`pr-backdrop-${view}`, { start: t0 }); } catch { /* perf log only (test 11) */ }
   return cv;
 }
