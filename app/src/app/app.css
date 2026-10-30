@@ -55,8 +55,8 @@ button.link.small { font-size: .82rem; min-height: 32px; padding: 2px 0; }
 
 /* At-bat: the scene sizes itself to this box */
 .scene-wrap { container-type: size; justify-content: center; overflow: hidden; }
-/* Plan 59 Round 1b: tablets and desktops get a wider at-bat screen, so the stage can reach 900 px. */
-@media (min-width: 700px) and (min-height: 501px) { .game:has(> .scene-wrap) { max-width: 932px; } }
+/* Plan 59 Round 1b: tablets and desktops get a wider screen while a pitch plays, so the stage can grow (up to 900 px). */
+@media (min-width: 700px) and (min-height: 501px) { .game:has(> .scene-wrap pr-pitch-scene) { max-width: 932px; } }
 
 /* Result */
 .result { margin: auto 0; padding: 18px; border-radius: 14px; background: var(--surface-1); border: 1px solid var(--border); animation: pop .25s ease-out; }

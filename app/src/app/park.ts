@@ -352,14 +352,19 @@ export function cameraAt(p: ParkPlay, t: number, aspect: number): Camera {
   // Plan 59 Round 1b: the vertical field of view is the one the 760:480 panel has; other shapes derive the horizontal one.
   // At 760:480 itself nothing is recomputed, so today's camera is unchanged bit for bit.
   let hHalf = fov / 2, vHalf = deg(Math.atan(Math.tan(rad(fov / 2)) / PANEL_ASPECT));
-  if (aspect !== PANEL_ASPECT) { hHalf = deg(Math.atan(Math.tan(rad(vHalf)) * aspect)); fov = hHalf * 2; }
+  const other = aspect !== PANEL_ASPECT;
+  /** Plan 59 Round 1b lens limits on other shapes: at most 80 degrees across and 70 up and down (no fisheye). */
+  const maxH = other ? Math.min(40, deg(Math.atan(Math.tan(rad(35)) * aspect))) : 90;
+  if (other) { hHalf = Math.min(maxH, deg(Math.atan(Math.tan(rad(vHalf)) * aspect))); vHalf = deg(Math.atan(Math.tan(rad(hHalf)) / aspect)); fov = hHalf * 2; }
   // turn smoothly toward the ball, but never let it get closer than 30% of the half-frame to the edge
   let yaw = lerp(0, bearing, k);
   yaw = Math.max(bearing - hHalf * 0.7, Math.min(bearing + hHalf * 0.7, yaw));
   yaw = p.noTurn ? 0 : Math.max(-MAX_TURN, Math.min(MAX_TURN, yaw));
-  // Plan 59 Round 1b: a narrower frame can lose a ball the turn limit holds back (high fouls): widen just enough (the ball wins).
-  if (aspect !== PANEL_ASPECT && Math.abs(bearing - yaw) > hHalf * 0.7) {
-    hHalf = Math.min(75, Math.abs(bearing - yaw) / 0.7); fov = hHalf * 2; vHalf = deg(Math.atan(Math.tan(rad(hHalf)) / aspect));
+  // Plan 59 Round 1b: on other shapes a narrower frame can lose a ball that the turn limit (or a straight-back pop's
+  // no-turn rule) holds back. The ball wins (Stephen): widen up to the lens limits, then turn just enough.
+  if (other && Math.abs(bearing - yaw) > hHalf * 0.7) {
+    hHalf = Math.min(maxH, Math.abs(bearing - yaw) / 0.7); fov = hHalf * 2; vHalf = deg(Math.atan(Math.tan(rad(hHalf)) / aspect));
+    if (Math.abs(bearing - yaw) > hHalf * 0.7) yaw = Math.max(bearing - hHalf * 0.7, Math.min(bearing + hHalf * 0.7, yaw));
   }
   // aim between the ball and the top of the wall; on high balls keep the ball well inside the top of the frame
   const want = Math.max(Math.max(elev, 0) * 0.58 - 1, elev - vHalf * 0.6);
@@ -372,17 +377,17 @@ export function cameraAt(p: ParkPlay, t: number, aspect: number): Camera {
 /** Plan 59 Round 1b: what stands at the camera's bearing (degrees, as yaw): the back row of the stands, or the wall
  *  where there are no stands (1901 outfield). Returns its elevation in degrees seen from the camera. */
 export function structureElev(yaw: number, look: ParkLook | null = null): number {
+  // rows of stands at an angle (same rule as park-draw standRows: 1901 open outfield, low corner bleachers)
+  const rows = (a: number) => look !== '1901' ? 10 : Math.abs(a) >= 55 ? 10 : Math.abs(a) >= 35 ? 3 : 0;
   const sy = Math.sin(rad(yaw)), cy = Math.cos(rad(yaw));
   let r = 300, a = yaw;
   for (let i = 0; i < 4; i++) {   // walk the ray from the camera out to the structure at its own angle from home
     const x = CAM.x + r * sy, y = CAM.y + r * cy;
     a = Math.max(-115, Math.min(115, deg(Math.atan2(x, y))));
-    const open = look === '1901' && Math.abs(a) < 35;
-    const want = edgeDist(a) + (open ? 0 : 76);
+    const n = rows(a), want = edgeDist(a) + (n ? 13 + (n - 1) * 7 : 0);
     r = Math.max(1, want - Math.hypot(x, y) + r);
   }
-  const open = look === '1901' && Math.abs(a) < 35;
-  const h = open ? 10.6 : 49.8;   // 1901 open outfield: the fair wall (10 ft + cap)
+  const n = rows(a), h = n ? 12 + (n - 1) * 4.2 : 10.6;   // back of the top row, or the fair wall with its cap
   return deg(Math.atan2(h - CAM.z, r));
 }
 /** Plan 59 Round 1b: true when the frame's bottom edge is above the stands (or the wall where there are none): only sky shows. */

@@ -424,6 +424,9 @@ export function prefersReducedMotion(): boolean {
  *  The foot line sits at 92% of the stage height. */
 export interface StageFit { s: number; left: number; top: number; x0: number; x1: number; }
 export const STAGE_MIN_X = 560, STAGE_FOOT = 0.92, STAGE_BODY = 0.8;
+/** Review fix: the stage is at most this wide for its height (CSS max-width), so the panel shows about x -25 to 785:
+ *  the pitch enters at the pitcher-side edge and an unhit pitch leaves at the catcher-side edge, never mid-stage. */
+export const STAGE_MAX_ASPECT = 1.35;
 export function stageFit(w: number, h: number, mirror: boolean): StageFit {
   const s = Math.min((h * STAGE_BODY) / PANEL_H, w / STAGE_MIN_X);
   const v = w / s;
@@ -499,7 +502,8 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
   styles: `
     :host { display: block; margin-top: 4px; }
     /* Plan 59 Round 1b: a tall stage (62 px keeps the 4 px margin and the 52 px caption and Skip row, plus 6 spare); the side panel sits inside it by stageFit. */
-    .stage { position: relative; isolation: isolate; width: 100%; max-width: 900px; margin: 0 auto; height: min(calc(100cqh - 62px), 60dvh);
+    /* max-width: 900 px, and never wider than STAGE_MAX_ASPECT (1.35) x the height. */
+    .stage { position: relative; isolation: isolate; width: 100%; max-width: min(900px, calc(min(100cqh - 62px, 60dvh) * 1.35)); margin: 0 auto; height: min(calc(100cqh - 62px), 60dvh);
       overflow: hidden; border: 1px solid var(--border); border-radius: 14px; box-sizing: border-box;
       background: linear-gradient(#cfd9e3 0 var(--hz, 52%), #7d9a5f var(--hz, 52%) var(--dirt, 92%), #b48a5a var(--dirt, 92%) 100%); }
     .park { position: absolute; inset: 0; z-index: 4; overflow: hidden; background: #5c8a44; }
@@ -527,8 +531,8 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
     .count { font: 600 1rem/1.2 ui-monospace, monospace; }
     /* Short landscape: the stage takes the full height on the left, caption and Skip in a 200 px column on the right. */
     @media (orientation: landscape) and (max-height: 500px) {
-      :host { display: flex; gap: 14px; margin-top: 0; flex: 1 1 auto; min-height: 0; }
-      .stage { flex: 1 1 auto; height: auto; min-width: 0; }
+      :host { display: flex; justify-content: center; gap: 14px; margin-top: 0; flex: 1 1 auto; min-height: 0; }
+      .stage { flex: 1 1 auto; height: auto; min-width: 0; max-width: calc(100cqh * 1.35); margin: 0; }
       .under { flex: none; width: 200px; margin-top: 0; flex-direction: column; align-items: stretch; justify-content: flex-start; }
     }
     .skip { font: inherit; font-size: .9rem; cursor: pointer; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); padding: 10px 16px; min-height: 44px; }

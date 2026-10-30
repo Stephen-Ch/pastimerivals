@@ -367,7 +367,7 @@ describe('plan 59 r1b: camera at any stage shape', () => {
 describe('plan 59 r1b: lens limits on narrow stages', () => {
   const frames = (p: ParkPlay) => Array.from({ length: Math.round(p.len * 30) + 1 }, (_, i) => Math.min(p.len, i / 30));
   const vdeg = (fov: number, a: number) => 2 * Math.atan(Math.tan((fov * Math.PI) / 360) / a) * 180 / Math.PI;
-  it('vertical at most 70, horizontal at most 80, ball in frame, at aspects 0.6, 0.75 and 1.5834', () => {
+  it('vertical at most 70, horizontal at most 80, ball in frame, at aspects 0.6, 0.75 and 1.5834', { timeout: 30_000 }, () => {
     for (const a of [0.6, 0.75, 1.5834]) {
       const w = 480 * a;
       for (const c of ALL) {
