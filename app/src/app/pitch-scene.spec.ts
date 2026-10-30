@@ -134,7 +134,7 @@ describe('plan 59 r1b: widest stage', () => {
 // Plan 59 Round 1b test 8: before the drawn backdrop is ready (and in jsdom, which has no canvas) the stage shows a flat
 // silhouette in the park look's sky and grass colors, never a blank box, and nothing throws. The windup's CSS mound is gone.
 describe('plan 59 r1b test 8: silhouette without a canvas', () => {
-  it('stage and windup carry the look\'s sky and grass colors; backdrop canvases exist; nothing throws', async () => {
+  it('stage and windup carry the look\'s sky and grass colors; no backdrop image; nothing throws', async () => {
     for (const look of ['1901', '1970', '1990'] as const) {
       const f = TestBed.createComponent(PitchScene);
       f.componentRef.setInput('era', '1990-2025');
@@ -148,7 +148,7 @@ describe('plan 59 r1b test 8: silhouette without a canvas', () => {
       const el = f.nativeElement as HTMLElement, stage = el.querySelector('.stage') as HTMLElement;
       expect(stage.style.getPropertyValue('--sky'), look).toBe(LOOKS[look].sky[1]);
       expect(stage.style.getPropertyValue('--grass')).toBe(LOOKS[look].grass);
-      expect(stage.querySelector(':scope > canvas.bg')).not.toBeNull();
+      expect(stage.querySelector('.bg'), 'no drawn backdrop without a canvas: the silhouette shows').toBeNull();
       f.destroy();
     }
   });

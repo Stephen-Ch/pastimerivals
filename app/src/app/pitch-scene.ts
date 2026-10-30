@@ -3,7 +3,7 @@ import { Era, FielderArt, ParkLook, SideArt, WindupArt } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, PlayFacts, Trajectory } from './logic';
 import { buildPlay, hasPark, ParkPlay, PITCHER_CELL_FOOT, SIDE_F, sideCamera, WINDUP_F, WINDUP_FOOT, windupCamera, windupSpriteH } from './park';
-import { BackdropPlace, BackdropView, FielderSheet, LOOKS, renderBackdrop } from './park-draw';
+import { backdropKey, BackdropPlace, BackdropView, backdropUrl, FielderSheet, LOOKS } from './park-draw';
 import { parkOn } from './park-setting';
 
 // Plan 32C: side-on pitch scene. Batter only, seen from the first-base side (right-handed) or the third-base side
@@ -446,11 +446,12 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
   template: `
     @if (side(); as a) {
       <div class="stage" #stage [attr.data-cue]="lastCue()" [style.--sky]="tint().sky" [style.--grass]="tint().grass" [style.--hz]="sideHz()" [style.--whz]="windHz">
-      <canvas class="bg" #bgSide aria-hidden="true"></canvas>
+      @if (bgUrl().side; as u) { <img class="bg" alt="" aria-hidden="true" [src]="u" /> }
       <div class="side" [class.mirror]="bats() === 'L'" [class.fit]="!!fit()" aria-hidden="true"
            [style.left.px]="fit()?.left" [style.top.px]="fit()?.top" [style.width.px]="fit() ? 760 * fit()!.s : null" [style.height.px]="fit() ? 480 * fit()!.s : null">
         <svg class="ground" viewBox="0 0 760 480" preserveAspectRatio="none">
           <path d="M175 474 L305 474 L318 466 L188 466 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width="2"/>
+          <ellipse class="contact" cx="158" cy="469" rx="138" ry="9" fill="#000" opacity="0.2"/>
         </svg>
         <div class="shake" [style.transform]="frame().fx.shake ? 'translateX(' + frame().fx.shake + 'px)' : null">
           <div class="bat" [style.background-image]="'url(' + a.sheet + ')'" [style.--f]="frame().batter"></div>
@@ -487,7 +488,8 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
       }
       @if (windFrame() >= 0 && windup(); as w) {
         <div class="windup" aria-hidden="true">
-          <canvas class="bg" #bgWind></canvas>
+          @if (bgUrl().windup; as u) { <img class="bg" alt="" [src]="u" /> }
+          <div class="contact" [style.top.%]="100 * WINDUP_FOOT" [style.width.%]="pitBox.h * 0.75 * 0.42"></div>
           <div class="pit" [class.mirror]="w.mirror" [style.height.%]="pitBox.h" [style.top.%]="pitBox.top" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windFrame()"></div>
           @if (windBlend().next !== null) {
             <div class="pit top" [class.mirror]="w.mirror" [style.height.%]="pitBox.h" [style.top.%]="pitBox.top" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windBlend().next" [style.opacity]="windBlend().top"></div>
@@ -509,7 +511,7 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
       overflow: hidden; border: 1px solid var(--border); border-radius: 14px; box-sizing: border-box;
       background: linear-gradient(var(--sky, #d8e6f0) 0 var(--hz, 33%), var(--grass, #4f8f3f) var(--hz, 33%) 100%); }
     /* Plan 59 Round 1b: the drawn park (cached per look, view, side and size); until it is drawn the flat silhouette above shows. */
-    .bg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: block; }
+    .bg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: block; object-fit: fill; }
     .park { position: absolute; inset: 0; z-index: 4; overflow: hidden; background: #5c8a44; }
     .park .words { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
     .windup { position: absolute; inset: 0; z-index: 5; overflow: hidden;
@@ -518,6 +520,10 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
       background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
     .windup .pit.mirror { transform: translateX(-50%) scaleX(-1); }
     .windup .pit.top { z-index: 2; }
+    /* Plan 59 Round 1b finish pass: contact shadow under the pitcher's feet; a light vignette over every view (12% at most). */
+    .windup .contact { position: absolute; left: 50%; height: 2.2%; transform: translate(-50%, -50%); border-radius: 50%; background: #000; opacity: .2; z-index: 1; }
+    .stage::after { content: ''; position: absolute; inset: 0; z-index: 6; pointer-events: none; border-radius: inherit;
+      background: radial-gradient(ellipse at 50% 45%, transparent 58%, rgba(0, 0, 0, .12) 100%); }
     .side { position: absolute; left: 0; bottom: 0; width: 100%; aspect-ratio: 760 / 480; transform-origin: center; }
     .side.fit { bottom: auto; aspect-ratio: auto; }
     .side.mirror { transform: scaleX(-1); }
@@ -595,6 +601,7 @@ export class PitchScene {
   });
   /** The windup camera is the same at every stage size (units of stage height): horizon and sprite box in %. */
   protected readonly windHz = (50 + 100 * WINDUP_F * Math.tan((windupCamera().pitch * Math.PI) / 180)) + '%';
+  protected readonly WINDUP_FOOT = WINDUP_FOOT;
   protected readonly pitBox = { h: 100 * windupSpriteH(), top: 100 * (WINDUP_FOOT - PITCHER_CELL_FOOT * windupSpriteH()) };
   /** Where a backdrop's camera sits on this stage (CSS px), or null before the stage is measured. */
   private place(view: BackdropView): BackdropPlace | null {
@@ -603,26 +610,22 @@ export class PitchScene {
     if (view === 'windup') return { cam: windupCamera(), f: WINDUP_F * z[1], cx: z[0] / 2, cy: z[1] / 2 };
     return { cam: sideCamera(this.bats() === 'L'), f: SIDE_F * fit.s, cx: fit.left + 380 * fit.s, cy: fit.top + 240 * fit.s };
   }
-  private readonly bgSide = viewChild<ElementRef<HTMLCanvasElement>>('bgSide');
-  private readonly bgWind = viewChild<ElementRef<HTMLCanvasElement>>('bgWind');
-  /** Copies the cached backdrop into each shown backdrop canvas once per look, side and size. */
+  /** Plan 59 Round 1b: the backdrop image for each view once drawn (until then the silhouette shows). */
+  protected readonly bgUrl = signal<Partial<Record<BackdropView, string>>>({});
+  private bgKeys: Partial<Record<BackdropView, string>> = {};
+  /** Draws (or takes from the cache) both views' backdrops for this look, side and stage size. */
   private paintBackdrops() {
     const z = this.stageSize(), look = this.look() ?? '1956', side = this.bats() === 'L' ? 'L' : 'R';
     if (!z) return;
     const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
-    for (const [view, ref] of [['side', this.bgSide()], ['windup', this.bgWind()]] as [BackdropView, ElementRef<HTMLCanvasElement> | undefined][]) {
-      const cv = ref?.nativeElement, place = this.place(view);
-      if (!cv || !place) continue;
-      const key = `${look}|${side}|${z[0]}x${z[1]}|${dpr}`;
-      if (cv.dataset['key'] === key) continue;
-      const src = renderBackdrop(look, view, side, z[0], z[1], dpr, place);
-      if (!src) continue;
-      let g: CanvasRenderingContext2D | null = null;
-      try { g = cv.getContext('2d'); } catch { g = null; }
-      if (!g) continue;
-      cv.width = src.width; cv.height = src.height;
-      g.drawImage(src, 0, 0);
-      cv.dataset['key'] = key;
+    for (const view of ['side', 'windup'] as BackdropView[]) {
+      if (view === 'windup' && !this.windup()) continue;
+      const place = this.place(view), key = backdropKey(look, view, side, z[0], z[1], dpr);
+      if (!place || this.bgKeys[view] === key) continue;
+      this.bgKeys[view] = key;
+      void backdropUrl(look, view, side, z[0], z[1], dpr, place).then(u => {
+        if (u && this.bgKeys[view] === key) this.bgUrl.update(b => ({ ...b, [view]: u }));
+      });
     }
   }
   private observed: HTMLElement | null = null;

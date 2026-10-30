@@ -18,26 +18,28 @@ const measure = (page: Page) => page.evaluate((): Sample | null => {
     bat: bat ? bat.height * 440 / 480 : 0, skip: sk ? [sk.left, sk.top, sk.right, sk.bottom] : null,
     scroll: se.scrollHeight > innerHeight + 1 || se.scrollWidth > innerWidth + 1, landscape: innerWidth > innerHeight && innerHeight < 500 };
 });
-/** Distinct colors on a 12 x 12 grid of the side backdrop canvas (0 when not drawn). The silhouette is two flat colors. */
+/** Distinct colors on a 12 x 12 grid of the side backdrop image (0 when not drawn). The silhouette is two flat colors. */
 const backdropColors = (page: Page) => page.evaluate(() => {
-  const cv = document.querySelector('pr-pitch-scene .stage > canvas.bg') as HTMLCanvasElement | null;
-  if (!cv || cv.width < 2) return 0;
+  const im = document.querySelector('pr-pitch-scene .stage > img.bg') as HTMLImageElement | null;
+  if (!im || !im.complete || im.naturalWidth < 2) return 0;
+  const cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight;
   const g = cv.getContext('2d')!, seen = new Set<string>();
+  g.drawImage(im, 0, 0);
   for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) {
     const d = g.getImageData(Math.floor((i + 0.5) * cv.width / 12), Math.floor((j + 0.5) * cv.height / 12), 1, 1).data;
     if (d[3] > 0) seen.add(`${d[0]},${d[1]},${d[2]}`);
   }
   return seen.size;
 });
-/** Canvas pixel aspect vs the stage's aspect, for the side backdrop and (once the park cue has fired) the field view.
+/** Pixel aspect vs the stage's aspect, for the side backdrop image and (once the park cue has fired) the field view.
  *  The field view's canvas exists, hidden, from the final pitch's start and is sized at its first draw (park cue). */
 const aspects = (page: Page) => page.evaluate(() => {
   const st = document.querySelector('pr-pitch-scene .stage') as HTMLElement, a = st.clientWidth / st.clientHeight;
   const out: [string, number, number][] = [];
-  for (const sel of st.dataset['cue'] === 'park' ? ['.stage > canvas.bg', '.park canvas'] : ['.stage > canvas.bg']) {
-    const cv = document.querySelector(`pr-pitch-scene ${sel}`) as HTMLCanvasElement | null;
-    if (cv && cv.width > 1) out.push([sel, cv.width / cv.height, a]);
-  }
+  const bg = document.querySelector('pr-pitch-scene .stage > img.bg') as HTMLImageElement | null;
+  if (bg && bg.naturalWidth > 1) out.push(['backdrop', bg.naturalWidth / bg.naturalHeight, a]);
+  const cv = document.querySelector('pr-pitch-scene .park canvas') as HTMLCanvasElement | null;
+  if (st.dataset['cue'] === 'park' && cv && cv.width > 1) out.push(['field view', cv.width / cv.height, a]);
   return out;
 });
 
@@ -116,7 +118,9 @@ test('turning the phone mid-scene: backdrop and field-view canvases match the st
   await page.locator('pr-pitch-scene .stage[data-cue="enter"]').waitFor({ timeout: 15_000 });
   await page.setViewportSize({ width: vp.height, height: vp.width });
   await page.waitForTimeout(300);
-  for (const [sel, ca, sa] of await aspects(page)) expect(Math.abs(ca / sa - 1), sel).toBeLessThanOrEqual(0.02);
+  const mid = await aspects(page);
+  expect(mid.length).toBe(1);
+  for (const [sel, ca, sa] of mid) expect(Math.abs(ca / sa - 1), sel).toBeLessThanOrEqual(0.02);
   await page.locator('pr-pitch-scene .stage[data-cue="park"]').waitFor({ timeout: 15_000 });
   await page.setViewportSize(vp);
   await page.waitForTimeout(300);
