@@ -174,6 +174,14 @@ describe('Plan 44: camera', () => {
     }
   });
 
+  it('plan 59 r1b test 3: fitScale is one uniform scale, painter height 480, width 480 x aspect', () => {
+    for (const a of [0.6, 0.77, 1, 1.58, 2.2]) {
+      const cssH = 400, cssW = cssH * a, f = BallparkView.fitScale(cssW, cssH);
+      expect(f.h).toBe(480); expect(f.w).toBeCloseTo(480 * a, 9);
+      expect(f.w * f.k).toBeCloseTo(cssW, 9); expect(f.h * f.k).toBeCloseTo(cssH, 9);
+    }
+  });
+
   it('canvas is never larger than the panel x 2 in each direction', () => {
     expect(BallparkView.canvasSize(560, 354, 3)).toEqual([1120, 708]);
     expect(BallparkView.canvasSize(320, 202, 1)).toEqual([320, 202]);

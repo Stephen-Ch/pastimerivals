@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Era, SideLook } from './art';
 import { callFor, countFor, Deco, OUTCOMES, PlayFacts } from './logic';
 import { buildPlay, hasPark } from './park';
-import { leadMotion, motionFor, parkTiming, PitchScene, planPitch, WINDUP_S } from './pitch-scene';
+import { leadMotion, motionFor, parkTiming, PitchScene, planPitch, WINDUP_S, FOOT_Y, PANEL_H, PANEL_W, StageFit, stageFit } from './pitch-scene';
 
 describe('pitch scene', () => {
   it('maps every outcome to the planned motion', () => {
@@ -87,5 +87,33 @@ describe('plan 59 cue golden', () => {
     const g = cueGolden();
     expect(g.parks).toBeGreaterThan(500);   // the park path is really exercised
     expect(g).toEqual({ hash: '7cf48e17', pitches: 18834, parks: 3000 });
+  });
+});
+
+// Plan 59 Round 1b test 2: one scale for the side panel in any stage; the batter is big, panel x 0-560 always shows,
+// the foot line sits at 92% of the stage height, and a lefty (mirrored panel) is anchored on his own side.
+describe('plan 59 r1b: stageFit', () => {
+  const BAT = 440, BAT_X: [number, number] = [-58, 298];   // side batter frames, panel units (all 12 sheets)
+  const STAGES: [number, number][] = [[358, 506], [288, 341], [322, 250], [300, 222], [900, 540], [560, 300]];
+  const shown = (f: StageFit, x: number, mirror: boolean) => f.left + (mirror ? PANEL_W - x : x) * f.s;
+  it('batter at least 270 px at 358x506 and at least 40% of the stage height everywhere', () => {
+    expect(BAT * stageFit(358, 506, false).s).toBeGreaterThanOrEqual(270);
+    for (const [w, h] of STAGES) expect(BAT * stageFit(w, h, false).s / h, `${w}x${h}`).toBeGreaterThanOrEqual(0.4);
+  });
+  it('panel x 0-560 always visible, foot line at 92% of the stage height, panel inside the stage vertically', () => {
+    for (const [w, h] of STAGES) for (const m of [false, true]) {
+      const f = stageFit(w, h, m);
+      expect(f.x0, `${w}x${h} ${m}`).toBeLessThanOrEqual(0); expect(f.x1).toBeGreaterThanOrEqual(560);
+      for (const x of [0, 560]) { const d = shown(f, x, m); expect(d).toBeGreaterThanOrEqual(-1e-6); expect(d).toBeLessThanOrEqual(w + 1e-6); }
+      expect(f.top + FOOT_Y * f.s).toBeCloseTo(0.92 * h, 6);
+      expect(f.top).toBeGreaterThanOrEqual(0); expect(f.top + PANEL_H * f.s).toBeLessThanOrEqual(h);
+    }
+  });
+  it('the batter stays inside the stage, righty and lefty, and wide stages center the panel', () => {
+    for (const [w, h] of STAGES) for (const m of [false, true]) {
+      const f = stageFit(w, h, m);
+      for (const x of [Math.max(f.x0, BAT_X[0]), BAT_X[1]]) { const d = shown(f, x, m); expect(d, `${w}x${h} ${m} ${x}`).toBeGreaterThanOrEqual(-1e-6); expect(d).toBeLessThanOrEqual(w + 1e-6); }
+      if (w / f.s >= PANEL_W) expect(f.left).toBeCloseTo((w - PANEL_W * f.s) / 2, 6);
+    }
   });
 });
