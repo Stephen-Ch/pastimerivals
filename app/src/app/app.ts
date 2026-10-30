@@ -15,7 +15,7 @@ import { voiceOn } from './voice-setting';
 import { VoiceButton } from './voice-button';
 import { PerfOverlay, perfFromSearch } from './perf-overlay';
 import { SceneCue } from './pitch-scene';
-import { ArtManifest, Era, eraOf, fielderArt, isFirstVisit, lookOf, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, SideLook, WindupArt, windupArt } from './art';
+import { ArtManifest, Era, eraOf, fielderArt, isFirstVisit, PairArt, pairArt, ParkLook, parkLookOf, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, WindupArt, windupArt } from './art';
 import { artNoteDue, artNoteShownThisVisit, markArtNoteShown } from './art-note';
 import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
@@ -308,7 +308,7 @@ export class App {
   private readonly sideOk = signal(false);
   /** Plan 44: fielders in the pitcher's era uniform; park by the batter's look (practice: no play facts). */
   protected readonly sceneFielders = computed(() => fielderArt(this.manifest(), this.pitcherEra()));
-  protected readonly sceneLook = computed<SideLook | null>(() => { const y = this.batter()?.year; return y ? lookOf(y) : null; });
+  protected readonly sceneLook = computed<ParkLook | null>(() => { const y = this.batter()?.year; return y ? parkLookOf(y) : null; });   // plan 59 r1b: card eras
   private sideReady: Promise<boolean> = Promise.resolve(false);
 
   protected cardFor(r: { id: string; role: string }): PlayerArt | null {

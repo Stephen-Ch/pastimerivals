@@ -1,5 +1,5 @@
 import { afterRenderEffect, Component, computed, DestroyRef, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
-import { Era, FielderArt, SideArt, SideLook, WindupArt } from './art';
+import { Era, FielderArt, ParkLook, SideArt, WindupArt } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, PlayFacts, Trajectory } from './logic';
 import { buildPlay, hasPark, ParkPlay } from './park';
@@ -563,8 +563,8 @@ export class PitchScene {
   readonly quietCaption = input(false);
   /** Plan 44: fielder sheet for the pitcher's era (null = no park view). */
   readonly fielders = input<FielderArt | null>(null);
-  /** Plan 44: the batter's look (park walls, crowd, signs). */
-  readonly look = input<SideLook | null>(null);
+  /** Plan 44: the park look (walls, crowd, signs). Plan 59 Round 1b: one per game, by the card eras (parkLookOf). */
+  readonly look = input<ParkLook | null>(null);
   /** Plan 44: what the server decided about the play (inning and friend games; practice passes null). */
   readonly play = input<PlayFacts | null>(null);
   protected readonly park = signal<ParkTiming | null>(null);

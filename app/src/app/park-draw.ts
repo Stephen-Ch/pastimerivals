@@ -1,4 +1,4 @@
-import { SideLook } from './art';
+import { ParkLook } from './art';
 import { ballAt, Camera, edgeDist, fielderAt, FR, ParkPlay, pol, project, toCam, NEAR, wallDist } from './park';
 
 // Plan 44: draws the park at field level on a 2D canvas, in W x H panel units (760 x 480), from the approved prototype
@@ -11,17 +11,20 @@ const ease = (u: number) => { u = Math.max(0, Math.min(1, u)); return u * u * (3
 type V3 = [number, number, number];
 
 interface Look { wall: string; wallTop: string; track: boolean; markers: number[]; stands: [string, string]; board: 'hand' | 'lit'; grass: string; sky: [string, string]; }
-export const LOOKS: Record<SideLook, Look> = {
+export const LOOKS: Record<ParkLook, Look> = {
   '1901': { wall: '#7a5532', wallTop: '#4f341d', track: false, markers: [], stands: ['#6d5a44', '#5d4c39'], board: 'hand', grass: '#5f8a45', sky: ['#9fb8cf', '#dfe6e6'] },
   '1920': { wall: '#6e4a2c', wallTop: '#4f341d', track: false, markers: [], stands: ['#655443', '#544535'], board: 'hand', grass: '#5c8a44', sky: ['#8fb0d0', '#dde6ea'] },
   '1956': { wall: '#9a9a92', wallTop: '#77776f', track: true, markers: [-45, 45], stands: ['#7d7f86', '#6b6d74'], board: 'hand', grass: '#4f8f3f', sky: ['#6fa0d8', '#d8e6f0'] },
+  // Plan 59 Round 1b: 1970-1989 park (lit board, warning track). Provisional colors from 1956; Round 1b Part B draws its own look.
+  '1970': { wall: '#9a9a92', wallTop: '#77776f', track: true, markers: [-45, 45], stands: ['#7d7f86', '#6b6d74'], board: 'lit', grass: '#4f8f3f', sky: ['#6fa0d8', '#d8e6f0'] },
   '1990': { wall: '#1f4f8a', wallTop: '#163a66', track: true, markers: [-45, -22, 0, 22, 45], stands: ['#3a5577', '#30496a'], board: 'lit', grass: '#3f8f3a', sky: ['#5a95dc', '#d5e5f4'] },
 };
 /** Stephen's own products by their real names, plus period concessions. No real sponsors, teams or league marks. */
-export const SIGNS: Record<SideLook, [string, number][]> = {
+export const SIGNS: Record<ParkLook, [string, number][]> = {
   '1901': [['Hot Dogs 10¢', -30], ['Scorecards', -10], ['DailyInventory', 12], ['Rawls Game', 32]],
   '1920': [['Mortality', -32], ['Hot Dogs 10¢', -12], ['Scorecards', 10], ['NYC Explorer', 32]],
   '1956': [['BlackJack Sensei', -31], ['Hot Dogs 25¢', -11], ['Dealer’s Choice', 11], ['DailyInventory', 31]],
+  '1970': [['Mortality', -31], ['Hot Dogs 50¢', -11], ['Rawls Game', 11], ['NYC Explorer', 31]],
   '1990': [['NYC Explorer', -32], ['DailyInventory', -12], ['BlackJack Sensei', 11], ['Rawls Game', 32]],
 };
 /** Fallback silhouette color per fielder sheet (the uniform's accent), if the sheet is not loaded by contact. */
@@ -29,12 +32,12 @@ export const ACCENT: Record<string, string> = { '1901-1919': '#24365c', '1920-19
 
 /** Rows of stands at an angle. 1901 (expert): a grandstand behind home and down the lines, low bleachers in the corners,
  *  and an open outfield where overflow fans stand on the grass behind a rope. */
-export function standRows(look: SideLook, a: number): number {
+export function standRows(look: ParkLook, a: number): number {
   if (look !== '1901') return 10;
   const t = Math.abs(a);
   return t >= 55 ? 10 : t >= 35 ? 3 : 0;
 }
-const STAND_RANGES = (look: SideLook): [number, number, number][] =>
+const STAND_RANGES = (look: ParkLook): [number, number, number][] =>
   look === '1901' ? [[-115, -55, 10], [-55, -35, 3], [35, 55, 3], [55, 115, 10]] : [[-115, 115, 10]];
 const range = (a0: number, a1: number, step: number) => { const o: number[] = []; for (let a = a0; a <= a1 + 1e-9; a += step) o.push(a); if (o[o.length - 1] < a1) o.push(a1); return o; };
 
@@ -44,8 +47,8 @@ const SKIN = ['#f1c9a5', '#e0ac85', '#c68a62', '#a86e4a', '#7d4f33', '#5a3825'];
 // ---- crowd: about 40 dressed figures per look, drawn once per look into a small sheet ----
 const FW = 16, FH = 30, NV = 40;
 export interface Crowd { img: HTMLCanvasElement; seats: [number, number, number, number, number][]; }
-const crowds = new Map<SideLook, Crowd>();
-export function crowdFor(look: SideLook): Crowd | null {
+const crowds = new Map<ParkLook, Crowd>();
+export function crowdFor(look: ParkLook): Crowd | null {
   const have = crowds.get(look);
   if (have) return have;
   if (typeof document === 'undefined') return null;
@@ -56,7 +59,7 @@ export function crowdFor(look: SideLook): Crowd | null {
   const L = +look, r = rng(L * 13 + 5);
   for (let i = 0; i < NV; i++) {
     const X = i * FW + FW / 2, Y = FH, k = 2.2;
-    const woman = L === 1990 ? r() < 0.45 : L === 1956 ? r() < 0.3 : r() < 0.12;
+    const woman = L >= 1990 ? r() < 0.45 : L >= 1956 ? r() < 0.3 : r() < 0.12;   // 1970: as 1956
     const pick = <T,>(a: T[]) => a[Math.floor(r() * a.length)];
     let body: string;
     if (L <= 1920) body = woman ? pick(['#5b4a6b', '#3d4a5c', '#6b4f3a']) : pick(['#2b2b2e', '#3a3530', '#25303b', '#4a3f35']);
@@ -173,7 +176,7 @@ export class ParkPainter {
     if (frame === FR.high) c.fillRect(X - 2.6 * u, Y - 16 * u, 1.2 * u, 6 * u);
   }
 
-  private park(look: SideLook) {
+  private park(look: ParkLook) {
     const L = LOOKS[look], c = this.c, cam = this.cam;
     const W = this.w, H = this.h;
     const hz = H * 0.5 + Math.tan(rad(cam.pitch)) * this.f;

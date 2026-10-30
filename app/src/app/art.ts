@@ -70,6 +70,11 @@ export interface SideArt { sheet: string; frames: SideFrame[]; lineArt: boolean;
 export function lookOf(year: number): SideLook {
   return year < 1920 ? '1901' : year < 1956 ? '1920' : year < 1990 ? '1956' : '1990';
 }
+/** Plan 59 Round 1b: the park look follows the card eras (one park per era); lookOf above still picks the batter sheet. */
+export type ParkLook = '1901' | '1920' | '1956' | '1970' | '1990';
+export function parkLookOf(year: number): ParkLook {
+  return year < 1920 ? '1901' : year < 1946 ? '1920' : year < 1970 ? '1956' : year < 1990 ? '1970' : '1990';
+}
 /** The batter's sheet. No researched tone: the pen-and-ink sheet (every fill white), so no skin tone is shown or guessed. */
 export function sideArt(m: ArtManifest | null, id: string, year: number): SideArt | null {
   if (!m?.side) return null;

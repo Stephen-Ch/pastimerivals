@@ -217,7 +217,7 @@
         @if (scene(); as s) {
           @for (k of [s.ab.index]; track k) {
             <pr-pitch-scene [era]="eraOf(s.ab.pitcher.year)" [throws]="s.ab.pitcher.throws" [bats]="hitsFrom(s.ab.batter.bats, s.ab.pitcher.throws)" [outcome]="s.ab.outcome"
-                            [seed]="s.ab.seed" [deco]="deco().deco" [side]="artFor(s)" [windup]="s.windup" [call]="callOf(s.ab)" [fielders]="fieldersFor(s.ab)" [look]="lookOf(s.ab.batter.year)" [play]="playOf(s.ab)" [quietCaption]="announcer()" (cue)="onCue($event)" (done)="sceneDone()" />
+                            [seed]="s.ab.seed" [deco]="deco().deco" [side]="artFor(s)" [windup]="s.windup" [call]="callOf(s.ab)" [fielders]="fieldersFor(s.ab)" [look]="parkLook()" [play]="playOf(s.ab)" [quietCaption]="announcer()" (cue)="onCue($event)" (done)="sceneDone()" />
           }
         } @else {
           <section class="result">

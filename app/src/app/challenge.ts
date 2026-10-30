@@ -1,7 +1,7 @@
 import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, DestroyRef, effect, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { api, PlayerHit, SeasonItem } from './api';
-import { ArtManifest, eraOf, fielderArt, lookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
+import { ArtManifest, eraOf, fielderArt, ParkLook, parkLookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
 import { sideLine } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
@@ -41,6 +41,15 @@ function savedLevel(): number {
   try { const n = Number(localStorage.getItem(LEVEL_KEY)); return n >= 1 && n <= 4 ? Math.floor(n) : 1; } catch { return 1; }
 }
 function saveLevel(n: number) { try { localStorage.setItem(LEVEL_KEY, String(n)); } catch { /* fine */ } }
+
+/** Plan 59 Round 1b: one park for a whole game. Inning games: the era season; classic games (no era): the home side's
+ *  pitcher (side 0, slot 0). Null without a game. */
+export function parkLookForView(v: CView | null): ParkLook | null {
+  const g = v?.game;
+  if (!g) return null;
+  const year = v.era?.season ?? g.lineups[0]?.[0]?.year;
+  return year ? parkLookOf(year) : null;
+}
 
 @Component({
   selector: 'pr-challenge',
@@ -845,9 +854,9 @@ export class ChallengeFlow {
   protected eraOf = eraOf;
 
   protected artFor(s: { ab: CAtBat; art: SideArt | null }) { return s.art; }
-  /** Plan 44: fielders wear the pitcher's era uniform; the park follows the batter's look. */
+  /** Plan 44: fielders wear the pitcher's era uniform. Plan 59 Round 1b: one park for the whole game. */
   protected fieldersFor(ab: CAtBat) { return fielderArt(this.manifest(), eraOf(ab.pitcher.year)); }
-  protected readonly lookOf = lookOf;
+  protected readonly parkLook = computed(() => parkLookForView(this.view()));
   protected playOf(ab: CAtBat) { return this.deco().deco === '3' ? playFacts(ab, this.names()) : null; }
 
   /** "2 of 6" during the regular at-bats; "Extra round 1" after, so the counter never hints at a tie. */

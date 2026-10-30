@@ -1,4 +1,4 @@
-import { SideLook } from './art';
+import { ParkLook } from './art';
 import { Call, OutcomeKey, PlayFacts } from './logic';
 
 // Plan 44 (v4.2): follow the ball at field level. Pure logic, no Angular, no canvas.
@@ -38,7 +38,7 @@ export function edgeDist(a: number): number {
 export const BASE1: XY = [63.6, 63.6], BASE2: XY = [0, 127.3], BASE3: XY = [-63.6, 63.6];
 
 /** Starting spots (distance, angle). 1901 and 1920 looks: outfielders 40 ft shallower. */
-export function startOf(p: Pos, look: SideLook): XY {
+export function startOf(p: Pos, look: ParkLook): XY {
   const of = look === '1901' || look === '1920' ? 40 : 0;
   switch (p) {
     case 'P': return [0, 60];
@@ -78,7 +78,7 @@ export interface Move { t0: number; t1: number; to: XY; frame: number; after: nu
 export interface FielderPlan { pos: Pos; start: XY; frame: number; moves: Move[]; }
 export type PlayKind = 'hr' | 'itp' | 'xbh' | 'single' | 'fly' | 'line' | 'pop' | 'foul' | 'ground' | 'dp' | 'force' | 'error';
 export interface ParkPlay {
-  kind: PlayKind; look: SideLook; len: number; segs: Seg[]; fielders: FielderPlan[];
+  kind: PlayKind; look: ParkLook; len: number; segs: Seg[]; fielders: FielderPlan[];
   /** Where a fly ball will come down (faint mark on the grass), or null. */
   mark: XY | null;
   /** Pops and fouls straight back: the camera does not turn. */
@@ -90,7 +90,7 @@ export interface ParkPlay {
   /** Real seconds per scene second (never below 1). */
   speed: number;
 }
-export interface ParkInput { outcome: OutcomeKey; call: Call; play: PlayFacts | null; seed: string; look: SideLook; }
+export interface ParkInput { outcome: OutcomeKey; call: Call; play: PlayFacts | null; seed: string; look: ParkLook; }
 
 /** Fixed scene lengths (s) by play [H-nit, Y1, Z3]. */
 export const LEN = { groundSingle: 1.6, ground: 2.0, dp: 2.4, lineOF: 1.6, lineIF: 1.0, fly: 2.2, pop: 2.6, xbh: 2.2, hr: 2.4, itp: 2.2 };
@@ -371,7 +371,7 @@ export function cameraAt(p: ParkPlay, t: number, aspect: number): Camera {
 
 /** Plan 59 Round 1b: what stands at the camera's bearing (degrees, as yaw): the back row of the stands, or the wall
  *  where there are no stands (1901 outfield). Returns its elevation in degrees seen from the camera. */
-export function structureElev(yaw: number, look: SideLook | null = null): number {
+export function structureElev(yaw: number, look: ParkLook | null = null): number {
   const sy = Math.sin(rad(yaw)), cy = Math.cos(rad(yaw));
   let r = 300, a = yaw;
   for (let i = 0; i < 4; i++) {   // walk the ray from the camera out to the structure at its own angle from home
@@ -382,11 +382,11 @@ export function structureElev(yaw: number, look: SideLook | null = null): number
     r = Math.max(1, want - Math.hypot(x, y) + r);
   }
   const open = look === '1901' && Math.abs(a) < 35;
-  const h = open ? (Math.abs(a) <= 45 ? 10.6 : 5.6) : 49.8;
+  const h = open ? 10.6 : 49.8;   // 1901 open outfield: the fair wall (10 ft + cap)
   return deg(Math.atan2(h - CAM.z, r));
 }
 /** Plan 59 Round 1b: true when the frame's bottom edge is above the stands (or the wall where there are none): only sky shows. */
-export function skyOnly(cam: Camera, aspect: number, look: SideLook | null = null): boolean {
+export function skyOnly(cam: Camera, aspect: number, look: ParkLook | null = null): boolean {
   const vHalf = deg(Math.atan(Math.tan(rad(cam.fov / 2)) / aspect));
   return cam.pitch - vHalf > structureElev(cam.yaw, look) + 1e-9;
 }
