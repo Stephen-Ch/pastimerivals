@@ -255,3 +255,39 @@ describe('Plan 44: art and scene', () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+// Plan 59 Round 1a: determinism golden. Same seed, same pitch plan and same park play (camera, fielders, ball path).
+// Later rounds may not add random draws to camera or backdrop code.
+describe('plan 59 determinism golden', () => {
+  const fnv = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); };
+  const ERAS = ['1901-1919', '1920-1945', '1946-1969', '1970-1989', '1990-2025'] as const;
+  const DECOS = ['1', '2', '3'] as const;
+  const TYPES = ['ground', 'fly', 'line', 'pop'] as const;
+
+  function determinismGolden(): { hash: string; plays: number } {
+    const out: string[] = [];
+    let plays = 0;
+    for (let i = 0; i < 2000; i++) {
+      const o: OutcomeKey = (['k', 'bb', 'hbp', 'single', 'double', 'triple', 'hr', 'oip'] as const)[i % 8];
+      const deco = DECOS[i % 3], seed = `d${i}`, bats: 'L' | 'R' = i % 2 ? 'L' : 'R';
+      const count = countFor(o, seed, deco);
+      const t = TYPES[(i >> 3) % 4];
+      const facts: PlayFacts | null = deco === '3' ? { outType: o === 'oip' ? t : null, doublePlay: i % 7 === 0 && t === 'ground', sacFly: false, forceRunner: null } : null;
+      const call = callFor(o, seed, count, 'Batter X', bats, 'R', deco, 1900 + (i % 125), facts);
+      const m = motionFor(o, count.finalKind);
+      const pl = planPitch({ m, kind: o === 'bb' ? 'ball' : null, isFinal: true, outcome: o, era: ERAS[i % 5], bats, call, contact: { x: 372, y: 200 }, seed, index: count.leadUp.length, windup: i % 2 === 0 });
+      out.push(JSON.stringify(pl));
+      if (hasPark(o, call)) { out.push(JSON.stringify(buildPlay({ outcome: o, call, play: facts, seed, look: LOOKS[i % 4] }))); plays++; }
+    }
+    return { hash: fnv(out.join('|')), plays };
+  }
+
+  it('planPitch and buildPlay over 2,000 seeds are unchanged', { timeout: 20_000 }, () => {
+    const t0 = performance.now();
+    const g = determinismGolden();
+    const ms = performance.now() - t0;
+    console.log(`plan 59 determinism golden: ${ms.toFixed(0)} ms`);
+    expect(g).toEqual({ hash: '45e17105', plays: 1250 });
+    expect(ms).toBeLessThan(5000);
+  });
+});
