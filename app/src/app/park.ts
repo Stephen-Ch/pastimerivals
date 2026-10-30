@@ -11,6 +11,8 @@ export type XY = [number, number];
 export const FR = { ready: 0, run: 1, high: 2, scoop: 3, throw: 4, stretch: 5, catcherUp: 6, catcherCatch: 7 } as const;
 
 export const CAM = { x: 0, y: -20, z: 10 };
+/** The side panel's shape (760 x 480): the camera's reference aspect. */
+export const PANEL_ASPECT = 760 / 480;
 export const MAX_TURN = 100, MAX_TILT = 75, MIN_FOV = 22, START_FOV = 70;
 
 const rad = (d: number) => (d * Math.PI) / 180, deg = (r: number) => (r * 180) / Math.PI;
@@ -347,11 +349,18 @@ export function cameraAt(p: ParkPlay, t: number, aspect: number): Camera {
   const k = ease(t / 0.2);
   let fov = lerp(START_FOV, Math.max(MIN_FOV, lerp(START_FOV, MIN_FOV, cl((d - 40) / 360))), ease(t / 0.6));   // gentler zoom: shallow plays keep grass in front of the wall
   fov = Math.min(80, Math.max(fov, (Math.max(elev, 0) + 9) / 0.6));
-  const hHalf = fov / 2, vHalf = deg(Math.atan(Math.tan(rad(fov / 2)) / aspect));
+  // Plan 59 Round 1b: the vertical field of view is the one the 760:480 panel has; other shapes derive the horizontal one.
+  // At 760:480 itself nothing is recomputed, so today's camera is unchanged bit for bit.
+  let hHalf = fov / 2, vHalf = deg(Math.atan(Math.tan(rad(fov / 2)) / PANEL_ASPECT));
+  if (aspect !== PANEL_ASPECT) { hHalf = deg(Math.atan(Math.tan(rad(vHalf)) * aspect)); fov = hHalf * 2; }
   // turn smoothly toward the ball, but never let it get closer than 30% of the half-frame to the edge
   let yaw = lerp(0, bearing, k);
   yaw = Math.max(bearing - hHalf * 0.7, Math.min(bearing + hHalf * 0.7, yaw));
   yaw = p.noTurn ? 0 : Math.max(-MAX_TURN, Math.min(MAX_TURN, yaw));
+  // Plan 59 Round 1b: a narrower frame can lose a ball the turn limit holds back (high fouls): widen just enough (the ball wins).
+  if (aspect !== PANEL_ASPECT && Math.abs(bearing - yaw) > hHalf * 0.7) {
+    hHalf = Math.min(75, Math.abs(bearing - yaw) / 0.7); fov = hHalf * 2; vHalf = deg(Math.atan(Math.tan(rad(hHalf)) / aspect));
+  }
   // aim between the ball and the top of the wall; on high balls keep the ball well inside the top of the frame
   const want = Math.max(Math.max(elev, 0) * 0.58 - 1, elev - vHalf * 0.6);
   let pitch = lerp(-3, want, k);
