@@ -13,6 +13,7 @@ import { intro, lineText, PbpLine, pitchLines, rawLead, resultLine } from './pbp
 import { bedFor, reactionFor, voice, voiceFor } from './audio';
 import { voiceOn } from './voice-setting';
 import { VoiceButton } from './voice-button';
+import { PerfOverlay, perfFromSearch } from './perf-overlay';
 import { SceneCue } from './pitch-scene';
 import { ArtManifest, Era, eraOf, fielderArt, isFirstVisit, lookOf, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, SideLook, WindupArt, windupArt } from './art';
 import { artNoteDue, artNoteShownThisVisit, markArtNoteShown } from './art-note';
@@ -63,7 +64,7 @@ function sessionId(): string {
 
 @Component({
   selector: 'app-root',
-  imports: [ReportView, PitchScene, ChallengeFlow, Feedback, HowSim, VoiceButton],
+  imports: [ReportView, PitchScene, ChallengeFlow, Feedback, HowSim, VoiceButton, PerfOverlay],
   styleUrls: ['./app.css', './sims.css', './home.css'],
   templateUrl: './app.html',
 })
@@ -112,6 +113,8 @@ export class App {
   private fallbackSent = '';       // plan 52: report pair the art_fallback event was sent for
 
   private readonly session = sessionId();
+  /** Plan 59 Round 1a: hidden frame-time readout, only with ?perf=1. */
+  protected readonly perf = perfFromSearch();
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
 
   protected readonly pick = computed<Pick | null>(() => {
