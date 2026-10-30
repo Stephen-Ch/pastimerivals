@@ -2,8 +2,8 @@ import { afterRenderEffect, Component, computed, DestroyRef, ElementRef, inject,
 import { Era, FielderArt, ParkLook, SideArt, WindupArt } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, PlayFacts, Trajectory } from './logic';
-import { buildPlay, hasPark, ParkPlay } from './park';
-import { FielderSheet } from './park-draw';
+import { buildPlay, hasPark, ParkPlay, PITCHER_CELL_FOOT, SIDE_F, sideCamera, WINDUP_F, WINDUP_FOOT, windupCamera, windupSpriteH } from './park';
+import { BackdropPlace, BackdropView, FielderSheet, LOOKS, renderBackdrop } from './park-draw';
 import { parkOn } from './park-setting';
 
 // Plan 32C: side-on pitch scene. Batter only, seen from the first-base side (right-handed) or the third-base side
@@ -445,7 +445,8 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
   imports: [BallparkView],
   template: `
     @if (side(); as a) {
-      <div class="stage" #stage [attr.data-cue]="lastCue()" [style.--hz]="fit() ? fit()!.top + 0.52 * 480 * fit()!.s + 'px' : null" [style.--dirt]="fit() ? fit()!.top + 0.92 * 480 * fit()!.s + 'px' : null">
+      <div class="stage" #stage [attr.data-cue]="lastCue()" [style.--sky]="tint().sky" [style.--grass]="tint().grass" [style.--hz]="sideHz()" [style.--whz]="windHz">
+      <canvas class="bg" #bgSide aria-hidden="true"></canvas>
       <div class="side" [class.mirror]="bats() === 'L'" [class.fit]="!!fit()" aria-hidden="true"
            [style.left.px]="fit()?.left" [style.top.px]="fit()?.top" [style.width.px]="fit() ? 760 * fit()!.s : null" [style.height.px]="fit() ? 480 * fit()!.s : null">
         <svg class="ground" viewBox="0 0 760 480" preserveAspectRatio="none">
@@ -486,9 +487,10 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
       }
       @if (windFrame() >= 0 && windup(); as w) {
         <div class="windup" aria-hidden="true">
-          <div class="pit" [class.mirror]="w.mirror" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windFrame()"></div>
+          <canvas class="bg" #bgWind></canvas>
+          <div class="pit" [class.mirror]="w.mirror" [style.height.%]="pitBox.h" [style.top.%]="pitBox.top" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windFrame()"></div>
           @if (windBlend().next !== null) {
-            <div class="pit top" [class.mirror]="w.mirror" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windBlend().next" [style.opacity]="windBlend().top"></div>
+            <div class="pit top" [class.mirror]="w.mirror" [style.height.%]="pitBox.h" [style.top.%]="pitBox.top" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windBlend().next" [style.opacity]="windBlend().top"></div>
           }
         </div>
       }
@@ -505,13 +507,14 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
     /* max-width: 900 px, and never wider than STAGE_MAX_ASPECT (1.35) x the height. */
     .stage { position: relative; isolation: isolate; width: 100%; max-width: min(900px, calc(min(100cqh - 62px, 60dvh) * 1.35)); margin: 0 auto; height: min(calc(100cqh - 62px), 60dvh);
       overflow: hidden; border: 1px solid var(--border); border-radius: 14px; box-sizing: border-box;
-      background: linear-gradient(#cfd9e3 0 var(--hz, 52%), #7d9a5f var(--hz, 52%) var(--dirt, 92%), #b48a5a var(--dirt, 92%) 100%); }
+      background: linear-gradient(var(--sky, #d8e6f0) 0 var(--hz, 33%), var(--grass, #4f8f3f) var(--hz, 33%) 100%); }
+    /* Plan 59 Round 1b: the drawn park (cached per look, view, side and size); until it is drawn the flat silhouette above shows. */
+    .bg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: block; }
     .park { position: absolute; inset: 0; z-index: 4; overflow: hidden; background: #5c8a44; }
     .park .words { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
     .windup { position: absolute; inset: 0; z-index: 5; overflow: hidden;
-      background: linear-gradient(#cfd9e3 0 58%, #7d9a5f 58% 100%); }
-    .windup::after { content: ''; position: absolute; left: 25%; right: 25%; bottom: 0; height: 12%; border-radius: 50% 50% 0 0; background: #b48a5a; }
-    .windup .pit { position: absolute; z-index: 1; height: 92%; aspect-ratio: 364 / 480; bottom: 4%; left: 50%; transform: translateX(-50%);
+      background: linear-gradient(var(--sky, #d8e6f0) 0 var(--whz, 32%), var(--grass, #4f8f3f) var(--whz, 32%) 100%); }
+    .windup .pit { position: absolute; z-index: 1; aspect-ratio: 364 / 480; left: 50%; transform: translateX(-50%);
       background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
     .windup .pit.mirror { transform: translateX(-50%) scaleX(-1); }
     .windup .pit.top { z-index: 2; }
@@ -583,6 +586,45 @@ export class PitchScene {
     const z = this.stageSize();
     return z && z[0] > 0 && z[1] > 0 ? stageFit(z[0], z[1], this.bats() === 'L') : null;
   });
+  /** Plan 59 Round 1b: the look's flat colors for the silhouette (no look: the 1956 park's). */
+  protected readonly tint = computed(() => { const L = LOOKS[this.look() ?? '1956']; return { sky: L.sky[1], grass: L.grass }; });
+  /** The side backdrop's horizon on the stage (silhouette line), from the side camera. */
+  protected readonly sideHz = computed(() => {
+    const p = this.place('side');
+    return p ? p.cy + p.f * Math.tan((p.cam.pitch * Math.PI) / 180) + 'px' : null;
+  });
+  /** The windup camera is the same at every stage size (units of stage height): horizon and sprite box in %. */
+  protected readonly windHz = (50 + 100 * WINDUP_F * Math.tan((windupCamera().pitch * Math.PI) / 180)) + '%';
+  protected readonly pitBox = { h: 100 * windupSpriteH(), top: 100 * (WINDUP_FOOT - PITCHER_CELL_FOOT * windupSpriteH()) };
+  /** Where a backdrop's camera sits on this stage (CSS px), or null before the stage is measured. */
+  private place(view: BackdropView): BackdropPlace | null {
+    const z = this.stageSize(), fit = this.fit();
+    if (!z || !fit) return null;
+    if (view === 'windup') return { cam: windupCamera(), f: WINDUP_F * z[1], cx: z[0] / 2, cy: z[1] / 2 };
+    return { cam: sideCamera(this.bats() === 'L'), f: SIDE_F * fit.s, cx: fit.left + 380 * fit.s, cy: fit.top + 240 * fit.s };
+  }
+  private readonly bgSide = viewChild<ElementRef<HTMLCanvasElement>>('bgSide');
+  private readonly bgWind = viewChild<ElementRef<HTMLCanvasElement>>('bgWind');
+  /** Copies the cached backdrop into each shown backdrop canvas once per look, side and size. */
+  private paintBackdrops() {
+    const z = this.stageSize(), look = this.look() ?? '1956', side = this.bats() === 'L' ? 'L' : 'R';
+    if (!z) return;
+    const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
+    for (const [view, ref] of [['side', this.bgSide()], ['windup', this.bgWind()]] as [BackdropView, ElementRef<HTMLCanvasElement> | undefined][]) {
+      const cv = ref?.nativeElement, place = this.place(view);
+      if (!cv || !place) continue;
+      const key = `${look}|${side}|${z[0]}x${z[1]}|${dpr}`;
+      if (cv.dataset['key'] === key) continue;
+      const src = renderBackdrop(look, view, side, z[0], z[1], dpr, place);
+      if (!src) continue;
+      let g: CanvasRenderingContext2D | null = null;
+      try { g = cv.getContext('2d'); } catch { g = null; }
+      if (!g) continue;
+      cv.width = src.width; cv.height = src.height;
+      g.drawImage(src, 0, 0);
+      cv.dataset['key'] = key;
+    }
+  }
   private observed: HTMLElement | null = null;
   private ro: ResizeObserver | null = null;
   private watchStage() {
@@ -636,6 +678,7 @@ export class PitchScene {
   constructor() {
     inject(DestroyRef).onDestroy(() => { clearTimeout(this.timer); this.clearFrames(); this.ro?.disconnect(); });
     afterRenderEffect(() => this.watchStage());
+    afterRenderEffect(() => this.paintBackdrops());
     this.timer = setTimeout(() => (prefersReducedMotion() ? this.finish() : this.next()), 0);
   }
 

@@ -341,7 +341,9 @@ export function fielderAt(f: FielderPlan, t: number): { at: XY; frame: number; m
 }
 
 /** Camera like a TV operator: turn to the ball's bearing, tilt to its height, zoom with distance. fov = horizontal degrees. */
-export interface Camera { yaw: number; pitch: number; fov: number; }
+export interface Camera { yaw: number; pitch: number; fov: number;
+  /** Plan 59 Round 1b: where the camera stands (feet). Default CAM, so every existing camera is unchanged. */
+  pos?: { x: number; y: number; z: number }; }
 export function cameraAt(p: ParkPlay, t: number, aspect: number): Camera {
   const b = ballAt(p, t);
   const bx = b[0] - CAM.x, by = b[1] - CAM.y, d = Math.hypot(bx, by);
@@ -398,7 +400,8 @@ export function skyOnly(cam: Camera, aspect: number, look: ParkLook | null = nul
 
 /** Camera-space point: [right, forward, up]. */
 export function toCam(cam: Camera, x: number, y: number, z: number): [number, number, number] {
-  const rx = x - CAM.x, ry = y - CAM.y, rz = z - CAM.z;
+  const o = cam.pos ?? CAM;
+  const rx = x - o.x, ry = y - o.y, rz = z - o.z;
   const yw = rad(cam.yaw), sy = Math.sin(yw), cy = Math.cos(yw);
   const dx = rx * cy - ry * sy, dy = rx * sy + ry * cy;
   const pt = rad(cam.pitch), sp = Math.sin(pt), cp = Math.cos(pt);
@@ -411,4 +414,57 @@ export function project(cam: Camera, W: number, H: number, x: number, y: number,
   if (v[1] < NEAR) return null;
   const f = W / 2 / Math.tan(rad(cam.fov) / 2);
   return [W / 2 + (v[0] / v[1]) * f, H / 2 - (v[2] / v[1]) * f, v[1]];
+}
+
+/** Plan 59 Round 1b: screen point for a camera with focal length f (screen units) and center (cx, cy), or null behind it. */
+export function projectF(cam: Camera, f: number, cx: number, cy: number, x: number, y: number, z = 0): [number, number, number] | null {
+  const v = toCam(cam, x, y, z);
+  if (v[1] < NEAR) return null;
+  return [cx + (v[0] / v[1]) * f, cy - (v[2] / v[1]) * f, v[1]];
+}
+
+// ---- Plan 59 Round 1b: view cameras for the backdrops behind the side view and the windup ----
+/** The plate's middle (feet): the side view's plate SVG sits at panel (PLATE_X, FOOT_Y). */
+export const PLATE_MID = { x: 0, y: 0.7, z: 0 };
+/** The pitcher's rubber on the (flat) painted mound: the windup sprite's feet stand here. */
+export const RUBBER = { x: 0, y: 60.5, z: 0 };
+/** Side camera: on the first-base side (righty) or third-base side (lefty), 45 ft from the plate, 7 ft up. */
+export const SIDE_CAM = { dist: 45, z: 7 };
+/** The side batter is 440 panel units for about 6.2 ft, standing about 3 ft beyond the plate: focal length in panel units. */
+export const SIDE_F = (440 * (SIDE_CAM.dist + 3)) / 6.2;
+/** Where the plate sits in the side panel (panel units; panel center is 380, 240). */
+const SIDE_PLATE: [number, number] = [240, 470];
+/** Windup camera: behind the plate 20 ft back, 5.5 ft up, 6.5 degrees top to bottom (focal length per unit of stage height). */
+export const WINDUP_CAM = { back: 20, z: 5.5, vfov: 6.5 };
+export const WINDUP_F = 0.5 / Math.tan(rad(WINDUP_CAM.vfov / 2));
+/** Windup foot line (share of stage height); a windup cell is 480 units for about 7.3 ft (feet at cell y 468). */
+export const WINDUP_FOOT = 0.92, PITCHER_CELL_FT = 7.3, PITCHER_CELL_FOOT = 468 / 480;
+
+/** Aims a camera standing at pos with yaw so the point q lands (dx, dy) screen units off center (dy + = down), focal f.
+ *  Exact: pitch from the point's elevation in the camera's vertical plane, then the camera slides sideways along its
+ *  right-hand direction until q sits dx off center. */
+function aimed(pos: { x: number; y: number; z: number }, yaw: number, q: { x: number; y: number; z: number }, f: number, dx: number, dy: number): Camera {
+  const sy = Math.sin(rad(yaw)), cy = Math.cos(rad(yaw));
+  const rx = q.x - pos.x, ry = q.y - pos.y, rz = q.z - pos.z;
+  const fwd = rx * sy + ry * cy;
+  const phi = deg(Math.atan2(rz, fwd)), pitch = phi + deg(Math.atan(dy / f));
+  const fwd2 = Math.hypot(fwd, rz) * Math.cos(rad(phi - pitch));
+  const want = (fwd2 * dx) / f, have = rx * cy - ry * sy;   // camera-right offset of q
+  const k = have - want;   // slide the camera k feet along its right-hand direction (cy, -sy)
+  return { yaw, pitch, fov: 2 * deg(Math.atan(380 / f)), pos: { x: pos.x + k * cy, y: pos.y - k * sy, z: pos.z } };
+}
+/** Side view camera in panel units: center maps to panel (380, 240), focal SIDE_F; the plate lands on (PLATE_X, FOOT_Y)
+ *  of the (mirrored, for lefties) panel. Lefties get the real third-base-side view, so nothing reads backwards. */
+export function sideCamera(mirror: boolean): Camera {
+  const sx = mirror ? -1 : 1;
+  return aimed({ x: sx * SIDE_CAM.dist, y: 0, z: SIDE_CAM.z }, mirror ? 90 : -90, PLATE_MID, SIDE_F, sx * (SIDE_PLATE[0] - 380), SIDE_PLATE[1] - 240);
+}
+/** Windup camera in units of stage height: center maps to the stage center, focal WINDUP_F; the rubber lands on the foot line. */
+export function windupCamera(): Camera {
+  return aimed({ x: 0, y: -WINDUP_CAM.back, z: WINDUP_CAM.z }, 0, RUBBER, WINDUP_F, 0, WINDUP_FOOT - 0.5);
+}
+/** The windup sprite's height as a share of the stage height (the cell's 7.3 ft at the rubber's distance). */
+export function windupSpriteH(): number {
+  const cam = windupCamera(), d = toCam(cam, RUBBER.x, RUBBER.y, RUBBER.z)[1];
+  return (PITCHER_CELL_FT * WINDUP_F) / d;
 }

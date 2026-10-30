@@ -1,5 +1,5 @@
 import { ParkLook } from './art';
-import { ballAt, Camera, edgeDist, fielderAt, FR, ParkPlay, pol, project, toCam, NEAR, wallDist } from './park';
+import { ballAt, Camera, edgeDist, fielderAt, FR, ParkPlay, pol, toCam, NEAR, wallDist } from './park';
 
 // Plan 44: draws the park at field level on a 2D canvas, in W x H panel units (760 x 480), from the approved prototype
 // (planning/44-park-prototype.html). Everything is placed in feet and drawn live with one camera, so the wall base meets the grass.
@@ -119,9 +119,17 @@ export class ParkPainter {
   /** Plan 59 Round 1b: painter units of this frame (height 480, width 480 x aspect). */
   private w = W;
   private h = H;
+  /** Plan 59 Round 1b: where the camera's center lands (the field view: the canvas center; backdrops: set per view). */
+  private cx = W / 2;
+  private cy = H / 2;
+  /** Backdrops (tele lenses close to the lines): chalk lines at their real 4 inches instead of the field view's 1.2 ft. */
+  private thin = false;
 
-  private scr(v: V3): [number, number] { return [this.w / 2 + (v[0] / v[1]) * this.f, this.h / 2 - (v[2] / v[1]) * this.f]; }
-  private proj(x: number, y: number, z = 0) { return project(this.cam, this.w, this.h, x, y, z); }
+  private scr(v: V3): [number, number] { return [this.cx + (v[0] / v[1]) * this.f, this.cy - (v[2] / v[1]) * this.f]; }
+  private proj(x: number, y: number, z = 0): [number, number, number] | null {
+    const v = toCam(this.cam, x, y, z);
+    return v[1] < NEAR ? null : [...this.scr(v), v[1]];
+  }
   private poly(pts: V3[], fill?: string, stroke?: string, lw = 1) {
     const ps = pts.map(p => toCam(this.cam, p[0], p[1], p[2]));
     const out: V3[] = [];
@@ -139,7 +147,7 @@ export class ParkPainter {
 
   /** One frame of the park view at scene time t. */
   draw(play: ParkPlay, cam: Camera, t: number, sheet: FielderSheet, w = W, h = H) {
-    this.w = w; this.h = h;
+    this.w = w; this.h = h; this.cx = w / 2; this.cy = h / 2; this.thin = false;
     this.cam = cam; this.f = w / 2 / Math.tan(rad(cam.fov) / 2);
     const c = this.c;
     c.clearRect(0, 0, w, h);
@@ -152,6 +160,14 @@ export class ParkPainter {
     for (const f of fs) this.fielder(f.at, f.frame, f.moving, t, sheet);
     const bp = this.proj(b[0], b[1], b[2]);
     if (bp) { const r = Math.max(4, (0.6 * this.f) / bp[2]); c.fillStyle = '#fbf8f1'; c.strokeStyle = '#2b2a28'; c.lineWidth = 1.4; c.beginPath(); c.arc(bp[0], bp[1], r, 0, 7); c.fill(); c.stroke(); }
+  }
+
+  /** Plan 59 Round 1b: the static park (no ball, no fielders) for a backdrop, with an explicit focal length f and the
+   *  camera's center at (cx, cy), all in the canvas's units. plate = false leaves the plate out (the side view's SVG plate stays). */
+  backdrop(look: ParkLook, cam: Camera, w: number, h: number, f: number, cx: number, cy: number, plate: boolean) {
+    this.w = w; this.h = h; this.cx = cx; this.cy = cy; this.cam = cam; this.f = f; this.thin = true;
+    this.c.clearRect(0, 0, w, h);
+    this.park(look, plate);
   }
 
   private fielder(at: [number, number], frame: number, moving: boolean, t: number, sheet: FielderSheet) {
@@ -176,10 +192,10 @@ export class ParkPainter {
     if (frame === FR.high) c.fillRect(X - 2.6 * u, Y - 16 * u, 1.2 * u, 6 * u);
   }
 
-  private park(look: ParkLook) {
+  private park(look: ParkLook, plate = true) {
     const L = LOOKS[look], c = this.c, cam = this.cam;
     const W = this.w, H = this.h;
-    const hz = H * 0.5 + Math.tan(rad(cam.pitch)) * this.f;
+    const hz = this.cy + Math.tan(rad(cam.pitch)) * this.f;
     const gr = c.createLinearGradient(0, hz - 400, 0, hz);
     gr.addColorStop(0, L.sky[0]); gr.addColorStop(1, L.sky[1]);
     c.fillStyle = gr; c.fillRect(0, 0, W, H);
@@ -192,10 +208,18 @@ export class ParkPainter {
     this.poly([[0, -12, 0], ...dirt], '#b58a5c');
     this.poly([[0, 12, 0], [52, 52, 0], [0, 104, 0], [-52, 52, 0]], L.grass);
     { const m: V3[] = []; for (let a = 0; a < 360; a += 20) m.push([Math.sin(rad(a)) * 9, 60.5 + Math.cos(rad(a)) * 9, 0]); this.poly(m, '#b58a5c'); }
-    for (const a of [-45, 45]) { const e = pol(wallDist(a), a), n = [Math.cos(rad(a)) * 0.6, -Math.sin(rad(a)) * 0.6]; this.poly([[n[0], n[1], 0], [e[0] + n[0], e[1] + n[1], 0], [e[0] - n[0], e[1] - n[1], 0], [-n[0], -n[1], 0]], '#fff'); }
+    for (const a of [-45, 45]) { const lw = this.thin ? 0.17 : 0.6, e = pol(wallDist(a), a), n = [Math.cos(rad(a)) * lw, -Math.sin(rad(a)) * lw]; this.poly([[n[0], n[1], 0], [e[0] + n[0], e[1] + n[1], 0], [e[0] - n[0], e[1] - n[1], 0], [-n[0], -n[1], 0]], '#fff'); }
     for (const [x, y] of [[63.6, 63.6], [0, 127.3], [-63.6, 63.6]]) this.poly([[x - 1.5, y - 1.5, 0.1], [x + 1.5, y - 1.5, 0.1], [x + 1.5, y + 1.5, 0.1], [x - 1.5, y + 1.5, 0.1]], '#fff');
-    this.poly([[-0.7, 0, 0.1], [0.7, 0, 0.1], [0.7, 0.7, 0.1], [0, 1.4, 0.1], [-0.7, 0.7, 0.1]], '#fff');
+    if (plate) this.poly([[-0.7, 0, 0.1], [0.7, 0, 0.1], [0.7, 0.7, 0.1], [0, 1.4, 0.1], [-0.7, 0.7, 0.1]], '#fff');
     const cs = crowdFor(look);
+    // the stands' front wall under the first row (the low fence is 5-10 ft, the first row starts 8 ft up): no sky shows through
+    for (const [a0, a1] of STAND_RANGES(look)) {
+      const as = range(a0, a1, 2.5), base: V3[] = [];
+      for (const a of as) base.push([...pol(edgeDist(a) + 6, a), 0]);
+      for (const a of [...as].reverse()) base.push([...pol(edgeDist(a) + 6, a), 8]);
+      this.poly(base, L.stands[1]);
+      this.poly(base, '#00000040');
+    }
     for (let row = 9; row >= 0; row--) {
       for (const [a0, a1, rows] of STAND_RANGES(look)) {
         if (row >= rows) continue;
@@ -257,4 +281,34 @@ export class ParkPainter {
     }
     for (const a of L.markers) { const d = Math.round(wallDist(a)); const m = this.proj(...pol(d - 0.3, a), 4); if (m) { const sz = (5 * this.f) / m[2]; if (sz < 5) continue; c.font = `700 ${sz}px Arial, sans-serif`; c.fillStyle = '#fff'; c.fillText(String(d), m[0], m[1]); } }
   }
+}
+
+// ---- Plan 59 Round 1b: backdrops behind the windup and the side view, drawn once and cached ----
+export type BackdropView = 'side' | 'windup';
+/** Where a backdrop's camera sits on the stage: camera, focal length and center, in CSS px of the stage. */
+export interface BackdropPlace { cam: Camera; f: number; cx: number; cy: number; }
+const backdrops = new Map<string, HTMLCanvasElement>();
+const BACKDROP_KEEP = 8;
+/** Last render times (ms) by view, for the perf log (test 11). */
+export const backdropMs: Partial<Record<BackdropView, number>> = {};
+/** The static park for one view into an offscreen canvas at the stage's size x density (capped at 2), cached by look,
+ *  view, side, size and density (Last Licks reuses it across at-bats). Null when there is no canvas (jsdom). */
+export function renderBackdrop(look: ParkLook, view: BackdropView, side: 'L' | 'R', cssW: number, cssH: number, dpr: number, place: BackdropPlace): HTMLCanvasElement | null {
+  const k = Math.min(2, Math.max(1, dpr || 1));
+  const key = `${look}|${view}|${side}|${cssW}x${cssH}|${k}`;
+  const have = backdrops.get(key);
+  if (have) { backdrops.delete(key); backdrops.set(key, have); return have; }
+  if (typeof document === 'undefined' || cssW <= 0 || cssH <= 0) return null;
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(cssW * k)); cv.height = Math.max(1, Math.round(cssH * k));
+  let g: CanvasRenderingContext2D | null = null;
+  try { g = cv.getContext('2d'); } catch { g = null; }
+  if (!g) return null;
+  g.setTransform(k, 0, 0, k, 0, 0);
+  new ParkPainter(g).backdrop(look, place.cam, cssW, cssH, place.f, place.cx, place.cy, view !== 'side');
+  backdrops.set(key, cv);
+  while (backdrops.size > BACKDROP_KEEP) backdrops.delete(backdrops.keys().next().value!);
+  if (typeof performance !== 'undefined') backdropMs[view] = performance.now() - t0;
+  return cv;
 }
