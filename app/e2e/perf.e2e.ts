@@ -22,10 +22,11 @@ test('?perf=1 shows p95, max, share under 20 ms and load time after an at-bat', 
 });
 
 test('without ?perf=1 there is no readout', async ({ context, page }) => {
-  await serve(context);
+  const h = await serve(context);
   await page.goto('/');
   await playOnce(page);
   await expect(page.getByRole('status', { name: 'Frame times' })).toHaveCount(0);
+  expect(h.bad).toEqual([]);
 });
 
 test('the readout adds no network requests', async ({ browser }) => {
@@ -37,7 +38,8 @@ test('the readout adds no network requests', async ({ browser }) => {
     await playOnce(page);
     await page.waitForTimeout(1200);
     await context.close();
-    return h.requests.map(r => r.replace(/^GET \/(\?.*)?$/, 'GET /')).sort();
+    expect(h.bad).toEqual([]);
+    return [...new Set(h.requests.map(r => r.replace(/^GET \/(\?.*)?$/, 'GET /')))].sort();   // distinct requests: timer-driven repeats don't count
   };
   expect(await run('/?perf=1')).toEqual(await run('/'));
 });
