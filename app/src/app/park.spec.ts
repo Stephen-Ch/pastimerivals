@@ -3,9 +3,9 @@ import { vi } from 'vitest';
 import { fielderArt, SideLook } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, callFor, countFor, OutcomeKey, PlayFacts } from './logic';
-import { BASE1, BASE2, ballAt, buildPlay, cameraAt, dist, fielderAt, hasPark, MAX_TILT, MAX_TURN, ParkPlay, polar, project, skyOnly, wallDist, ZONE } from './park';
+import { BASE1, BASE2, ballAt, buildPlay, cameraAt, dist, fielderAt, hasPark, MAX_TILT, MAX_TURN, ParkPlay, PLATE_MID, polar, project, projectF, RUBBER, SIDE_F, sideCamera, skyOnly, wallDist, WINDUP_F, WINDUP_FOOT, windupCamera, windupSpriteH, ZONE } from './park';
 import { W, H } from './park-draw';
-import { FINAL_TL, LEAD_TL, PitchScene, planPitch, SceneCue, motionFor } from './pitch-scene';
+import { FINAL_TL, FOOT_Y, LEAD_TL, PANEL_W, PitchScene, planPitch, PLATE_X, SceneCue, motionFor, stageFit } from './pitch-scene';
 
 const LOOKS: SideLook[] = ['1901', '1920', '1956', '1990'];
 const OUTS: PlayFacts[] = [
@@ -381,6 +381,45 @@ describe('plan 59 r1b: lens limits on narrow stages', () => {
           expect(s![1], `${a} ${p.kind} t=${t}`).toBeGreaterThanOrEqual(0); expect(s![1], `${a} ${p.kind} t=${t}`).toBeLessThanOrEqual(480);
         }
       }
+    }
+  });
+});
+
+// Plan 59 Round 1b test 4: view cameras for the backdrops. Through stageFit the side camera puts the plate on the panel's
+// (PLATE_X, FOOT_Y), righty and lefty; the windup camera puts the rubber on the windup foot line; the side view's horizon
+// sits in the top third of the stage on phones. (The windup camera's horizon is set by its own numbers: 20 ft back,
+// 5.5 ft up, 6.5 degrees, sprite feet at 92%; it lands near 32% of the stage and is not part of the top-third check.)
+describe('plan 59 r1b test 4: view cameras', () => {
+  const sidePlace = (w: number, h: number, m: boolean) => {
+    const f = stageFit(w, h, m), cam = sideCamera(m);
+    return { f, cam, F: SIDE_F * f.s, cx: f.left + 380 * f.s, cy: f.top + 240 * f.s };
+  };
+  it('side camera: the plate within 2% of (PLATE_X, FOOT_Y) at 358x506, 288x341 and 900x540, righty and lefty', () => {
+    for (const [w, h] of [[358, 506], [288, 341], [900, 540]]) for (const m of [false, true]) {
+      const { f, cam, F, cx, cy } = sidePlace(w, h, m);
+      const p = projectF(cam, F, cx, cy, PLATE_MID.x, PLATE_MID.y, PLATE_MID.z)!;
+      const ex = f.left + (m ? PANEL_W - PLATE_X : PLATE_X) * f.s, ey = f.top + FOOT_Y * f.s;
+      expect(Math.abs(p[0] - ex), `${w}x${h} ${m} x`).toBeLessThanOrEqual(0.02 * w);
+      expect(Math.abs(p[1] - ey), `${w}x${h} ${m} y`).toBeLessThanOrEqual(0.02 * h);
+    }
+  });
+  it('lefties get the third-base-side view (a real view, not a mirror): the camera stands at x < 0', () => {
+    expect(sideCamera(false).pos!.x).toBeGreaterThan(30);
+    expect(sideCamera(true).pos!.x).toBeLessThan(-30);
+  });
+  it('windup camera: the rubber within 2% of the windup foot line, centered, at 358x506, 288x313 and 437x324', () => {
+    for (const [w, h] of [[358, 506], [288, 313], [437, 324]]) {
+      const p = projectF(windupCamera(), WINDUP_F * h, w / 2, h / 2, RUBBER.x, RUBBER.y, RUBBER.z)!;
+      expect(Math.abs(p[1] - WINDUP_FOOT * h), `${w}x${h}`).toBeLessThanOrEqual(0.02 * h);
+      expect(Math.abs(p[0] - w / 2)).toBeLessThanOrEqual(0.02 * w);
+    }
+    const body = windupSpriteH() * (468 - 61) / 480;   // standing pose: cell y 61 to 468
+    expect(body).toBeGreaterThanOrEqual(0.62); expect(body).toBeLessThanOrEqual(0.76);
+  });
+  it('side view horizon in the top third of the stage at 390x844 (stage 358x506) and 320x568 (stage 288x313)', () => {
+    for (const [w, h] of [[358, 506], [288, 313]]) for (const m of [false, true]) {
+      const { cam, F, cy } = sidePlace(w, h, m);
+      expect(cy + F * Math.tan((cam.pitch * Math.PI) / 180), `${w}x${h} ${m}`).toBeLessThan(h / 3);
     }
   });
 });

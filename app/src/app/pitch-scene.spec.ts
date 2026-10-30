@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Era, SideLook } from './art';
 import { callFor, countFor, Deco, OUTCOMES, PlayFacts } from './logic';
 import { buildPlay, hasPark } from './park';
+import { LOOKS } from './park-draw';
 import { leadMotion, motionFor, parkTiming, PitchScene, planPitch, WINDUP_S, ENTER_X, FOOT_Y, PANEL_H, PANEL_W, STAGE_MAX_ASPECT, StageFit, stageFit } from './pitch-scene';
 
 describe('pitch scene', () => {
@@ -126,6 +127,29 @@ describe('plan 59 r1b: widest stage', () => {
       const f = stageFit(STAGE_MAX_ASPECT * h, h, m);
       expect(f.x1, `${h} ${m}`).toBeGreaterThanOrEqual(ENTER_X); expect(f.x1 - ENTER_X).toBeLessThanOrEqual(30);
       expect(f.x0).toBeLessThanOrEqual(-20); expect(-20 - f.x0).toBeLessThanOrEqual(30);
+    }
+  });
+});
+
+// Plan 59 Round 1b test 8: before the drawn backdrop is ready (and in jsdom, which has no canvas) the stage shows a flat
+// silhouette in the park look's sky and grass colors, never a blank box, and nothing throws. The windup's CSS mound is gone.
+describe('plan 59 r1b test 8: silhouette without a canvas', () => {
+  it('stage and windup carry the look\'s sky and grass colors; backdrop canvases exist; nothing throws', async () => {
+    for (const look of ['1901', '1970', '1990'] as const) {
+      const f = TestBed.createComponent(PitchScene);
+      f.componentRef.setInput('era', '1990-2025');
+      f.componentRef.setInput('outcome', 'k');
+      f.componentRef.setInput('seed', 'sil');
+      f.componentRef.setInput('look', look);
+      f.componentRef.setInput('side', { sheet: '/s.webp', frames: Array.from({ length: 8 }, () => ({})), lineArt: false });
+      f.componentRef.setInput('windup', { sheet: '/w.webp', mirror: false });
+      expect(() => f.detectChanges()).not.toThrow();
+      await f.whenStable();
+      const el = f.nativeElement as HTMLElement, stage = el.querySelector('.stage') as HTMLElement;
+      expect(stage.style.getPropertyValue('--sky'), look).toBe(LOOKS[look].sky[1]);
+      expect(stage.style.getPropertyValue('--grass')).toBe(LOOKS[look].grass);
+      expect(stage.querySelector(':scope > canvas.bg')).not.toBeNull();
+      f.destroy();
     }
   });
 });
