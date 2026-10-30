@@ -427,7 +427,7 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
   imports: [BallparkView],
   template: `
     @if (side(); as a) {
-      <div class="stage">
+      <div class="stage" [attr.data-cue]="lastCue()">
       <div class="side" [class.mirror]="bats() === 'L'" aria-hidden="true">
         <svg class="ground" viewBox="0 0 760 480" preserveAspectRatio="none">
           <path d="M175 474 L305 474 L318 466 L188 466 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width="2"/>
@@ -532,6 +532,9 @@ export class PitchScene {
   readonly done = output<void>();
   /** Plan 42: moments the announcer follows (fired in the same tick as the board update). */
   readonly cue = output<SceneCue>();
+  /** Plan 59 Round 1b: the last cue's moment on the stage (data-cue), so browser tests can sample at each cue. No visible change. */
+  protected readonly lastCue = signal<SceneCue['moment'] | null>(null);
+  private emitCue(c: SceneCue) { this.lastCue.set(c.moment); this.cue.emit(c); }
   /** Plan 42: the announcer line replaces the short caption (count stays; caption no longer read aloud). */
   readonly quietCaption = input(false);
   /** Plan 44: fielder sheet for the pitcher's era (null = no park view). */
@@ -619,7 +622,7 @@ export class PitchScene {
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: FrameRequestCallback) => setTimeout(() => fn(performance.now()), 16) as unknown as number;
     const lead0 = plan.s.windup ? WINDUP_S : 0;
     const idx = this.step();
-    if (plan.s.windup) this.cue.emit({ index: idx, final, moment: 'windup' });
+    if (plan.s.windup) this.emitCue({ index: idx, final, moment: 'windup' });
     const start = performance.now();
     const tick = () => {
       const el = (performance.now() - start) / 1000;
@@ -627,15 +630,15 @@ export class PitchScene {
       this.windFrame.set(-1);
       const t = Math.min(end, el - lead0);
       if (this.side() && (!pk || t < pk.tPark)) this.frame.set(frameAt(plan, Math.min(plan.tl.end, t)));   // the side view holds its last frame under the park
-      if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); this.cue.emit({ index: idx, final, moment: 'enter' }); }
+      if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); this.emitCue({ index: idx, final, moment: 'enter' }); }
       if (!called && t >= plan.p.tPlate) {
         called = true;
         if (lead) this.board.set({ balls: lead.balls, strikes: lead.strikes, caption: PITCH_CAPTION[lead.kind] });
         else if (fin) this.board.update(b => ({ ...b, caption: fin }));
-        this.cue.emit({ index: idx, final, moment: 'plate' });
+        this.emitCue({ index: idx, final, moment: 'plate' });
       }
       if (pk && t >= pk.tPark) {
-        if (!parked) { parked = true; this.cue.emit({ index: idx, final, moment: 'park' }); }
+        if (!parked) { parked = true; this.emitCue({ index: idx, final, moment: 'park' }); }
         const pt = t - pk.tPark;
         this.parkFade.set(Math.min(1, pt / PARK_FADE));
         this.parkView()?.draw(Math.min(pk.play.len, pt));
@@ -669,7 +672,7 @@ export class PitchScene {
     clearTimeout(this.timer);
     this.clearFrames();
     const c = this.count();
-    this.cue.emit({ index: c.leadUp.length, final: true, moment: skipped ? 'skipped' : 'end' });
+    this.emitCue({ index: c.leadUp.length, final: true, moment: skipped ? 'skipped' : 'end' });
     this.done.emit();
   }
 }

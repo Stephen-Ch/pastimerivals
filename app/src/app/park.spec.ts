@@ -3,7 +3,7 @@ import { vi } from 'vitest';
 import { fielderArt, SideLook } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, callFor, countFor, OutcomeKey, PlayFacts } from './logic';
-import { BASE1, BASE2, ballAt, buildPlay, cameraAt, dist, fielderAt, hasPark, MAX_TILT, MAX_TURN, ParkPlay, polar, project, wallDist, ZONE } from './park';
+import { BASE1, BASE2, ballAt, buildPlay, cameraAt, dist, fielderAt, hasPark, MAX_TILT, MAX_TURN, ParkPlay, polar, project, skyOnly, wallDist, ZONE } from './park';
 import { W, H } from './park-draw';
 import { FINAL_TL, LEAD_TL, PitchScene, planPitch, SceneCue, motionFor } from './pitch-scene';
 
@@ -289,5 +289,26 @@ describe('plan 59 determinism golden', () => {
     console.log(`plan 59 determinism golden: ${ms.toFixed(0)} ms`);
     expect(g).toEqual({ hash: '45e17105', plays: 1250 });
     expect(ms).toBeLessThan(5000);
+  });
+});
+
+// Plan 59 Round 1b test 1 (characterize): at today's 760:480 panel the camera is unchanged on every frame that is not
+// sky-only. The sky fix (rule 6) may only touch frames where today's camera shows nothing but sky.
+describe('plan 59 r1b: camera unchanged off the sky-only frames', () => {
+  const fnv = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); };
+  it('hash of cameraAt(p, t, 760/480) over the grid, sky-only frames left out', () => {
+    const out: string[] = [];
+    let sky = 0, n = 0;
+    for (const c of ALL) {
+      const p = build(c);
+      for (let i = 0; i <= Math.round(p.len * 30); i++) {
+        const t = Math.min(p.len, i / 30), cam = cameraAt(p, t, W / H);
+        n++;
+        if (skyOnly(cam, W / H, p.look)) { sky++; continue; }
+        out.push(`${cam.yaw},${cam.pitch},${cam.fov}`);
+      }
+    }
+    console.log(`plan 59 r1b test 1: ${n} frames, ${sky} sky-only`);
+    expect({ hash: fnv(out.join('|')), kept: out.length }).toEqual({ hash: '1601bd57', kept: 111286 });
   });
 });

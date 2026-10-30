@@ -360,6 +360,28 @@ export function cameraAt(p: ParkPlay, t: number, aspect: number): Camera {
   return { yaw, pitch, fov };
 }
 
+/** Plan 59 Round 1b: what stands at the camera's bearing (degrees, as yaw): the back row of the stands, or the wall
+ *  where there are no stands (1901 outfield). Returns its elevation in degrees seen from the camera. */
+export function structureElev(yaw: number, look: SideLook | null = null): number {
+  const sy = Math.sin(rad(yaw)), cy = Math.cos(rad(yaw));
+  let r = 300, a = yaw;
+  for (let i = 0; i < 4; i++) {   // walk the ray from the camera out to the structure at its own angle from home
+    const x = CAM.x + r * sy, y = CAM.y + r * cy;
+    a = Math.max(-115, Math.min(115, deg(Math.atan2(x, y))));
+    const open = look === '1901' && Math.abs(a) < 35;
+    const want = edgeDist(a) + (open ? 0 : 76);
+    r = Math.max(1, want - Math.hypot(x, y) + r);
+  }
+  const open = look === '1901' && Math.abs(a) < 35;
+  const h = open ? (Math.abs(a) <= 45 ? 10.6 : 5.6) : 49.8;
+  return deg(Math.atan2(h - CAM.z, r));
+}
+/** Plan 59 Round 1b: true when the frame's bottom edge is above the stands (or the wall where there are none): only sky shows. */
+export function skyOnly(cam: Camera, aspect: number, look: SideLook | null = null): boolean {
+  const vHalf = deg(Math.atan(Math.tan(rad(cam.fov / 2)) / aspect));
+  return cam.pitch - vHalf > structureElev(cam.yaw, look) + 1e-9;
+}
+
 /** Camera-space point: [right, forward, up]. */
 export function toCam(cam: Camera, x: number, y: number, z: number): [number, number, number] {
   const rx = x - CAM.x, ry = y - CAM.y, rz = z - CAM.z;
