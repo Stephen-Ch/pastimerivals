@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, inject, input, output, signal, viewChild } from '@angular/core';
+import { afterRenderEffect, Component, computed, DestroyRef, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
 import { Era, FielderArt, SideArt, SideLook, WindupArt } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, PlayFacts, Trajectory } from './logic';
@@ -418,6 +418,21 @@ export function prefersReducedMotion(): boolean {
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
 
+/** Plan 59 Round 1b: how the 760 x 480 side panel sits in a stage of any size. One scale s (px per panel unit), the panel
+ *  box's left/top in stage px, and the visible panel range x0..x1. The batter's side is anchored (left edge for righties,
+ *  right edge for lefties, whose panel is mirrored); panel x 0-560 always shows; stages wider than the panel center it.
+ *  The foot line sits at 92% of the stage height. */
+export interface StageFit { s: number; left: number; top: number; x0: number; x1: number; }
+export const STAGE_MIN_X = 560, STAGE_FOOT = 0.92, STAGE_BODY = 0.8;
+export function stageFit(w: number, h: number, mirror: boolean): StageFit {
+  const s = Math.min((h * STAGE_BODY) / PANEL_H, w / STAGE_MIN_X);
+  const v = w / s;
+  const x0 = v >= PANEL_W ? -(v - PANEL_W) / 2 : 0;
+  const centered = (w - PANEL_W * s) / 2;
+  const left = v >= PANEL_W ? centered : mirror ? w - PANEL_W * s : 0;
+  return { s, left, top: STAGE_FOOT * h - FOOT_Y * s, x0, x1: x0 + v };
+}
+
 /** Side-on view of the whole at-bat: a short count for show, then the real result. */
 /** Plan 42: index = pitch (leadUp.length = the final pitch). */
 export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'enter' | 'plate' | 'park' | 'end' | 'skipped'; }
@@ -427,8 +442,9 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
   imports: [BallparkView],
   template: `
     @if (side(); as a) {
-      <div class="stage" [attr.data-cue]="lastCue()">
-      <div class="side" [class.mirror]="bats() === 'L'" aria-hidden="true">
+      <div class="stage" #stage [attr.data-cue]="lastCue()" [style.--hz]="fit() ? fit()!.top + 0.52 * 480 * fit()!.s + 'px' : null" [style.--dirt]="fit() ? fit()!.top + 0.92 * 480 * fit()!.s + 'px' : null">
+      <div class="side" [class.mirror]="bats() === 'L'" [class.fit]="!!fit()" aria-hidden="true"
+           [style.left.px]="fit()?.left" [style.top.px]="fit()?.top" [style.width.px]="fit() ? 760 * fit()!.s : null" [style.height.px]="fit() ? 480 * fit()!.s : null">
         <svg class="ground" viewBox="0 0 760 480" preserveAspectRatio="none">
           <path d="M175 474 L305 474 L318 466 L188 466 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width="2"/>
         </svg>
@@ -481,20 +497,22 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
     </div>
   `,
   styles: `
-    :host { display: block; margin-top: 14px; }
-    .stage { position: relative; width: 100%; max-width: 560px; margin: 0 auto; }
-    .park { position: absolute; left: 0; top: 0; width: 100%; aspect-ratio: 760 / 480; z-index: 4; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: #5c8a44; }
+    :host { display: block; margin-top: 4px; }
+    /* Plan 59 Round 1b: a tall stage (62 px keeps the 4 px margin and the 52 px caption and Skip row, plus 6 spare); the side panel sits inside it by stageFit. */
+    .stage { position: relative; isolation: isolate; width: 100%; max-width: 900px; margin: 0 auto; height: min(calc(100cqh - 62px), 60dvh);
+      overflow: hidden; border: 1px solid var(--border); border-radius: 14px; box-sizing: border-box;
+      background: linear-gradient(#cfd9e3 0 var(--hz, 52%), #7d9a5f var(--hz, 52%) var(--dirt, 92%), #b48a5a var(--dirt, 92%) 100%); }
+    .park { position: absolute; inset: 0; z-index: 4; overflow: hidden; background: #5c8a44; }
     .park .words { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
-    .windup { position: absolute; inset: 0; z-index: 5; overflow: hidden; border: 1px solid var(--border); border-radius: 14px;
+    .windup { position: absolute; inset: 0; z-index: 5; overflow: hidden;
       background: linear-gradient(#cfd9e3 0 58%, #7d9a5f 58% 100%); }
     .windup::after { content: ''; position: absolute; left: 25%; right: 25%; bottom: 0; height: 12%; border-radius: 50% 50% 0 0; background: #b48a5a; }
     .windup .pit { position: absolute; z-index: 1; height: 92%; aspect-ratio: 364 / 480; bottom: 4%; left: 50%; transform: translateX(-50%);
       background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
     .windup .pit.mirror { transform: translateX(-50%) scaleX(-1); }
     .windup .pit.top { z-index: 2; }
-    .side { position: relative; isolation: isolate; width: 100%; aspect-ratio: 760 / 480; overflow: hidden;
-      border: 1px solid var(--border); border-radius: 14px; background: linear-gradient(#cfd9e3 0 52%, #7d9a5f 52% 92%, #b48a5a 92% 100%); }
-    @container (min-height: 1px) { .stage { max-width: min(560px, calc((100cqh - 64px) * 760 / 480)); } }
+    .side { position: absolute; left: 0; bottom: 0; width: 100%; aspect-ratio: 760 / 480; transform-origin: center; }
+    .side.fit { bottom: auto; aspect-ratio: auto; }
     .side.mirror { transform: scaleX(-1); }
     .side.mirror .words { transform: scaleX(-1); }
     .ground, .fx, .words { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -507,6 +525,12 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
     .under { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
     .caption { font-weight: 600; min-height: 1.2em; }
     .count { font: 600 1rem/1.2 ui-monospace, monospace; }
+    /* Short landscape: the stage takes the full height on the left, caption and Skip in a 200 px column on the right. */
+    @media (orientation: landscape) and (max-height: 500px) {
+      :host { display: flex; gap: 14px; margin-top: 0; flex: 1 1 auto; min-height: 0; }
+      .stage { flex: 1 1 auto; height: auto; min-width: 0; }
+      .under { flex: none; width: 200px; margin-top: 0; flex-direction: column; align-items: stretch; justify-content: flex-start; }
+    }
     .skip { font: inherit; font-size: .9rem; cursor: pointer; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); padding: 10px 16px; min-height: 44px; }
   `,
 })
@@ -548,6 +572,25 @@ export class PitchScene {
   protected readonly parkWord = signal<FxWord | null>(null);
   protected readonly parkShake = signal(0);
   private readonly parkView = viewChild(BallparkView);
+  /** Plan 59 Round 1b: the stage's size (CSS px) from a ResizeObserver; null until measured (and in jsdom). */
+  private readonly stageEl = viewChild<ElementRef<HTMLElement>>('stage');
+  private readonly stageSize = signal<[number, number] | null>(null);
+  protected readonly fit = computed<StageFit | null>(() => {
+    const z = this.stageSize();
+    return z && z[0] > 0 && z[1] > 0 ? stageFit(z[0], z[1], this.bats() === 'L') : null;
+  });
+  private observed: HTMLElement | null = null;
+  private ro: ResizeObserver | null = null;
+  private watchStage() {
+    const el = this.stageEl()?.nativeElement ?? null;
+    if (el === this.observed) return;
+    this.ro?.disconnect();
+    this.observed = el;
+    if (!el) return;
+    const measure = () => { const w = el.clientWidth, h = el.clientHeight; const z = this.stageSize(); if (!z || z[0] !== w || z[1] !== h) this.stageSize.set([w, h]); };
+    measure();
+    if (typeof ResizeObserver === 'function') { this.ro = new ResizeObserver(measure); this.ro.observe(el); }
+  }
   private sheetImg: HTMLImageElement | null = null;
   protected readonly sheet = computed<FielderSheet>(() => {
     const f = this.fielders();
@@ -587,7 +630,8 @@ export class PitchScene {
   private finished = false;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => { clearTimeout(this.timer); this.clearFrames(); });
+    inject(DestroyRef).onDestroy(() => { clearTimeout(this.timer); this.clearFrames(); this.ro?.disconnect(); });
+    afterRenderEffect(() => this.watchStage());
     this.timer = setTimeout(() => (prefersReducedMotion() ? this.finish() : this.next()), 0);
   }
 

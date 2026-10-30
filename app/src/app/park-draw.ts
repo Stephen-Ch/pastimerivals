@@ -113,9 +113,12 @@ export class ParkPainter {
   constructor(private c: CanvasRenderingContext2D) {}
   private cam!: Camera;
   private f = 1;
+  /** Plan 59 Round 1b: painter units of this frame (height 480, width 480 x aspect). */
+  private w = W;
+  private h = H;
 
-  private scr(v: V3): [number, number] { return [W / 2 + (v[0] / v[1]) * this.f, H / 2 - (v[2] / v[1]) * this.f]; }
-  private proj(x: number, y: number, z = 0) { return project(this.cam, W, H, x, y, z); }
+  private scr(v: V3): [number, number] { return [this.w / 2 + (v[0] / v[1]) * this.f, this.h / 2 - (v[2] / v[1]) * this.f]; }
+  private proj(x: number, y: number, z = 0) { return project(this.cam, this.w, this.h, x, y, z); }
   private poly(pts: V3[], fill?: string, stroke?: string, lw = 1) {
     const ps = pts.map(p => toCam(this.cam, p[0], p[1], p[2]));
     const out: V3[] = [];
@@ -132,10 +135,11 @@ export class ParkPainter {
   }
 
   /** One frame of the park view at scene time t. */
-  draw(play: ParkPlay, cam: Camera, t: number, sheet: FielderSheet) {
-    this.cam = cam; this.f = W / 2 / Math.tan(rad(cam.fov) / 2);
+  draw(play: ParkPlay, cam: Camera, t: number, sheet: FielderSheet, w = W, h = H) {
+    this.w = w; this.h = h;
+    this.cam = cam; this.f = w / 2 / Math.tan(rad(cam.fov) / 2);
     const c = this.c;
-    c.clearRect(0, 0, W, H);
+    c.clearRect(0, 0, w, h);
     this.park(play.look);
     if (play.mark) { const m: V3[] = []; for (let a = 0; a < 360; a += 30) m.push([play.mark[0] + Math.sin(rad(a)) * 3, play.mark[1] + Math.cos(rad(a)) * 3, 0.05]); this.poly(m, '#ffffff22', '#ffffff66', 1); }
     const b = ballAt(play, t);
@@ -171,6 +175,7 @@ export class ParkPainter {
 
   private park(look: SideLook) {
     const L = LOOKS[look], c = this.c, cam = this.cam;
+    const W = this.w, H = this.h;
     const hz = H * 0.5 + Math.tan(rad(cam.pitch)) * this.f;
     const gr = c.createLinearGradient(0, hz - 400, 0, hz);
     gr.addColorStop(0, L.sky[0]); gr.addColorStop(1, L.sky[1]);

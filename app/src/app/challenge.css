@@ -18,6 +18,19 @@
   .game:has(.scoreboard) { grid-template-rows: auto auto 1fr auto; }
   .game:has(.scoreboard) .scoreboard { grid-column: 1 / -1; grid-row: 2; margin-bottom: 6px; }
   .game:has(.scoreboard) .flex, .game:has(.scoreboard) .actions { grid-row: 3; }
+  /* Plan 59 Round 1b: Last Licks play screen. Scoreboard left and Pitch / Skip to final right on one row, then the at-bat
+     across both columns; while a scene plays the side line moves into the scene's right column; the credit stays full width. */
+  .game:has(.scoreboard):has(> .scene-wrap) { grid-template-rows: auto auto 1fr auto auto auto; }
+  .game:has(.scoreboard):has(> .scene-wrap) > .scoreboard { grid-column: 1; grid-row: 2; }
+  .game:has(.scoreboard):has(> .scene-wrap) > .actions { grid-column: 2; grid-row: 2; grid-template-columns: 1fr auto; align-content: start; padding: 0 0 6px; }
+  .game:has(.scoreboard):has(> .scene-wrap) > .actions button.big { min-height: 44px; font-size: 1rem; }
+  .game:has(.scoreboard):has(> .scene-wrap) > .scene-wrap { grid-column: 1 / -1; grid-row: 3; }
+  .game:has(.scoreboard):has(> .scene-wrap) > .side-line { grid-column: 1 / -1; grid-row: 4; }
+  .game:has(.scoreboard):has(> .scene-wrap) > .pbp-row { grid-column: 1 / -1; grid-row: 5; }
+  .game:has(.scoreboard):has(> .scene-wrap pr-pitch-scene) > .scene-wrap { grid-row: 3 / 6; }
+  .game:has(.scoreboard):has(> .scene-wrap pr-pitch-scene) > .side-line { grid-column: 2; margin: 2px 0; position: relative; z-index: 1; }
+  .game:has(.scoreboard):has(> .scene-wrap pr-pitch-scene) > .pbp-row { grid-column: 2; position: relative; z-index: 1; }
+  .game:has(.scoreboard):has(> .scene-wrap) > .notice { grid-column: 1 / -1; grid-row: 6; }
 }
 .clash { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--surface-1); border: 1px solid var(--error); color: var(--text-primary); font-weight: 600; font-size: .92rem; }
 .actions.even { grid-template-columns: 1fr 1fr; }

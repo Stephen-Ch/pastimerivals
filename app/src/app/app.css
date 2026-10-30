@@ -55,6 +55,8 @@ button.link.small { font-size: .82rem; min-height: 32px; padding: 2px 0; }
 
 /* At-bat: the scene sizes itself to this box */
 .scene-wrap { container-type: size; justify-content: center; overflow: hidden; }
+/* Plan 59 Round 1b: tablets and desktops get a wider at-bat screen, so the stage can reach 900 px. */
+@media (min-width: 700px) and (min-height: 501px) { .game:has(> .scene-wrap) { max-width: 932px; } }
 
 /* Result */
 .result { margin: auto 0; padding: 18px; border-radius: 14px; background: var(--surface-1); border: 1px solid var(--border); animation: pop .25s ease-out; }
@@ -95,6 +97,13 @@ th { color: var(--text-secondary); font-weight: 500; }
   .actions, .actions.three { grid-column: 2; grid-row: 2; grid-template-columns: 1fr; align-content: center; }
   .notice { grid-column: 1 / -1; }
   .bar-odds.slim { grid-column: 1 / -1; }
+  /* Plan 59 Round 1b: the at-bat spans both columns and all rows under the bar; the scene puts its caption and Skip at the top
+     of its own 200 px right column; the side line, play-by-play row and credit sit at the bottom of that column. */
+  .game:has(> .scene-wrap) { grid-template-rows: auto 1fr auto auto auto; }
+  .game > .scene-wrap { grid-column: 1 / -1; grid-row: 2 / -1; }
+  .game:has(> .scene-wrap) > .side-line { grid-column: 2; grid-row: 3; margin: 2px 0; position: relative; z-index: 1; }
+  .game:has(> .scene-wrap) > .pbp-row { grid-column: 2; grid-row: 4; position: relative; z-index: 1; }
+  .game:has(> .scene-wrap) > .notice { grid-column: 2; grid-row: 5; position: relative; z-index: 1; }
 }
 @media (prefers-reduced-motion: reduce) { .result, .skeleton { animation: none; } }
 
