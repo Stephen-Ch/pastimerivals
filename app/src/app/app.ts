@@ -7,6 +7,7 @@ import { ChallengeFlow } from './challenge';
 import { Feedback, feedbackDue } from './feedback';
 import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
+import { lastName, Scoreboard } from './scoreboard';
 import { sideLine } from './side-line';
 import { announcerOn } from './announcer-setting';
 import { intro, lineText, PbpLine, pitchLines, rawLead, resultLine } from './pbp';
@@ -64,7 +65,7 @@ function sessionId(): string {
 
 @Component({
   selector: 'app-root',
-  imports: [ReportView, PitchScene, ChallengeFlow, Feedback, HowSim, VoiceButton, PerfOverlay],
+  imports: [ReportView, PitchScene, Scoreboard, ChallengeFlow, Feedback, HowSim, VoiceButton, PerfOverlay],
   styleUrls: ['./app.css', './sims.css', './home.css'],
   templateUrl: './app.html',
 })
@@ -101,6 +102,20 @@ export class App {
   protected readonly pitcherReport = signal<Report | null>(null);
   protected readonly popup = signal<Report | null>(null);
   protected readonly pending = signal<PitchResult | null>(null);
+  /** Plan 59 Round 2a: the count on the at-bat scoreboard (0-0 on Pitch, then each change the scene sends). */
+  protected readonly liveCount = signal<{ balls: number; strikes: number }>({ balls: 0, strikes: 0 });
+  /** Plan 59 Round 2a: scoreboard names (pitcher, batter); short = last names, with the year on the result screen. */
+  protected readonly boardNames = computed<[string, string]>(() => [this.pitcher()?.name ?? '', this.batter()?.name ?? '']);
+  protected readonly boardShort = computed<[string, string]>(() => [lastName(this.pitcher()?.name ?? ''), lastName(this.batter()?.name ?? '')]);
+  protected readonly resultNames = computed<[string, string]>(() => [`${this.pitcher()?.name ?? ''} ${this.pitcher()?.year ?? ''}`, `${this.batter()?.name ?? ''} ${this.batter()?.year ?? ''}`]);
+  protected readonly resultShort = computed<[string, string]>(() => [`${lastName(this.pitcher()?.name ?? '')} ${this.pitcher()?.year ?? ''}`, `${lastName(this.batter()?.name ?? '')} ${this.batter()?.year ?? ''}`]);
+  /** The final count of the shown result (same numbers as countText()). */
+  protected readonly finalCount = computed(() => {
+    const r = this.result();
+    if (!r) return null;
+    const c = countFor(r.outcome, r.seed, this.deco());
+    return { balls: c.balls, strikes: c.strikes };
+  });
   protected readonly askFeedback = signal(false);
   /** Plan 32A: decoration version of the pitch on screen (a shared link keeps its own; new pitches use the newest). */
   protected readonly deco = signal<Deco>(DECORATION_VERSION);
@@ -555,6 +570,7 @@ export class App {
       } else this.firstResult.set(false);
       if (!seed) { this.lastPitcherShown.set(this.pitcher()?.id ?? null); }
       this.pbpLine.set(''); this.pbpResult.set(''); this.pbpTypeWord = false;
+      this.liveCount.set({ balls: 0, strikes: 0 });
       this.pending.set(r);   // the scene plays, then sceneDone() reveals the result
       if (intro) this.introduced.add(key);
       this.voicePitch(r);

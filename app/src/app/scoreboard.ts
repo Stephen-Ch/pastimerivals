@@ -36,6 +36,13 @@ export function boardModel(i: BoardInput): BoardModel {
   };
 }
 
+/** Last name for narrow boards ("Babe Ruth" -> "Ruth", "Ken Griffey Jr." -> "Griffey Jr."). */
+export function lastName(full: string): string {
+  const w = full.trim().split(/\s+/);
+  if (w.length < 2) return full.trim();
+  return /^(Jr\.?|Sr\.?|II|III|IV)$/.test(w[w.length - 1]) && w.length > 2 ? `${w[w.length - 2]} ${w[w.length - 1]}` : w[w.length - 1];
+}
+
 @Component({
   selector: 'pr-scoreboard',
   changeDetection: ChangeDetectionStrategy.OnPush,

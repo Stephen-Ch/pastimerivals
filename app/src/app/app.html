@@ -82,7 +82,7 @@
     @case ('atbat') {
       <header class="bar">
         <button type="button" class="link" (click)="goBack()">‹ Matchup</button>
-        <span class="vs-line">{{ pitcher()?.name }} vs {{ batter()?.name }}</span>
+        <pr-scoreboard [look]="sceneLook() ?? '1990'" [names]="boardNames()" [short]="boardShort()" [count]="liveCount()" />
         <pr-voice-button />
       </header>
       @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
@@ -90,14 +90,14 @@
       <main class="flex scene-wrap">
         <h1 #screenTitle tabindex="-1" class="sr-only">At bat</h1>
         @if (pending(); as pr) {
-          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [side]="sceneArt()" [windup]="sceneWindup()" [call]="sceneCall()" [fielders]="sceneFielders()" [look]="sceneLook()" [quietCaption]="announcer()" (cue)="onCue($event)" (done)="sceneDone()" />
+          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [side]="sceneArt()" [windup]="sceneWindup()" [call]="sceneCall()" [fielders]="sceneFielders()" [look]="sceneLook()" [quietCaption]="announcer()" (cue)="onCue($event)" (boardChange)="liveCount.set($event)" (done)="sceneDone()" />
         }
       </main>
     }
     @case ('result') {
       <header class="bar">
         <button type="button" class="link" (click)="goBack()">‹ Matchup</button>
-        <span class="vs-line">{{ pitcher()?.name }} {{ pitcher()?.year }} vs {{ batter()?.name }} {{ batter()?.year }}</span>
+        <pr-scoreboard [look]="sceneLook() ?? '1990'" [names]="resultNames()" [short]="resultShort()" [count]="finalCount()" />
         <pr-voice-button />
       </header>
       @if (matchup()) {
@@ -108,7 +108,7 @@
       <main class="flex">
         @if (result(); as r) {
           <section class="result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
-            <h1 #screenTitle tabindex="-1" class="call">{{ callText() }}</h1>
+            <h1 #screenTitle tabindex="-1" class="call duel-call">{{ callText() }}</h1>
             <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ countText() }} count</p>
             @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
             <button type="button" class="link" (click)="openOverlay('why')">Why this result</button>

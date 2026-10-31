@@ -507,7 +507,7 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
       </div>
     }
     <div class="under">
-      <span class="caption" [attr.aria-live]="quietCaption() ? 'off' : 'polite'"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span>@if (board().caption && !quietCaption()) { · {{ board().caption }} }</span>
+      <span class="caption" [attr.aria-live]="quietCaption() ? 'off' : 'polite'"><span class="sr-count">{{ board().balls }}-{{ board().strikes }}@if (board().caption && !quietCaption()) { · }</span>@if (board().caption && !quietCaption()) {<span>{{ board().caption }}</span>}</span>
       <button type="button" class="skip" (click)="finish()">Skip to result</button>
     </div>
   `,
@@ -545,7 +545,8 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
       stroke: #1d1b19; stroke-linejoin: round; paint-order: stroke; }
     .under { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
     .caption { font-weight: 600; min-height: 1.2em; }
-    .count { font: 600 1rem/1.2 ui-monospace, monospace; }
+    /* Plan 59 Round 2a: the count is shown on the scoreboard; here it stays only as text for the caption's announcement. */
+    .sr-count { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
     /* Short landscape: the stage takes the full height on the left, caption and Skip in a 200 px column on the right. */
     @media (orientation: landscape) and (max-height: 500px) {
       :host { display: flex; justify-content: flex-end; gap: 14px; margin-top: 0; flex: 1 1 auto; min-height: 0; }
@@ -575,6 +576,8 @@ export class PitchScene {
   /** Plan 21: the announcer call for the final pitch (trajectory and field). */
   readonly call = input<Call | null>(null);
   readonly done = output<void>();
+  /** Plan 59 Round 2a: the count for the shared scoreboard, sent once per change at plate moments (never on Skip). */
+  readonly boardChange = output<{ balls: number; strikes: number }>();
   /** Plan 42: moments the announcer follows (fired in the same tick as the board update). */
   readonly cue = output<SceneCue>();
   /** Plan 59 Round 1b: the last cue's moment on the stage (data-cue), so browser tests can sample at each cue. No visible change. */
@@ -747,7 +750,7 @@ export class PitchScene {
       if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); this.emitCue({ index: idx, final, moment: 'enter' }); }
       if (!called && t >= plan.p.tPlate) {
         called = true;
-        if (lead) this.board.set({ balls: lead.balls, strikes: lead.strikes, caption: PITCH_CAPTION[lead.kind] });
+        if (lead) this.setBoard(lead.balls, lead.strikes, PITCH_CAPTION[lead.kind]);
         else if (fin) this.board.update(b => ({ ...b, caption: fin }));
         this.emitCue({ index: idx, final, moment: 'plate' });
       }
@@ -777,6 +780,13 @@ export class PitchScene {
       this.step.update(i => i + 1);
       this.next();
     }, ms);
+  }
+
+  /** Plan 59 Round 2a: the plate-moment count update; tells the scoreboard only when the count changed. */
+  setBoard(balls: number, strikes: number, caption: string) {
+    const b = this.board();
+    this.board.set({ balls, strikes, caption });
+    if (b.balls !== balls || b.strikes !== strikes) this.boardChange.emit({ balls, strikes });
   }
 
   /** Ends the scene once, whether by timer or the Skip button (or reduced motion: skipped). */
