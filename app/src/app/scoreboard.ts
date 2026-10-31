@@ -82,7 +82,8 @@ export function lastName(full: string): string {
     .end { justify-content: flex-end; }
     .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .short { display: none; }
-    @media (max-width: 359px) { .full { display: none; } .short { display: inline; } }
+    @media (max-width: 439px) { .full { display: none; } .short { display: inline; } }
+    @media (max-width: 359px) { :host { gap: 4px; } .side { gap: 4px; } .nm { font-size: .82rem; } }
     .mid { flex: none; display: flex; align-items: center; gap: 8px; }
     .inn { font-size: .8rem; white-space: nowrap; }
     .num { color: var(--b-num); font-variant-numeric: tabular-nums; }
@@ -107,7 +108,7 @@ export function lastName(full: string): string {
 export class Scoreboard {
   readonly look = input.required<ParkLook>();
   readonly names = input.required<[string, string]>();
-  /** Shown instead of names under 360 px wide (the parent decides: last names, or the same names). */
+  /** Shown instead of names under 440 px wide (phones) (the parent decides: last names, or the same names). */
   readonly short = input<[string, string] | null>(null);
   readonly count = input<{ balls: number; strikes: number } | null>(null);
   readonly scores = input<[number, number] | null>(null);

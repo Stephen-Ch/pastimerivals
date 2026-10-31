@@ -104,11 +104,10 @@ export class App {
   protected readonly pending = signal<PitchResult | null>(null);
   /** Plan 59 Round 2a: the count on the at-bat scoreboard (0-0 on Pitch, then each change the scene sends). */
   protected readonly liveCount = signal<{ balls: number; strikes: number }>({ balls: 0, strikes: 0 });
-  /** Plan 59 Round 2a: scoreboard names (pitcher, batter); short = last names, with the year on the result screen. */
+  /** Plan 59 Round 2a: scoreboard names (pitcher, batter); short = last names on phones (the result screen's years show from 440 px up). */
   protected readonly boardNames = computed<[string, string]>(() => [this.pitcher()?.name ?? '', this.batter()?.name ?? '']);
   protected readonly boardShort = computed<[string, string]>(() => [lastName(this.pitcher()?.name ?? ''), lastName(this.batter()?.name ?? '')]);
   protected readonly resultNames = computed<[string, string]>(() => [`${this.pitcher()?.name ?? ''} ${this.pitcher()?.year ?? ''}`, `${this.batter()?.name ?? ''} ${this.batter()?.year ?? ''}`]);
-  protected readonly resultShort = computed<[string, string]>(() => [`${lastName(this.pitcher()?.name ?? '')} ${this.pitcher()?.year ?? ''}`, `${lastName(this.batter()?.name ?? '')} ${this.batter()?.year ?? ''}`]);
   /** The final count of the shown result (same numbers as countText()). */
   protected readonly finalCount = computed(() => {
     const r = this.result();
