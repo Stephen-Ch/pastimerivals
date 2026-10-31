@@ -1,6 +1,8 @@
 // Plan 59 Round 1b test 9: the stage in the browser, righty and lefty Duel and one Last Licks at-bat, at every project
 // size (320x568, 390x844, 568x320). Sampled at every data-cue. Test 10: reduced motion skips the scene.
 import { expect, Page, test } from '@playwright/test';
+import { statSync } from 'node:fs';
+import { join } from 'node:path';
 import { LL_CODE, RIGHTY, serve } from './harness';
 
 interface Sample {
@@ -148,4 +150,77 @@ test.describe('reduced motion', () => {
     expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= innerHeight + 1)).toBe(true);
     expect(h.bad).toEqual([]);
   });
+});
+
+// ---- Plan 59 Round 2a: one shared scoreboard, display face ----
+/** Stage heights on f71d41e (before 2a), first frame after Pitch. 2a must not shrink any of them. */
+const R2A_BASE: Record<string, Record<'duel' | 'll', number>> = {
+  'phone-small': { duel: 313.1875, ll: 193.1875 },
+  phone: { duel: 506.390625, ll: 484.78125 },
+  landscape: { duel: 254, ll: 156.8125 },
+};
+async function startAtBat(page: Page, game: 'duel' | 'll') {
+  await page.goto(game === 'duel' ? '/' : `/c/${LL_CODE}`);
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Pitch', exact: true }).click();
+  await page.locator('pr-pitch-scene .stage').waitFor({ timeout: 15_000 });
+  await page.waitForTimeout(300);
+}
+
+for (const game of ['duel', 'll'] as const) {
+  test(`r2a ${game}: stage height unchanged, no scroll either way`, async ({ context, page }, info) => {
+    const h = await serve(context);
+    await startAtBat(page, game);
+    const r = await page.evaluate(() => {
+      const se = document.scrollingElement!;
+      return { h: document.querySelector('pr-pitch-scene .stage')!.getBoundingClientRect().height,
+        scroll: se.scrollHeight > innerHeight + 1 || se.scrollWidth > innerWidth + 1 };
+    });
+    expect(Math.abs(r.h - R2A_BASE[info.project.name][game]), `stage ${r.h} vs ${R2A_BASE[info.project.name][game]}`).toBeLessThanOrEqual(1);
+    expect(r.scroll).toBe(false);
+    expect(h.bad).toEqual([]);
+  });
+}
+
+test('r2a Duel: the scoreboard sits in the at-bat header and shows the count', async ({ context, page }) => {
+  await serve(context);
+  await startAtBat(page, 'duel');
+  const board = page.locator('header.bar pr-scoreboard');
+  await expect(board).toHaveCount(1);
+  await expect(board.locator('[aria-label="Balls and strikes"]')).toHaveText(/^\d-\d$/);
+});
+
+test('r2a Last Licks: the score shows once (one scoreboard, none in the header)', async ({ context, page }) => {
+  await serve(context);
+  await startAtBat(page, 'll');
+  await expect(page.locator('.game pr-scoreboard')).toHaveCount(1);
+  await expect(page.locator('.game .scoreboard')).toHaveCount(0);
+  await expect(page.locator('header.bar pr-scoreboard, header.bar strong')).toHaveCount(0);
+});
+
+for (const pbp of ['on', 'off'] as const) {
+  test(`r2a characterize: the caption is the one live region and starts with the count (announcer ${pbp})`, async ({ context, page }) => {
+    await serve(context, { storage: { pr_pbp: pbp } });
+    await startAtBat(page, 'duel');
+    await page.waitForFunction(() => /^\d-\d/.test(document.querySelector('pr-pitch-scene .caption')?.textContent?.trim() ?? ''));
+    const r = await page.evaluate(() => {
+      const cap = document.querySelector('pr-pitch-scene .caption') as HTMLElement;
+      return { live: cap.getAttribute('aria-live'), text: cap.textContent!.trim(),
+        inner: cap.querySelectorAll('[aria-live]').length, label: !!document.querySelector('[aria-label="Balls and strikes"]') };
+    });
+    expect(r.live).toBe(pbp === 'on' ? 'off' : 'polite');
+    expect(r.text).toMatch(/^\d-\d/);
+    expect(r.inner).toBe(0);
+    expect(r.label).toBe(true);
+  });
+}
+
+test('r2a font: the display face loads once on the play screen, same origin, under 20 KB', async ({ context, page }) => {
+  const h = await serve(context);
+  await startAtBat(page, 'duel');
+  await page.evaluate(() => document.fonts.ready);
+  const fonts = h.requests.filter(r => r.includes('/fonts/'));
+  expect(fonts).toEqual(['GET /fonts/oswald-latin-600-normal.woff2']);
+  expect(statSync(join(__dirname, '..', 'public', 'fonts', 'oswald-latin-600-normal.woff2')).size).toBeLessThan(20_000);
+  expect(h.bad).toEqual([]);
 });

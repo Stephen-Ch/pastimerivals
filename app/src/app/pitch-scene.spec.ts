@@ -47,6 +47,41 @@ describe('pitch scene', () => {
   });
 });
 
+// Plan 59 Round 2a: the count leaves the scene for the shared scoreboard. It is sent once per change, at plate moments only.
+describe('plan 59 r2a board output', () => {
+  const make = () => {
+    const f = TestBed.createComponent(PitchScene);
+    f.componentRef.setInput('era', '1990-2025');
+    f.componentRef.setInput('outcome', 'k');
+    f.componentRef.setInput('seed', 'b');
+    const got: string[] = [];
+    f.componentInstance.boardChange.subscribe(b => got.push(`${b.balls}-${b.strikes}`));
+    return { f, got };
+  };
+  it('setBoard sends each new count once; the same count again sends nothing', () => {
+    const { f, got } = make();
+    f.componentInstance.setBoard(1, 0, 'Ball');
+    f.componentInstance.setBoard(1, 0, 'Ball');
+    f.componentInstance.setBoard(1, 1, 'Foul');
+    expect(got).toEqual(['1-0', '1-1']);
+  });
+  it('Skip sends nothing', async () => {
+    const { f, got } = make();
+    await f.whenStable();
+    f.componentInstance.finish();
+    expect(got).toEqual([]);
+  });
+  it('reduced motion sends nothing', async () => {
+    const orig = globalThis.matchMedia;
+    globalThis.matchMedia = ((q: string) => ({ matches: q.includes('reduce') })) as unknown as typeof matchMedia;
+    try {
+      const { got } = make();
+      await new Promise(r => setTimeout(r, 5));
+      expect(got).toEqual([]);
+    } finally { globalThis.matchMedia = orig; }
+  });
+});
+
 // Plan 59 Round 1a: cue-time golden. The planned moments the audio and announcer follow (enter, plate, park, end,
 // windup length) must not move. Not covered: the 60 ms gap between pitches inside the component's next().
 describe('plan 59 cue golden', () => {
