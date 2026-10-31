@@ -9,7 +9,7 @@ const DIST = join(__dirname, '..', 'dist', 'app', 'browser');
 const FIX = join(__dirname, 'fixtures');
 const TYPES: Record<string, string> = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json',
-  '.webp': 'image/webp', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.xml': 'application/xml', '.map': 'application/json',
+  '.webp': 'image/webp', '.woff2': 'font/woff2', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.xml': 'application/xml', '.map': 'application/json',
 };
 /** Fixture file by name; serve(..., { fixtures }) can swap one for another (righty batter, plan 59 Round 1b). */
 type Fx = (name: string) => string;
