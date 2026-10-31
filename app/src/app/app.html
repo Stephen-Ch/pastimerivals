@@ -97,7 +97,7 @@
     @case ('result') {
       <header class="bar">
         <button type="button" class="link" (click)="goBack()">‹ Matchup</button>
-        <pr-scoreboard [look]="sceneLook() ?? '1990'" [names]="resultNames()" [short]="boardShort()" [count]="finalCount()" />
+        <pr-scoreboard [look]="sceneLook() ?? '1990'" [names]="resultNames()" [short]="resultShort()" [count]="finalCount()" />
         <pr-voice-button />
       </header>
       @if (matchup()) {

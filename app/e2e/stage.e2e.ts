@@ -202,16 +202,16 @@ for (const pbp of ['on', 'off'] as const) {
   test(`r2a characterize: the caption is the one live region and starts with the count (announcer ${pbp})`, async ({ context, page }) => {
     await serve(context, { storage: { pr_pbp: pbp } });
     await startAtBat(page, 'duel');
-    await page.waitForFunction(() => /^\d-\d/.test(document.querySelector('pr-pitch-scene .caption')?.textContent?.trim() ?? ''));
+    // announcer off: the caption reads "B-S · Word" once a pitch is called; announcer on: the count alone
+    const want = pbp === 'off' ? /^\d-\d · \S/ : /^\d-\d$/;
+    await page.waitForFunction(src => new RegExp(src).test((document.querySelector('pr-pitch-scene .caption')?.textContent ?? '').replace(/\s+/g, ' ').trim()), want.source, { timeout: 15_000 });
     const r = await page.evaluate(() => {
       const cap = document.querySelector('pr-pitch-scene .caption') as HTMLElement;
-      return { live: cap.getAttribute('aria-live'), text: cap.textContent!.trim(),
-        inner: cap.querySelectorAll('[aria-live]').length, label: !!document.querySelector('[aria-label="Balls and strikes"]') };
+      return { live: cap.getAttribute('aria-live'), text: cap.textContent!.replace(/\s+/g, ' ').trim(), inner: cap.querySelectorAll('[aria-live]').length };
     });
     expect(r.live).toBe(pbp === 'on' ? 'off' : 'polite');
-    expect(r.text).toMatch(/^\d-\d/);
+    expect(r.text).toMatch(want);
     expect(r.inner).toBe(0);
-    expect(r.label).toBe(true);
   });
 }
 

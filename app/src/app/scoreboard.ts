@@ -18,7 +18,6 @@ export interface BoardInput {
   names: [string, string];
   count: { balls: number; strikes: number } | null;
   scores: [number, number] | null;
-  inning: string | null;
   outs: number | null;
   bases: [boolean, boolean, boolean] | null;
 }
@@ -36,12 +35,17 @@ export function boardModel(i: BoardInput): BoardModel {
   };
 }
 
-/** Last name for narrow boards ("Babe Ruth" -> "Ruth", "Ken Griffey Jr." -> "Griffey Jr."). */
+/** Last name for narrow boards ("Babe Ruth" -> "Ruth", "Ken Griffey Jr." -> "Griffey Jr.", "Elly De La Cruz" -> "De La Cruz"). */
 export function lastName(full: string): string {
   const w = full.trim().split(/\s+/);
   if (w.length < 2) return full.trim();
-  return /^(Jr\.?|Sr\.?|II|III|IV)$/.test(w[w.length - 1]) && w.length > 2 ? `${w[w.length - 2]} ${w[w.length - 1]}` : w[w.length - 1];
+  let i = w.length - 1;
+  if (/^(Jr\.?|Sr\.?|II|III|IV)$/.test(w[i]) && i > 1) i--;
+  while (i > 1 && /^(de|la|del|della|van|von|der|st\.?|mc)$/i.test(w[i - 1])) i--;
+  return w.slice(i).join(' ');
 }
+/** Two-digit year ("'27") for narrow boards. */
+export const shortYear = (y: number | null | undefined) => y ? `'${String(y).slice(-2)}` : '';
 
 @Component({
   selector: 'pr-scoreboard',
@@ -57,9 +61,9 @@ export function lastName(full: string): string {
       @if (m.scores) { <strong class="num sc">{{ m.scores[0] }}</strong> }
     </span>
     <span class="mid">
-      @if (inning()) { <span class="inn">{{ inning() }}</span> }
+      <span class="sr">vs</span>
       @if (m.state) {
-        <span class="state" [attr.aria-label]="m.state">
+        <span class="state" role="img" [attr.aria-label]="m.state">
           <svg class="diamond" viewBox="0 0 44 30" aria-hidden="true">
             <polygon points="34,10 40,16 34,22 28,16" [class.on]="!!bases()?.[0]" />
             <polygon points="22,2 28,8 22,14 16,8" [class.on]="!!bases()?.[1]" />
@@ -68,7 +72,7 @@ export function lastName(full: string): string {
           <span class="outs" aria-hidden="true">@for (o of [0, 1, 2]; track o) { <i [class.on]="o < (outs() ?? 0)"></i> }</span>
         </span>
       }
-      @if (m.count) { <span class="num cnt" [attr.aria-label]="m.countLabel">{{ m.count }}</span> }
+      @if (m.count) { <span class="num cnt" role="group" [attr.aria-label]="m.countLabel">{{ m.count }}</span> }
     </span>
     <span class="side end">
       @if (m.scores) { <strong class="num sc">{{ m.scores[1] }}</strong> }
@@ -85,7 +89,7 @@ export function lastName(full: string): string {
     @media (max-width: 439px) { .full { display: none; } .short { display: inline; } }
     @media (max-width: 359px) { :host { gap: 4px; } .side { gap: 4px; } .nm { font-size: .82rem; } }
     .mid { flex: none; display: flex; align-items: center; gap: 8px; }
-    .inn { font-size: .8rem; white-space: nowrap; }
+    .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .num { color: var(--b-num); font-variant-numeric: tabular-nums; }
     .sc { font-size: 1.4rem; line-height: 1; }
     .cnt { font-size: 1.1rem; min-width: 3ch; text-align: center; }
@@ -112,12 +116,11 @@ export class Scoreboard {
   readonly short = input<[string, string] | null>(null);
   readonly count = input<{ balls: number; strikes: number } | null>(null);
   readonly scores = input<[number, number] | null>(null);
-  readonly inning = input<string | null>(null);
   readonly outs = input<number | null>(null);
   readonly bases = input<[boolean, boolean, boolean] | null>(null);
 
   protected readonly shortNames = computed(() => this.short() ?? this.names());
   protected readonly colors = computed(() => ERA_BOARD[this.look()] ?? ERA_BOARD['1990']);
   protected readonly model = computed(() => boardModel({ names: this.names(), count: this.count(), scores: this.scores(),
-    inning: this.inning(), outs: this.outs(), bases: this.bases() }));
+    outs: this.outs(), bases: this.bases() }));
 }

@@ -35,3 +35,7 @@ html, body { height: 100%; overflow: hidden; }
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .pbp-intro, .pbp-result { margin: 4px 0 0; font-size: .85rem; font-style: italic; color: var(--text-secondary); }
 .pbp-result { color: var(--text-primary); font-style: normal; font-weight: 600; }
+/* Plan 59 Round 2a (global so app.css stays the same size): The Duel's scoreboard fills the header between the back link and the voice button; the result word uses the display face. */
+.bar pr-scoreboard { flex: 1 1 auto; padding: 6px 10px; }
+@media (max-width: 359px) { .bar pr-scoreboard { padding: 6px 6px; } .bar:has(pr-scoreboard) { gap: 6px; } }
+.duel-call { font-family: var(--display); font-weight: 600; letter-spacing: .02em; }

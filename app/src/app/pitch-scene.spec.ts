@@ -65,18 +65,30 @@ describe('plan 59 r2a board output', () => {
     f.componentInstance.setBoard(1, 1, 'Foul');
     expect(got).toEqual(['1-0', '1-1']);
   });
-  it('Skip sends nothing', async () => {
+  it('Skip sends nothing and never sets the board count', async () => {
     const { f, got } = make();
+    const spy = vi.spyOn(f.componentInstance, 'setBoard');
     await f.whenStable();
     f.componentInstance.finish();
+    expect(spy).not.toHaveBeenCalled();
     expect(got).toEqual([]);
   });
-  it('reduced motion sends nothing', async () => {
+  it('reduced motion ends the scene without setting the board count', async () => {
     const orig = globalThis.matchMedia;
     globalThis.matchMedia = ((q: string) => ({ matches: q.includes('reduce') })) as unknown as typeof matchMedia;
     try {
-      const { got } = make();
+      const f = TestBed.createComponent(PitchScene);
+      const spy = vi.spyOn(f.componentInstance, 'setBoard');
+      f.componentRef.setInput('era', '1990-2025');
+      f.componentRef.setInput('outcome', 'k');
+      f.componentRef.setInput('seed', 'b');
+      let done = 0;
+      f.componentInstance.done.subscribe(() => done++);
+      const got: string[] = [];
+      f.componentInstance.boardChange.subscribe(b => got.push(`${b.balls}-${b.strikes}`));
       await new Promise(r => setTimeout(r, 5));
+      expect(done).toBe(1);
+      expect(spy).not.toHaveBeenCalled();
       expect(got).toEqual([]);
     } finally { globalThis.matchMedia = orig; }
   });

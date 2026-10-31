@@ -7,7 +7,7 @@ import { ChallengeFlow } from './challenge';
 import { Feedback, feedbackDue } from './feedback';
 import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
-import { lastName, Scoreboard } from './scoreboard';
+import { lastName, Scoreboard, shortYear } from './scoreboard';
 import { sideLine } from './side-line';
 import { announcerOn } from './announcer-setting';
 import { intro, lineText, PbpLine, pitchLines, rawLead, resultLine } from './pbp';
@@ -104,9 +104,14 @@ export class App {
   protected readonly pending = signal<PitchResult | null>(null);
   /** Plan 59 Round 2a: the count on the at-bat scoreboard (0-0 on Pitch, then each change the scene sends). */
   protected readonly liveCount = signal<{ balls: number; strikes: number }>({ balls: 0, strikes: 0 });
-  /** Plan 59 Round 2a: scoreboard names (pitcher, batter); short = last names on phones (the result screen's years show from 440 px up). */
+  /** Plan 59 Round 2a: scoreboard names (pitcher, batter); short = last names on phones (with 'yy years on the result screen, and when both last names match). */
   protected readonly boardNames = computed<[string, string]>(() => [this.pitcher()?.name ?? '', this.batter()?.name ?? '']);
-  protected readonly boardShort = computed<[string, string]>(() => [lastName(this.pitcher()?.name ?? ''), lastName(this.batter()?.name ?? '')]);
+  protected readonly boardShort = computed<[string, string]>(() => {
+    const p = lastName(this.pitcher()?.name ?? ''), b = lastName(this.batter()?.name ?? '');
+    return p === b ? [`${p} ${shortYear(this.pitcher()?.year)}`, `${b} ${shortYear(this.batter()?.year)}`] : [p, b];
+  });
+  protected readonly resultShort = computed<[string, string]>(() =>
+    [`${lastName(this.pitcher()?.name ?? '')} ${shortYear(this.pitcher()?.year)}`, `${lastName(this.batter()?.name ?? '')} ${shortYear(this.batter()?.year)}`]);
   protected readonly resultNames = computed<[string, string]>(() => [`${this.pitcher()?.name ?? ''} ${this.pitcher()?.year ?? ''}`, `${this.batter()?.name ?? ''} ${this.batter()?.year ?? ''}`]);
   /** The final count of the shown result (same numbers as countText()). */
   protected readonly finalCount = computed(() => {

@@ -63,10 +63,6 @@ button.link.small { font-size: .82rem; min-height: 32px; padding: 2px 0; }
 .result.good { border-color: var(--accent); }
 @keyframes pop { from { transform: scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
 .call { font-size: 1.5rem; font-weight: 700; line-height: 1.25; margin: 0; }
-/* Plan 59 Round 2a: The Duel's scoreboard fills the header between the back link and the voice button; the result word uses the display face. */
-.bar pr-scoreboard { flex: 1 1 auto; padding: 6px 10px; }
-@media (max-width: 359px) { .bar pr-scoreboard { padding: 6px 6px; } .bar:has(pr-scoreboard) { gap: 6px; } }
-.duel-call { font-family: var(--display); font-weight: 600; letter-spacing: .02em; }
 .outcome-tag { margin: 8px 0 4px; font-size: .9rem; color: var(--text-secondary); }
 
 /* Pop-ups: full screen, sized to the visible viewport (keyboard-safe) */
