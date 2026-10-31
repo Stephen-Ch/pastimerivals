@@ -411,8 +411,11 @@ test('r2b test 10: Last Licks holds the at-bat with the call over it; next batte
   const want = info.project.name === 'phone' ? { band: 'shown', below: 'none' } : info.project.name === 'landscape' ? { band: 'none', below: 'shown' } : { band: 'hidden', below: 'none' };
   expect({ band: x.band, below: x.below }).toEqual(want);
   if (info.project.name === 'landscape') {
-    const ex = (await box(page, 'pr-pitch-scene .under .ll-extras'))!, pbp = await box(page, '.game > .pbp-row');
-    if (pbp) expect(ex.b, 'extras end above the play-by-play row').toBeLessThanOrEqual(pbp.t + 0.5);
+    const ex = (await box(page, 'pr-pitch-scene .under .ll-extras'))!;
+    for (const sel of ['.game > .side-line', '.game > .pbp-row']) {
+      const o = await box(page, sel);
+      if (o && o.h > 1) expect(ex.b, `extras end above ${sel}`).toBeLessThanOrEqual(o.t + 0.5);
+    }
   }
   expect(await noScroll(page)).toBe(true);
   await page.getByRole('button', { name: 'Pitch', exact: true }).click();
@@ -432,6 +435,8 @@ test('r2b test 10: worst case at the 420 px boundary (long names, capped half no
   for (const height of [700, 717, 735]) {
     await page.setViewportSize({ width: 390, height });
     await page.goto(`/c/${LL_CODE}`);
+    await page.evaluate(code => localStorage.removeItem(`pr-watched-${code}`), LL_CODE);   // start the game over each time
+    await page.reload();
     await llToHeld(page);
     const stage = (await box(page, 'pr-pitch-scene .stage'))!, band = (await box(page, 'pr-pitch-scene .held-band'))!;
     expect(band.h, `390x${height}: band ${band.h} of stage ${stage.h}`).toBeLessThanOrEqual(stage.h * 0.5 + 0.5);

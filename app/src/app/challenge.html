@@ -201,10 +201,29 @@
       @if (announcer()) { <p class="pbp-row" aria-live="polite">{{ pbpLine() }}</p> }
       <main class="flex scene-wrap">
         <h1 #stepTitle tabindex="-1" class="sr-only">Play the game</h1>
-        @if (scene(); as s) {
+        @if (scene() ?? heldScene(); as s) {
+          <!-- Plan 59 Round 2b: after the at-bat the scene stays on screen, held (scene() is null, heldScene() keeps it) -->
           @for (k of [s.ab.index]; track k) {
             <pr-pitch-scene [era]="eraOf(s.ab.pitcher.year)" [throws]="s.ab.pitcher.throws" [bats]="hitsFrom(s.ab.batter.bats, s.ab.pitcher.throws)" [outcome]="s.ab.outcome"
-                            [seed]="s.ab.seed" [deco]="deco().deco" [side]="artFor(s)" [windup]="s.windup" [call]="callOf(s.ab)" [fielders]="fieldersFor(s.ab)" [look]="parkLook()" [play]="playOf(s.ab)" [quietCaption]="announcer()" (cue)="onCue($event)" (boardChange)="liveCount.set($event)" (done)="sceneDone()" />
+                            [seed]="s.ab.seed" [deco]="deco().deco" [side]="artFor(s)" [windup]="s.windup" [call]="callOf(s.ab)" [fielders]="fieldersFor(s.ab)" [look]="parkLook()" [play]="playOf(s.ab)" [quietCaption]="announcer()" [held]="!scene()" (cue)="onCue($event)" (boardChange)="liveCount.set($event)" (done)="sceneDone()">
+              @if (!scene()) {
+                <div sceneOver class="ll-held">
+                  @if (lastCall()) { <p class="result-word" role="status" [style.background]="wordColors().bg" [style.color]="wordColors().fg" [style.border-top-color]="wordColors().edge">{{ lastCall() }}</p> }
+                  @if (baseText()) { <p class="held-line">{{ baseText() }}</p> }
+                  @if (heldExtras().length) { <div class="ll-extras">@for (l of heldExtras(); track $index) { <p>{{ l }}</p> }</div> }
+                </div>
+              }
+              @if (!scene()) {
+                <div sceneBelow class="ll-below">
+                  @if (halfCard()) { <p class="ll-half">{{ halfCard() }}</p> }
+                  @if (nextAtBat(); as n) {
+                    <p class="ll-next">Next: {{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) : roundLabel(n) }} ·
+                      <span class="full">{{ n.batter.name }} {{ n.batter.year }} vs {{ n.pitcher.name }} {{ n.pitcher.year }}</span><span class="short">{{ lastName(n.batter.name) }} {{ n.batter.year }} vs {{ lastName(n.pitcher.name) }} {{ n.pitcher.year }}</span></p>
+                  }
+                  @if (heldExtras().length) { <div class="ll-extras">@for (l of heldExtras(); track $index) { <p>{{ l }}</p> }</div> }
+                </div>
+              }
+            </pr-pitch-scene>
           }
         } @else {
           <section class="result">

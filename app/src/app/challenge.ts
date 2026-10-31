@@ -6,7 +6,7 @@ import { sideLine } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
 import { PitchScene, SceneCue } from './pitch-scene';
-import { Scoreboard } from './scoreboard';
+import { ERA_BOARD, lastName, Scoreboard } from './scoreboard';
 import { announcerOn } from './announcer-setting';
 import { intro, IntroCtx, lineText, PbpLine, pitchLines, rawLead, recapLines, RecapAb, resultLine } from './pbp';
 import { bedFor, reactionFor, voice, voiceFor } from './audio';
@@ -156,6 +156,14 @@ export class ChallengeFlow {
   // Playing out a resolved game, one tap per at-bat.
   protected readonly revealed = signal(0);
   protected readonly scene = signal<{ ab: CAtBat; art: SideArt | null; windup: WindupArt | null } | null>(null);
+  /** Plan 59 Round 2b: the finished at-bat's scene, kept on screen (held) until the next Pitch; scene() is null meanwhile,
+   *  so everything that reads scene() behaves as between at-bats (Pitch enabled, no live count, next batter's side and intro). */
+  protected readonly heldScene = signal<{ ab: CAtBat; art: SideArt | null; windup: WindupArt | null } | null>(null);
+  /** Plan 59 Round 2b: the result word wears the game's era board colors. */
+  protected readonly wordColors = computed(() => ERA_BOARD[this.parkLook() ?? '1990']);
+  protected readonly lastName = lastName;
+  /** Plan 59 Round 2b: recap lines, then the next batter's intro: shown over or beside the held stage where there is room (CSS). */
+  protected readonly heldExtras = computed(() => [...this.pbpRecap(), ...this.pbpIntro()]);
   /** Plan 59 Round 2a: the count on the scoreboard while a scene plays (0-0 at its start); none between at-bats. */
   protected readonly liveCount = signal<{ balls: number; strikes: number }>({ balls: 0, strikes: 0 });
   protected readonly boardCount = computed(() => this.scene() ? this.liveCount() : null);
@@ -283,7 +291,7 @@ export class ChallengeFlow {
       this.privateLink.set(v.you === 'visitor' ? null : l.private);
       if (v.status === 'resolved') {
         this.revealed.set(Math.min(watched(code), v.game?.atBats.length ?? 0));
-        this.lastCall.set(null); this.lastPlay.set(null);
+        this.lastCall.set(null); this.lastPlay.set(null); this.heldScene.set(null);
         this.step.set(this.revealed() >= (v.game?.atBats.length ?? 0) ? 'final' : 'play');
       } else if (v.you === 'creator') {
         this.step.set(v.status === 'expired' ? 'closed' : 'waiting');
@@ -498,7 +506,7 @@ export class ChallengeFlow {
         saveKey(code, r.key);
         this.privateLink.set(links(location.origin, code, r.key).private);
         this.view.set(r.view);
-        this.revealed.set(0); setWatched(code, 0); this.lastCall.set(null); this.lastPlay.set(null);
+        this.revealed.set(0); setWatched(code, 0); this.lastCall.set(null); this.lastPlay.set(null); this.heldScene.set(null);
         this.step.set('play');
       } else {
         const r = this.mode() === 'rematch' ? await capi.rematch(this.current()!, body) : await capi.create(body);
@@ -547,7 +555,7 @@ export class ChallengeFlow {
     this.view.set(r.view);
     this.shareLink.set(links(location.origin, r.code, null).share);
     this.privateLink.set(null);
-    this.revealed.set(0); setWatched(r.code, 0); this.lastCall.set(null); this.lastPlay.set(null);
+    this.revealed.set(0); setWatched(r.code, 0); this.lastCall.set(null); this.lastPlay.set(null); this.heldScene.set(null);
     pushEntry('challenge', `/c/${r.code}`);
     this.mode.set('cpu');
     this.step.set('play');
@@ -634,7 +642,6 @@ export class ChallengeFlow {
     }
     if (voiceOn()) { voice.ensure(); voice.stop(); voice.bedStart(bedFor(this.newestYear())); this.windupSeen = new Set(); }   // plan 50: before any await
     this.pbpLine.set('');
-    this.lastPlay.set(null);
     const token = ++this.pitchToken;
     const m = this.manifest();
     const art = sideArt(m, ab.batter.id, ab.batter.year);
@@ -653,6 +660,8 @@ export class ChallengeFlow {
     if (token !== this.pitchToken || this.step() !== 'play' || this.nextAtBat() !== ab) return;
     this.pbpLine.set(''); this.pbpResultShown = false; this.pbpTypeWord = false;
     this.liveCount.set({ balls: 0, strikes: 0 });
+    this.lastPlay.set(null);   // Plan 59 Round 2b: the held result keeps its lines until the next scene starts
+    this.heldScene.set(null);
     this.scene.set({ ab, art: ok ? art : null, windup: ok && windOk ? wind : null });
   }
 
@@ -798,6 +807,7 @@ export class ChallengeFlow {
     const s = this.scene();
     if (!s) return;
     if (this.announcer() && !this.pbpResultShown) { this.pbpResultShown = true; this.pbpLine.set(this.pbpResultFor(s.ab)); }
+    this.heldScene.set(s);   // Plan 59 Round 2b: the finished scene stays on screen, held
     this.scene.set(null);
     const inn = this.view()?.mode === 'inning';
     this.lastCall.set(`${this.callOf(s.ab).text}${!inn && s.ab.points ? ` +${s.ab.points}` : ''}`);
@@ -854,9 +864,9 @@ export class ChallengeFlow {
     if (this.revealed() >= total) this.step.set('final');
   }
 
-  protected skipToFinal() { voice.stop(); this.pitchToken++; this.scene.set(null); this.pbpLine.set(''); this.lastPlay.set(null); this.advance(this.game()?.atBats.length ?? 0); }
+  protected skipToFinal() { voice.stop(); this.pitchToken++; this.scene.set(null); this.heldScene.set(null); this.pbpLine.set(''); this.lastPlay.set(null); this.advance(this.game()?.atBats.length ?? 0); }
 
-  protected watchAgain() { voice.stop(); this.spokenIntro = -1; this.spokenRecap = -1; this.pitchToken++; this.scene.set(null); this.pbpLine.set(''); this.revealed.set(0); this.lastCall.set(null); this.lastPlay.set(null); if (this.current()) setWatched(this.current()!, 0); this.step.set('play'); }
+  protected watchAgain() { voice.stop(); this.spokenIntro = -1; this.spokenRecap = -1; this.pitchToken++; this.scene.set(null); this.heldScene.set(null); this.pbpLine.set(''); this.revealed.set(0); this.lastCall.set(null); this.lastPlay.set(null); if (this.current()) setWatched(this.current()!, 0); this.step.set('play'); }
 
   protected eraOf = eraOf;
 
