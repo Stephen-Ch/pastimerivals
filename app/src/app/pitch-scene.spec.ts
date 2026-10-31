@@ -207,3 +207,125 @@ describe('plan 59 r1b test 8: silhouette without a canvas', () => {
     expect(css).not.toMatch(/windup[^{]*::after/);
   });
 });
+
+// ---- Plan 59 Round 2b: the held last frame ----
+import { Component as NgComponent, signal as ngSignal } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { frameAt } from './pitch-scene';
+import { BallparkView } from './ballpark-view';
+
+const SIDE = { sheet: '/s.webp', frames: Array.from({ length: 8 }, () => ({})), lineArt: false } as unknown as import('./art').SideArt;
+const WIND = { sheet: '/w.webp', mirror: false };
+const FIELD = { sheet: '/f.webp', cell: [360, 420] as [number, number], footY: 410, era: '1990-2025' as Era };
+/** A seed whose at-bat has lead-up pitches and (for in-play outcomes) a park play. */
+function seedFor(o: 'k' | 'single'): string {
+  for (let i = 0; i < 500; i++) {
+    const s = `r2b${i}`, c = countFor(o, s);
+    if (c.leadUp.length < 2) continue;
+    if (o === 'k' || hasPark(o, callFor(o, s, c, 'X', 'R', 'R', '3'))) return s;
+  }
+  throw new Error('no seed');
+}
+type Inner = { frame: () => unknown; windFrame: () => number; park: () => unknown; parkFade: () => number; finalPlan: () => import('./pitch-scene').Plan };
+
+@NgComponent({
+  imports: [PitchScene],
+  template: `<pr-pitch-scene era="1990-2025" outcome="k" seed="h1" [side]="side" [held]="held()">
+      <p sceneOver class="o">over</p><p sceneBelow class="b">below</p>
+    </pr-pitch-scene>`,
+})
+class HeldHost { side = SIDE; held = ngSignal(false); }
+
+describe('plan 59 r2b: held scene', () => {
+  it('test 1: held hides Skip and the caption, shows the projected band and below row, same stage node', async () => {
+    const f = TestBed.createComponent(HeldHost);
+    f.detectChanges(); await f.whenStable();
+    const el = f.nativeElement as HTMLElement, stage = el.querySelector('.stage');
+    expect(el.querySelector('button.skip')).not.toBeNull();
+    f.componentInstance.held.set(true);
+    f.detectChanges(); await f.whenStable();
+    expect(el.querySelector('.stage')).toBe(stage);
+    expect(el.querySelector('.stage')!.getAttribute('data-held')).toBe('1');
+    expect(el.querySelector('button.skip')).toBeNull();
+    expect(el.querySelector('.caption')).toBeNull();
+    expect(el.querySelector('.stage .held-band .o')?.textContent).toBe('over');
+    expect(el.querySelector('.under .b')?.textContent).toBe('below');
+    expect(el.querySelector('.stage .held-scrim')).not.toBeNull();
+  });
+
+  const make = (o: 'k' | 'single') => {
+    const f = TestBed.createComponent(PitchScene), seed = seedFor(o), c = countFor(o, seed);
+    f.componentRef.setInput('era', '1990-2025');
+    f.componentRef.setInput('outcome', o);
+    f.componentRef.setInput('seed', seed);
+    f.componentRef.setInput('deco', '3');
+    f.componentRef.setInput('side', SIDE);
+    f.componentRef.setInput('windup', WIND);
+    f.componentRef.setInput('fielders', FIELD);
+    f.componentRef.setInput('look', '1990');
+    f.componentRef.setInput('call', callFor(o, seed, c, 'X', 'R', 'R', '3'));
+    const cues: string[] = [];
+    f.componentInstance.cue.subscribe(q => cues.push(q.moment));
+    return { f, cues, inner: f.componentInstance as unknown as Inner };
+  };
+
+  it('test 2: Skip during a lead-up windup shows the final pitch\'s last frame', async () => {
+    const { f, inner } = make('k');
+    f.detectChanges(); await new Promise(r => setTimeout(r, 5));
+    expect(inner.windFrame()).toBeGreaterThanOrEqual(0);   // still in the first windup
+    f.componentInstance.finish();
+    const pl = inner.finalPlan();
+    expect(inner.windFrame()).toBe(-1);
+    expect(inner.frame()).toEqual(frameAt(pl, pl.tl.end));
+  });
+
+  it('test 2: Skip before an in-play final sets the park at its end and hands the end time to the park view', async () => {
+    const { f, inner } = make('single');
+    f.detectChanges(); await new Promise(r => setTimeout(r, 5));
+    expect(inner.park()).toBeNull();
+    f.componentInstance.finish();
+    f.detectChanges(); await f.whenStable();
+    const pk = inner.park() as { play: { len: number } } | null;
+    expect(pk).not.toBeNull();
+    expect(inner.parkFade()).toBe(1);
+    const view = f.debugElement.query(By.directive(BallparkView)).componentInstance as BallparkView;
+    expect(view.holdAt()).toBe(pk!.play.len);
+  });
+
+  it('test 3: reduced motion sets the same final frame and only the skipped cue', async () => {
+    const orig = globalThis.matchMedia;
+    globalThis.matchMedia = ((q: string) => ({ matches: q.includes('reduce') })) as unknown as typeof matchMedia;
+    try {
+      const { f, cues, inner } = make('k');
+      f.detectChanges(); await new Promise(r => setTimeout(r, 5));
+      const pl = inner.finalPlan();
+      expect(inner.frame()).toEqual(frameAt(pl, pl.tl.end));
+      expect(cues).toEqual(['skipped']);
+    } finally { globalThis.matchMedia = orig; }
+  });
+
+  it('a natural end changes nothing (no final-frame jump)', () => {
+    const { f, inner } = make('k');
+    const before = inner.frame();
+    (f.componentInstance as unknown as { finish: (s: boolean) => void }).finish(false);
+    expect(inner.frame()).toBe(before);
+  });
+});
+
+describe('plan 59 r2b test 2b: BallparkView holdAt', () => {
+  const PLAY = () => buildPlay({ outcome: 'single', call: callFor('single', 'bv', countFor('single', 'bv'), 'X', 'R', 'R', '3'), play: null, seed: 'bv', look: '1990' });
+  it('draws at holdAt once set up, and again when the fielder sheet loads', async () => {
+    const f = TestBed.createComponent(BallparkView);
+    const img = new Image();
+    f.componentRef.setInput('play', PLAY());
+    f.componentRef.setInput('sheet', { img, cell: [360, 420], footY: 410, era: '1990-2025' });
+    const spy = vi.spyOn(f.componentInstance, 'draw');
+    f.componentRef.setInput('holdAt', 1.25);
+    f.detectChanges(); await f.whenStable();
+    expect(spy).toHaveBeenCalledWith(1.25);
+    const n = spy.mock.calls.length;
+    img.dispatchEvent(new Event('load'));
+    expect(spy.mock.calls.length).toBe(n + 1);
+    expect(spy.mock.calls.at(-1)![0]).toBe(1.25);
+  });
+});
