@@ -6,6 +6,7 @@ import { sideLine } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
 import { PitchScene, SceneCue } from './pitch-scene';
+import { Scoreboard } from './scoreboard';
 import { announcerOn } from './announcer-setting';
 import { intro, IntroCtx, lineText, PbpLine, pitchLines, rawLead, recapLines, RecapAb, resultLine } from './pbp';
 import { bedFor, reactionFor, voice, voiceFor } from './audio';
@@ -53,7 +54,7 @@ export function parkLookForView(v: CView | null): ParkLook | null {
 
 @Component({
   selector: 'pr-challenge',
-  imports: [PitchScene, Feedback, HowSim, VoiceButton],
+  imports: [PitchScene, Scoreboard, Feedback, HowSim, VoiceButton],
   templateUrl: './challenge.html',
   styleUrls: ['./app.css', './challenge.css'],
 })
@@ -155,6 +156,11 @@ export class ChallengeFlow {
   // Playing out a resolved game, one tap per at-bat.
   protected readonly revealed = signal(0);
   protected readonly scene = signal<{ ab: CAtBat; art: SideArt | null; windup: WindupArt | null } | null>(null);
+  /** Plan 59 Round 2a: the count on the scoreboard while a scene plays (0-0 at its start); none between at-bats. */
+  protected readonly liveCount = signal<{ balls: number; strikes: number }>({ balls: 0, strikes: 0 });
+  protected readonly boardCount = computed(() => this.scene() ? this.liveCount() : null);
+  protected readonly boardNames = computed<[string, string]>(() => [this.sideName(0), this.sideName(1)]);
+  protected readonly boardBases = computed<[boolean, boolean, boolean]>(() => { const b = this.diamond().bases; return [!!b[0], !!b[1], !!b[2]]; });
   protected readonly lastCall = signal<string | null>(null);
 
   protected readonly game = computed(() => this.view()?.game ?? null);
@@ -646,6 +652,7 @@ export class ChallengeFlow {
     // Skip, Watch again or leaving during the wait cancels this pitch.
     if (token !== this.pitchToken || this.step() !== 'play' || this.nextAtBat() !== ab) return;
     this.pbpLine.set(''); this.pbpResultShown = false; this.pbpTypeWord = false;
+    this.liveCount.set({ balls: 0, strikes: 0 });
     this.scene.set({ ab, art: ok ? art : null, windup: ok && windOk ? wind : null });
   }
 

@@ -195,21 +195,8 @@
         <span class="vs-line">{{ isInningGame() ? inningProgress() : progress() }}</span>
         <pr-voice-button />
       </header>
-      <div class="scoreboard">
-        <span class="team-score"><span class="tname">{{ sideName(0) }}</span> <strong>{{ sc[0] }}</strong></span>
-        @if (isInningGame()) {
-          @let dm = diamond();
-          <span class="state" [attr.aria-label]="dm.outs + ' out, ' + (dm.bases[0] ? 'runner on first ' : '') + (dm.bases[1] ? 'runner on second ' : '') + (dm.bases[2] ? 'runner on third' : '')">
-            <svg class="diamond" viewBox="0 0 44 30" aria-hidden="true">
-              <polygon points="34,10 40,16 34,22 28,16" [class.on]="!!dm.bases[0]" />
-              <polygon points="22,2 28,8 22,14 16,8" [class.on]="!!dm.bases[1]" />
-              <polygon points="10,10 16,16 10,22 4,16" [class.on]="!!dm.bases[2]" />
-            </svg>
-            <span class="outs" aria-hidden="true">@for (o of [0, 1, 2]; track o) { <i [class.on]="o < dm.outs"></i> }</span>
-          </span>
-        }
-        <span class="team-score"><strong>{{ sc[1] }}</strong> <span class="tname">{{ sideName(1) }}</span></span>
-      </div>
+      <pr-scoreboard [look]="parkLook() ?? '1990'" [names]="boardNames()" [scores]="sc" [count]="boardCount()"
+                     [outs]="isInningGame() ? diamond().outs : null" [bases]="isInningGame() ? boardBases() : null" />
       @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
       @if (announcer()) { <p class="pbp-row" aria-live="polite">{{ pbpLine() }}</p> }
       <main class="flex scene-wrap">
@@ -217,7 +204,7 @@
         @if (scene(); as s) {
           @for (k of [s.ab.index]; track k) {
             <pr-pitch-scene [era]="eraOf(s.ab.pitcher.year)" [throws]="s.ab.pitcher.throws" [bats]="hitsFrom(s.ab.batter.bats, s.ab.pitcher.throws)" [outcome]="s.ab.outcome"
-                            [seed]="s.ab.seed" [deco]="deco().deco" [side]="artFor(s)" [windup]="s.windup" [call]="callOf(s.ab)" [fielders]="fieldersFor(s.ab)" [look]="parkLook()" [play]="playOf(s.ab)" [quietCaption]="announcer()" (cue)="onCue($event)" (done)="sceneDone()" />
+                            [seed]="s.ab.seed" [deco]="deco().deco" [side]="artFor(s)" [windup]="s.windup" [call]="callOf(s.ab)" [fielders]="fieldersFor(s.ab)" [look]="parkLook()" [play]="playOf(s.ab)" [quietCaption]="announcer()" (cue)="onCue($event)" (boardChange)="liveCount.set($event)" (done)="sceneDone()" />
           }
         } @else {
           <section class="result">
@@ -244,10 +231,7 @@
     @case ('final') {
       @let g = game();
       <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button><button type="button" class="link" (click)="watchAgain()">Watch again</button></header>
-      <div class="scoreboard">
-        <span class="team-score"><span class="tname">{{ sideName(0) }}</span> <strong>{{ g?.totals?.[0] }}</strong></span>
-        <span class="team-score"><strong>{{ g?.totals?.[1] }}</strong> <span class="tname">{{ sideName(1) }}</span></span>
-      </div>
+      <pr-scoreboard [look]="parkLook() ?? '1990'" [names]="boardNames()" [scores]="g?.totals ? [g.totals[0], g.totals[1]] : null" />
       <main class="flex">
         <h1 #stepTitle tabindex="-1" class="call">{{ finalText() }}</h1>
         @if (announcer() && pbpFinal().length) { <p class="pbp-result">{{ pbpFinal().join(' ') }}</p> }
