@@ -146,7 +146,10 @@ test.describe('reduced motion', () => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Pitch', exact: true }).click();
     await expect(page.locator('section.result')).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('pr-pitch-scene .stage')).toHaveCount(0);
+    // Plan 59 Round 2b (intended change): the scene no longer disappears; it holds a still with the result over it, with no animation.
+    await expect(page.locator('pr-pitch-scene .stage[data-held="1"]')).toHaveCount(1);
+    await expect(page.locator('pr-pitch-scene .held-band section.result')).toBeVisible();
+    expect(await page.evaluate(() => document.querySelector('pr-pitch-scene .stage')!.getAnimations({ subtree: true }).filter(a => a.playState === 'running').length)).toBe(0);
     expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= innerHeight + 1)).toBe(true);
     expect(h.bad).toEqual([]);
   });
@@ -222,5 +225,142 @@ test('r2a font: the display face loads once on the play screen, same origin, und
   const fonts = h.requests.filter(r => r.includes('/fonts/'));
   expect(fonts).toEqual(['GET /fonts/oswald-latin-600-normal.woff2']);
   expect(statSync(join(__dirname, '..', 'public', 'fonts', 'oswald-latin-600-normal.woff2')).size).toBeLessThan(20_000);
+  expect(h.bad).toEqual([]);
+});
+
+// ---- Plan 59 Round 2b: the result over the held last frame ----
+interface Box { l: number; t: number; r: number; b: number; h: number; w: number }
+const box = (page: Page, sel: string) => page.evaluate((q): Box | null => {
+  const e = document.querySelector(q); if (!e) return null;
+  const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, h: r.height, w: r.width };
+}, sel);
+const inside = (a: Box, b: Box, slack = 0.5) => a.l >= b.l - slack && a.t >= b.t - slack && a.r <= b.r + slack && a.b <= b.b + slack;
+const noScroll = (page: Page) => page.evaluate(() => { const se = document.scrollingElement!; return se.scrollHeight <= innerHeight + 1 && se.scrollWidth <= innerWidth + 1; });
+/** Distinct colors on a 12 x 12 grid of a canvas (read from a copy). */
+const canvasColors = (page: Page, sel: string) => page.evaluate(q => {
+  const src = document.querySelector(q) as HTMLCanvasElement | null;
+  if (!src || src.width < 2) return 0;
+  const cv = document.createElement('canvas'); cv.width = src.width; cv.height = src.height;
+  const g = cv.getContext('2d')!, seen = new Set<string>();
+  g.drawImage(src, 0, 0);
+  for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) {
+    const d = g.getImageData(Math.floor((i + 0.5) * cv.width / 12), Math.floor((j + 0.5) * cv.height / 12), 1, 1).data;
+    if (d[3] > 0) seen.add(`${d[0]},${d[1]},${d[2]}`);
+  }
+  return seen.size;
+}, sel);
+/** WCAG contrast of the band's text over a white backdrop under the scrim and band, and of the result word on its plate. */
+const bandContrast = (page: Page) => page.evaluate(() => {
+  const rgba = (c: string) => { const m = c.match(/[\d.]+/g)!.map(Number); return [m[0], m[1], m[2], m[3] ?? 1]; };
+  const lum = (c: number[]) => { const f = (v: number) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+  const ratio = (a: number[], b: number[]) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const over = (top: number[], under: number[]) => [0, 1, 2].map(i => top[i] * top[3] + under[i] * (1 - top[3]));
+  const scrim = rgba(getComputedStyle(document.querySelector('pr-pitch-scene .held-scrim')!).backgroundColor);
+  const band = document.querySelector('pr-pitch-scene .held-band') as HTMLElement;
+  const behind = over(rgba(getComputedStyle(band).backgroundColor), over(scrim, [255, 255, 255]));
+  const tag = band.querySelector('.outcome-tag, .held-line') as HTMLElement;
+  const word = band.querySelector('.result-word') as HTMLElement;
+  return { text: ratio(rgba(getComputedStyle(tag).color), behind),
+    word: ratio(rgba(getComputedStyle(word).color), rgba(getComputedStyle(word).backgroundColor)) };
+});
+/** Plays The Duel to its held result; returns the stage's at-bat height and whether the same stage element stayed. */
+async function duelToHeld(page: Page, skip = false) {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Pitch', exact: true }).click();
+  await page.locator('pr-pitch-scene .stage').waitFor({ timeout: 15_000 });
+  await page.evaluate(() => { (document.querySelector('pr-pitch-scene .stage') as unknown as { r2b: number }).r2b = 1; });
+  if (skip) { await page.locator('pr-pitch-scene .windup').waitFor({ timeout: 15_000 }); await page.getByRole('button', { name: 'Skip to result' }).click(); }
+  await page.locator('pr-pitch-scene .stage[data-held="1"]').waitFor({ timeout: 20_000 });
+  return page.evaluate(() => (document.querySelector('pr-pitch-scene .stage') as unknown as { r2b?: number }).r2b === 1);
+}
+
+test('r2b test 8: Duel result over the held stage; band inside and at most half of it; links, actions and credit visible; no scroll; contrast', async ({ context, page }, info) => {
+  const h = await serve(context);
+  expect(await duelToHeld(page), 'the same stage element stays').toBe(true);
+  await page.waitForTimeout(50);
+  await page.screenshot({ path: `dist/e2e-results/r2b-duel-reveal50-${info.project.name}.png` });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `dist/e2e-results/r2b-duel-held-${info.project.name}.png` });
+  const stage = (await box(page, 'pr-pitch-scene .stage'))!, band = (await box(page, 'pr-pitch-scene .held-band'))!;
+  expect(inside(band, stage), 'band inside the stage').toBe(true);
+  expect(band.h, `band ${band.h} of stage ${stage.h}`).toBeLessThanOrEqual(stage.h * 0.5 + 0.5);
+  const vp = { l: 0, t: 0, r: page.viewportSize()!.width, b: page.viewportSize()!.height, h: 0, w: 0 };
+  for (const name of ['Why this result', 'Pitch again', 'Share']) {
+    const b = await page.getByRole('button', { name, exact: true }).boundingBox();
+    expect(b && inside({ l: b.x, t: b.y, r: b.x + b.width, b: b.y + b.height, h: 0, w: 0 }, vp), `${name} on screen`).toBe(true);
+  }
+  await expect(page.locator('footer.notice')).toBeVisible();
+  expect(await noScroll(page)).toBe(true);
+  const c = await bandContrast(page);
+  expect(c.text).toBeGreaterThanOrEqual(4.5);
+  expect(c.word).toBeGreaterThanOrEqual(4.5);
+  expect(h.bad).toEqual([]);
+});
+
+test('r2b test 8: with the feedback row showing (3rd pitch), the held band still fits and nothing scrolls', async ({ context, page }) => {
+  const h = await serve(context);
+  await duelToHeld(page, true);
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole('button', { name: 'Pitch again' }).click();
+    await page.locator('pr-pitch-scene .stage:not([data-held])').waitFor({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'Skip to result' }).click();
+    await page.locator('pr-pitch-scene .stage[data-held="1"]').waitFor({ timeout: 15_000 });
+  }
+  await expect(page.locator('pr-feedback .fb-row')).toBeVisible();
+  const stage = (await box(page, 'pr-pitch-scene .stage'))!, band = (await box(page, 'pr-pitch-scene .held-band'))!;
+  expect(inside(band, stage)).toBe(true);
+  expect(band.h).toBeLessThanOrEqual(stage.h * 0.5 + 0.5);
+  expect(stage.h, 'a held stage of useful size').toBeGreaterThan(100);
+  expect(await noScroll(page)).toBe(true);
+  expect(h.bad).toEqual([]);
+});
+
+test('r2b test 8: desktop keeps its width at the reveal', async ({ context, page }, info) => {
+  test.skip(info.project.name !== 'phone', 'one desktop size is enough');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await serve(context);
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Pitch', exact: true }).click();
+  await page.locator('pr-pitch-scene .stage').waitFor({ timeout: 15_000 });
+  const before = (await box(page, '.game'))!.w;
+  await page.locator('pr-pitch-scene .stage[data-held="1"]').waitFor({ timeout: 20_000 });
+  expect((await box(page, '.game'))!.w).toBe(before);
+});
+
+test('r2b test 9: Pitch again mounts a new scene; Why opens its sheet', async ({ context, page }) => {
+  const h = await serve(context);
+  await duelToHeld(page, true);
+  await page.getByRole('button', { name: 'Why this result' }).click();
+  await expect(page.getByRole('dialog', { name: 'Why this result' })).toBeVisible();
+  await page.getByRole('dialog', { name: 'Why this result' }).getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Pitch again' }).click();
+  await page.locator('pr-pitch-scene .stage:not([data-held])').waitFor({ timeout: 15_000 });
+  expect(await page.evaluate(() => (document.querySelector('pr-pitch-scene .stage') as unknown as { r2b?: number }).r2b)).toBeUndefined();
+  expect(h.bad).toEqual([]);
+});
+
+test('r2b test 9 (characterize): no batter art shows today\'s result card, no stage, no scroll', async ({ context, page }) => {
+  const h = await serve(context);
+  await page.route('**/art/side-*', r => r.fulfill({ status: 404 }));
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Pitch', exact: true }).click();
+  await expect(page.locator('main section.result')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('pr-pitch-scene .stage')).toHaveCount(0);
+  await expect(page.locator('main section.result').getByRole('button', { name: 'Why this result' })).toBeVisible();
+  expect(await noScroll(page)).toBe(true);
+  expect(h.bad).toEqual([]);
+});
+
+test('r2b test 11: Skip during the windup holds the final frame: band shows, cue skipped, the field view is drawn', async ({ context, page }, info) => {
+  const h = await serve(context);
+  await duelToHeld(page, true);
+  await expect(page.locator('pr-pitch-scene .stage')).toHaveAttribute('data-cue', 'skipped');
+  await expect(page.locator('pr-pitch-scene .held-band section.result')).toBeVisible();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `dist/e2e-results/r2b-duel-skip-${info.project.name}.png` });
+  expect(await canvasColors(page, 'pr-pitch-scene .park canvas'), 'the double is held on a drawn field view').toBeGreaterThan(4);
   expect(h.bad).toEqual([]);
 });
