@@ -210,17 +210,18 @@
                 <div sceneOver class="ll-held">
                   @if (lastCall()) { <p class="result-word" role="status" [style.background]="wordColors().bg" [style.color]="wordColors().fg" [style.border-top-color]="wordColors().edge">{{ lastCall() }}</p> }
                   @if (baseText()) { <p class="held-line">{{ baseText() }}</p> }
-                  @if (heldExtras().length) { <div class="ll-extras">@for (l of heldExtras(); track $index) { <p>{{ l }}</p> }</div> }
+                  @if (heldExtras().length) { <p class="ll-extras">{{ heldExtras().join(' ') }}</p> }
                 </div>
               }
               @if (!scene()) {
                 <div sceneBelow class="ll-below">
+                  @if (baseText()) { <p class="ll-base" aria-hidden="true">{{ baseText() }}</p> }
                   @if (halfCard()) { <p class="ll-half">{{ halfCard() }}</p> }
                   @if (nextAtBat(); as n) {
                     <p class="ll-next">Next: {{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) : roundLabel(n) }} ·
                       <span class="full">{{ n.batter.name }} {{ n.batter.year }} vs {{ n.pitcher.name }} {{ n.pitcher.year }}</span><span class="short">{{ lastName(n.batter.name) }} {{ n.batter.year }} vs {{ lastName(n.pitcher.name) }} {{ n.pitcher.year }}</span></p>
                   }
-                  @if (heldExtras().length) { <div class="ll-extras">@for (l of heldExtras(); track $index) { <p>{{ l }}</p> }</div> }
+                  @if (heldExtras().length) { <p class="ll-extras">{{ heldExtras().join(' ') }}</p> }
                 </div>
               }
             </pr-pitch-scene>

@@ -645,7 +645,7 @@ export class PitchScene {
       if (view === 'windup' && !this.windup()) continue;
       // Plan 59 Round 2b: a held stage under the field view needs no side backdrop; a held stage keeps its old picture until the new one is in.
       const held = untracked(() => this.held());
-      if (view === 'side' && held && untracked(() => !!this.park() && this.parkFade() >= 1)) continue;
+      if (held && (view === 'windup' || untracked(() => !!this.park() && this.parkFade() >= 1))) continue;   // the windup layer is gone once held
       const place = this.place(view), key = backdropKey(look, view, side, z[0], z[1], dpr);
       if (!place) continue;
       const draw = () => {

@@ -424,23 +424,50 @@ test('r2b test 10: Last Licks holds the at-bat with the call over it; next batte
   expect(h.bad).toEqual([]);
 });
 
-test('r2b test 10: worst case at the 420 px boundary (long names, capped half note): the band stays within half the stage', async ({ context, page }, info) => {
-  test.skip(info.project.name !== 'phone', 'one boundary size');
+test('r2b test 10: worst case (long names, capped half note): the band stays within half the stage, nothing overflows; extras switch on at the 420 px boundary', async ({ context, page }, info) => {
   const view = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'challenge-inning.json'), 'utf8'));
   const long = 'Bartholomew Featherstonehaugh-Montgomery';
   for (const a of view.game.atBats) { a.batter.name = `${long} ${a.batter.id}`; a.pitcher.name = `${long} Jr.`; }
   view.game.notes = [...(view.game.notes ?? []), 'A half inning was stopped after 30 batters.'];
   const h = await serve(context);
   await page.route(`**/api/challenges/${LL_CODE}`, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(view) }));
-  for (const height of [700, 717, 735]) {
-    await page.setViewportSize({ width: 390, height });
+  const vp = page.viewportSize()!;
+  const sizes: [number, number, string | null][] = info.project.name === 'phone'
+    ? [[390, 700, 'hidden'], [390, 717, null], [390, 735, 'shown'], [vp.width, vp.height, 'shown']] : [[vp.width, vp.height, null]];
+  for (const [w, hgt, extras] of sizes) {
+    await page.setViewportSize({ width: w, height: hgt });
     await page.goto(`/c/${LL_CODE}`);
     await page.evaluate(code => localStorage.removeItem(`pr-watched-${code}`), LL_CODE);   // start the game over each time
     await page.reload();
     await llToHeld(page);
     const stage = (await box(page, 'pr-pitch-scene .stage'))!, band = (await box(page, 'pr-pitch-scene .held-band'))!;
-    expect(band.h, `390x${height}: band ${band.h} of stage ${stage.h}`).toBeLessThanOrEqual(stage.h * 0.5 + 0.5);
+    expect(band.h, `${w}x${hgt}: band ${band.h} of stage ${stage.h}`).toBeLessThanOrEqual(stage.h * 0.5 + 0.5);
+    expect(await page.evaluate(() => { const b = document.querySelector('pr-pitch-scene .held-band') as HTMLElement; return b.scrollHeight <= b.clientHeight + 1; }), 'nothing overflows the band').toBe(true);
+    if (extras) expect((await LL_EXTRAS(page)).band, `${w}x${hgt} extras in the band`).toBe(extras);
+    if (info.project.name === 'landscape') {
+      const ex = (await box(page, 'pr-pitch-scene .under .ll-extras'))!;
+      for (const sel of ['.game > .side-line', '.game > .pbp-row']) {
+        const o = await box(page, sel);
+        if (o && o.h > 1) expect(ex.b, `extras end above ${sel}`).toBeLessThanOrEqual(o.t + 0.5);
+      }
+    }
     expect(await noScroll(page)).toBe(true);
   }
+  expect(h.bad).toEqual([]);
+});
+
+test('r2b: turning the phone on a held field view redraws the park at the new shape (not blank, not stretched)', async ({ context, page }) => {
+  const h = await serve(context);
+  await duelToHeld(page, true);
+  await page.waitForTimeout(600);
+  const vp = page.viewportSize()!;
+  await page.setViewportSize({ width: vp.height, height: vp.width });
+  await page.waitForTimeout(400);
+  const r = await page.evaluate(() => {
+    const st = document.querySelector('pr-pitch-scene .stage') as HTMLElement, cv = document.querySelector('pr-pitch-scene .park canvas') as HTMLCanvasElement;
+    return { stage: st.clientWidth / st.clientHeight, canvas: cv.width / cv.height };
+  });
+  expect(Math.abs(r.canvas / r.stage - 1)).toBeLessThanOrEqual(0.02);
+  expect(await canvasColors(page, 'pr-pitch-scene .park canvas')).toBeGreaterThan(4);
   expect(h.bad).toEqual([]);
 });

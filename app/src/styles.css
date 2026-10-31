@@ -52,7 +52,7 @@ pr-pitch-scene .stage[data-held] .held-band { display: block; position: absolute
 /* Plan 59 Round 2b: The Duel's result over the held stage. The result word is an era-colored plate; the rest is white on the band. */
 .held-wrap { container-type: size; justify-content: center; overflow: hidden; }
 .held-band .result.held-result { margin: 0; padding: 0; background: none; border: 0; border-radius: 0; animation: none; }
-.held-band .result.held-result .result-word { display: inline-block; max-width: 100%; box-sizing: border-box; font-size: 1.05rem; line-height: 1.2; padding: 3px 8px;
+.held-band .result.held-result .result-word { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: fit-content; max-width: 100%; box-sizing: border-box; font-size: 1.05rem; line-height: 1.2; padding: 3px 8px;
   border-top: 3px solid; border-radius: 4px; }
 .held-band .result.held-result .outcome-tag { margin: 4px 0 0; font-size: .8rem; color: #fff; }
 .result-links { display: flex; align-items: center; gap: 12px; margin: 0; min-width: 0; overflow: hidden; white-space: nowrap; }
@@ -74,10 +74,11 @@ pr-pitch-scene .stage[data-held] .held-band { display: block; position: absolute
    Recap and intro lines ("extras") show where they fit: in the band on tall phones, in the right column in short landscape;
    elsewhere the band copy is kept for screen readers only. Exactly one copy is ever reachable. */
 pr-challenge .scene-wrap { container-name: ll-scene; }
-.held-band .ll-held .result-word { display: inline-block; max-width: 100%; box-sizing: border-box; margin: 0; font-family: var(--display); font-weight: 600;
+.held-band .ll-held .result-word { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: fit-content; max-width: 100%; box-sizing: border-box; margin: 0; font-family: var(--display); font-weight: 600;
   letter-spacing: .02em; font-size: 1.05rem; line-height: 1.2; padding: 3px 8px; border-top: 3px solid; border-radius: 4px; }
 .held-band .ll-held .held-line { margin: 4px 0 0; font-size: .8rem; line-height: 1.25; color: #fff; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.ll-extras p { margin: 0; }
+.ll-extras { margin: 0; }
+.under .ll-base { display: none; }
 .held-band .ll-extras { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .under .ll-extras { display: none; }
 .ll-below { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; flex: 1 1 auto; min-height: 44px; }   /* the Skip row's height: the stage keeps its place */
@@ -87,13 +88,16 @@ pr-challenge .scene-wrap { container-name: ll-scene; }
 @media (max-width: 439px) { .ll-next .full { display: none; } .ll-next .short { display: inline; } }
 @container ll-scene (min-height: 420px) {
   .held-band .ll-extras { position: static; width: auto; height: auto; clip: auto; white-space: normal; margin-top: 4px; font-size: .8rem; line-height: 1.25;
-    max-height: 5em; color: #fff; }
+    color: #fff; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
   .held-band .ll-extras { display: none; }
-  .under .ll-extras { display: block; font-size: .9rem; line-height: 1.25; max-height: 5em; overflow: hidden; }   /* 4 lines: clear of the side and play-by-play lines */
-  .held-band .ll-held .result-word { font-size: .9rem; padding: 2px 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: fit-content; }
-  /* runners and outs are on the scoreboard's diamond: the base line is kept for screen readers only */
+  /* the right column, in priority order: base line, half change, next batter, then recap and intro (3 lines, ellipsis), clear of the side and play-by-play lines */
+  .under .ll-extras { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; font-size: .9rem; line-height: 1.25; }
+  .held-band .ll-held .result-word { font-size: .9rem; padding: 2px 6px; }
+  /* the base line moves from the band to the top of the right column (the band copy stays for screen readers; the column copy is hidden from them) */
   .held-band .ll-held .held-line { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
+  .under .ll-base { display: block; }
+  .ll-next .full { display: none; } .ll-next .short { display: inline; }
   .ll-below { justify-content: flex-start; flex: none; }
 }

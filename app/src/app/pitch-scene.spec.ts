@@ -317,6 +317,7 @@ describe('plan 59 r2b test 2b: BallparkView holdAt', () => {
   it('draws at holdAt once set up, and again when the fielder sheet loads', async () => {
     const f = TestBed.createComponent(BallparkView);
     const img = new Image();
+    Object.defineProperty(img, 'complete', { value: false });   // still loading (the view only listens then)
     f.componentRef.setInput('play', PLAY());
     f.componentRef.setInput('sheet', { img, cell: [360, 420], footY: 410, era: '1990-2025' });
     const spy = vi.spyOn(f.componentInstance, 'draw');

@@ -27,10 +27,18 @@ export class BallparkView {
   private ro: ResizeObserver | null = null;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => this.ro?.disconnect());
     afterRenderEffect(() => { const t = this.holdAt(); if (t !== null) this.draw(t); });
     // Plan 59 Round 2b: fielders drawn as silhouettes before their sheet loaded are redrawn once it is in.
-    effect(() => { this.sheet().img?.addEventListener('load', () => { if (this.lastT !== null) this.draw(this.lastT); }, { once: true }); });
+    const redraw = () => { if (this.lastT !== null) this.draw(this.lastT); };
+    let watched: HTMLImageElement | null = null;
+    effect(() => {
+      const img = this.sheet().img;
+      if (img === watched) return;
+      watched?.removeEventListener('load', redraw);
+      watched = img && !img.complete ? img : null;
+      watched?.addEventListener('load', redraw, { once: true });
+    });
+    inject(DestroyRef).onDestroy(() => { this.ro?.disconnect(); watched?.removeEventListener('load', redraw); });
   }
 
   /** Pixel size of the canvas: the panel's size x devicePixelRatio (at most 2). */
