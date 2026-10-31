@@ -1,4 +1,4 @@
-import { Component, DestroyRef, ElementRef, inject, input, viewChild } from '@angular/core';
+import { afterRenderEffect, Component, DestroyRef, ElementRef, effect, inject, input, viewChild } from '@angular/core';
 import { cameraAt, ParkPlay } from './park';
 import { FielderSheet, H, ParkPainter, W } from './park-draw';
 
@@ -13,6 +13,8 @@ import { FielderSheet, H, ParkPainter, W } from './park-draw';
 export class BallparkView {
   readonly play = input.required<ParkPlay>();
   readonly sheet = input.required<FielderSheet>();
+  /** Plan 59 Round 2b: a still at this play time (the scene was ended early); null while the scene's loop draws. */
+  readonly holdAt = input<number | null>(null);
   private readonly cv = viewChild.required<ElementRef<HTMLCanvasElement>>('cv');
   private readonly host = inject(ElementRef<HTMLElement>);
   private painter: ParkPainter | null = null;
@@ -24,7 +26,12 @@ export class BallparkView {
   private lastT: number | null = null;
   private ro: ResizeObserver | null = null;
 
-  constructor() { inject(DestroyRef).onDestroy(() => this.ro?.disconnect()); }
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.ro?.disconnect());
+    afterRenderEffect(() => { const t = this.holdAt(); if (t !== null) this.draw(t); });
+    // Plan 59 Round 2b: fielders drawn as silhouettes before their sheet loaded are redrawn once it is in.
+    effect(() => { this.sheet().img?.addEventListener('load', () => { if (this.lastT !== null) this.draw(this.lastT); }, { once: true }); });
+  }
 
   /** Pixel size of the canvas: the panel's size x devicePixelRatio (at most 2). */
   static canvasSize(cssW: number, cssH: number, dpr: number): [number, number] {
@@ -69,8 +76,8 @@ export class BallparkView {
   }
 
   draw(t: number) {
-    if (!this.setup() || !this.painter) return;
     this.lastT = t;
+    if (!this.setup() || !this.painter) return;
     const p = this.play(), [w, h] = this.units;
     this.painter.draw(p, cameraAt(p, t, w / h), t, this.sheet(), w, h);
   }

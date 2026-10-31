@@ -39,3 +39,13 @@ html, body { height: 100%; overflow: hidden; }
 .bar pr-scoreboard { flex: 1 1 auto; padding: 6px 10px; }
 @media (max-width: 359px) { .bar pr-scoreboard { padding: 6px 6px; } .bar:has(pr-scoreboard) { gap: 6px; } }
 .duel-call { font-family: var(--display); font-weight: 600; letter-spacing: .02em; }
+/* Plan 59 Round 2b: the held last frame (global: pitch-scene's styles are over their size budget).
+   Scrim and band show only on a held stage; they fade in (450 ms ease-out), never with reduced motion. */
+pr-pitch-scene .held-scrim, pr-pitch-scene .held-band { display: none; }
+pr-pitch-scene .stage[data-held] .held-scrim { display: block; position: absolute; inset: 0; z-index: 6; background: rgba(0, 0, 0, .35); pointer-events: none;
+  animation: held-in 450ms cubic-bezier(.2, 0, 0, 1); }
+pr-pitch-scene .stage[data-held] .held-band { display: block; position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; max-height: 100%; overflow: hidden;
+  padding: 10px 14px 12px; background: var(--band); color: #fff; animation: held-rise 450ms cubic-bezier(.2, 0, 0, 1); }
+@keyframes held-in { from { opacity: 0; } }
+@keyframes held-rise { from { opacity: 0; transform: translateY(12px); } }
+@media (prefers-reduced-motion: reduce) { pr-pitch-scene .stage[data-held] .held-scrim, pr-pitch-scene .stage[data-held] .held-band { animation: none; } }

@@ -1,4 +1,4 @@
-import { afterRenderEffect, Component, computed, DestroyRef, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
+import { afterRenderEffect, Component, computed, DestroyRef, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { Era, FielderArt, ParkLook, SideArt, WindupArt } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, PlayFacts, Trajectory } from './logic';
@@ -453,7 +453,7 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
   imports: [BallparkView],
   template: `
     @if (side(); as a) {
-      <div class="stage" #stage [attr.data-cue]="lastCue()" [style.--sky]="tint().sky" [style.--grass]="tint().grass" [style.--hz]="sideHz()" [style.--whz]="windHz">
+      <div class="stage" #stage [attr.data-cue]="lastCue()" [attr.data-held]="held() ? '1' : null" [style.--sky]="tint().sky" [style.--grass]="tint().grass" [style.--hz]="sideHz()" [style.--whz]="windHz">
       <canvas class="bg" #bgSide aria-hidden="true"></canvas>
       <div class="side" [class.mirror]="bats() === 'L'" [class.fit]="!!fit()" aria-hidden="true"
            [style.left.px]="fit()?.left" [style.top.px]="fit()?.top" [style.width.px]="fit() ? 760 * fit()!.s : null" [style.height.px]="fit() ? 480 * fit()!.s : null">
@@ -482,7 +482,7 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
       </div>
       @if (park(); as pk) {
         <div class="park" aria-hidden="true" [style.opacity]="parkFade()" [style.transform]="parkShake() ? 'translateX(' + parkShake() + 'px)' : null">
-          <pr-ballpark-view [play]="pk.play" [sheet]="sheet()" />
+          <pr-ballpark-view [play]="pk.play" [sheet]="sheet()" [holdAt]="parkHold()" />
           @if (parkWord(); as w) {
             <svg class="words" viewBox="0 0 760 480" preserveAspectRatio="none">
               <g class="word" [attr.transform]="'translate(' + w.x + ' ' + w.y + ') rotate(' + w.rot + ') scale(' + w.scale + ')'" [attr.opacity]="w.o">
@@ -504,11 +504,16 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
           }
         </div>
       }
+      <div class="held-scrim" aria-hidden="true"></div>
+      <div class="held-band"><ng-content select="[sceneOver]" /></div>
       </div>
     }
     <div class="under">
-      <span class="caption" [attr.aria-live]="quietCaption() ? 'off' : 'polite'"><span class="sr-count">{{ board().balls }}-{{ board().strikes }}@if (board().caption && !quietCaption()) { · }</span>@if (board().caption && !quietCaption()) {<span>{{ board().caption }}</span>}</span>
-      <button type="button" class="skip" (click)="finish()">Skip to result</button>
+      @if (!held()) {
+        <span class="caption" [attr.aria-live]="quietCaption() ? 'off' : 'polite'"><span class="sr-count">{{ board().balls }}-{{ board().strikes }}@if (board().caption && !quietCaption()) { · }</span>@if (board().caption && !quietCaption()) {<span>{{ board().caption }}</span>}</span>
+        <button type="button" class="skip" (click)="finish()">Skip to result</button>
+      }
+      <ng-content select="[sceneBelow]" />
     </div>
   `,
   styles: `
@@ -585,6 +590,11 @@ export class PitchScene {
   private emitCue(c: SceneCue) { this.lastCue.set(c.moment); this.cue.emit(c); }
   /** Plan 42: the announcer line replaces the short caption (count stays; caption no longer read aloud). */
   readonly quietCaption = input(false);
+  /** Plan 59 Round 2b: the scene has ended and stays on screen (dimmed) under the result; the parent projects the
+   *  result into [sceneOver] (a band over the stage) and [sceneBelow] (the row under it, in place of Skip). */
+  readonly held = input(false);
+  /** Plan 59 Round 2b: the park play's end time when the scene was ended early (Skip, reduced motion), for the park view. */
+  protected readonly parkHold = signal<number | null>(null);
   /** Plan 44: fielder sheet for the pitcher's era (null = no park view). */
   readonly fielders = input<FielderArt | null>(null);
   /** Plan 44: the park look (walls, crowd, signs). Plan 59 Round 1b: one per game, by the card eras (parkLookOf). */
@@ -633,6 +643,9 @@ export class PitchScene {
     const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
     for (const [view, ref] of [['windup', this.bgWind()], ['side', this.bgSide()]] as [BackdropView, ElementRef<HTMLCanvasElement> | undefined][]) {
       if (view === 'windup' && !this.windup()) continue;
+      // Plan 59 Round 2b: a held stage under the field view needs no side backdrop; a held stage keeps its old picture until the new one is in.
+      const held = untracked(() => this.held());
+      if (view === 'side' && held && untracked(() => !!this.park() && this.parkFade() >= 1)) continue;
       const place = this.place(view), key = backdropKey(look, view, side, z[0], z[1], dpr);
       if (!place) continue;
       const draw = () => {
@@ -646,7 +659,7 @@ export class PitchScene {
         cv.dataset['key'] = key;
       };
       const cv = ref?.nativeElement;
-      if (cv && cv.dataset['key'] && cv.dataset['key'] !== key) { cv.width = 0; delete cv.dataset['key']; }
+      if (cv && cv.dataset['key'] && cv.dataset['key'] !== key && !held) { cv.width = 0; delete cv.dataset['key']; }
       if (view === 'windup') draw();
       else setTimeout(() => { if (this.stageSize() === z) draw(); }, 0);
     }
@@ -726,11 +739,7 @@ export class PitchScene {
     this.clearFrames();
     const final = this.isFinal(), m = this.motion();
     const lead = final ? null : this.count().leadUp[this.step()];
-    const kind: 'ball' | 'strike' | null = lead ? (lead.kind === 'ball' ? 'ball' : 'strike') : this.outcome() === 'bb' ? 'ball' : null;
-    const bats = this.bats() === 'L' ? 'L' : 'R';
-    const plan = planPitch({ m, kind, isFinal: final, outcome: this.outcome(), era: this.era(), bats,
-      call: final ? this.call() : null, contact: this.contactPoint(), seed: this.seed(), index: this.step(),
-      windup: !!this.windup() && !!this.side(), tip: this.batTip() });
+    const plan = this.planFor(this.step());
     const fin = final ? finalCaption(this.outcome(), this.count().finalKind, this.deco()) : '';
     const pk = final ? parkTiming(plan, this.parkPlayFor(m)) : null;
     if (pk) { this.sheet(); this.park.set(pk); }
@@ -768,6 +777,35 @@ export class PitchScene {
     return { plan, end };
   }
 
+  /** The plan for pitch `step` (lead-up index, or leadUp.length for the final pitch); pure in the scene's inputs. */
+  private planFor(step: number): Plan {
+    const c = this.count(), final = step >= c.leadUp.length, lead = final ? null : c.leadUp[step];
+    const m = final ? motionFor(this.outcome(), c.finalKind) : leadMotion(lead!.kind);
+    const kind: 'ball' | 'strike' | null = lead ? (lead.kind === 'ball' ? 'ball' : 'strike') : this.outcome() === 'bb' ? 'ball' : null;
+    return planPitch({ m, kind, isFinal: final, outcome: this.outcome(), era: this.era(), bats: this.bats() === 'L' ? 'L' : 'R',
+      call: final ? this.call() : null, contact: this.contactPoint(), seed: this.seed(), index: step,
+      windup: !!this.windup() && !!this.side(), tip: this.batTip() });
+  }
+
+  /** Plan 59 Round 2b: the final pitch's plan (the held picture after an early end). */
+  protected finalPlan(): Plan { return this.planFor(this.count().leadUp.length); }
+
+  /** Plan 59 Round 2b: an early end (Skip, reduced motion) shows the final pitch's last frame, and the park at the play's end. */
+  private showFinal() {
+    if (!this.side()) return;
+    this.loadSheet();   // before sheet() is read: the computed would keep a missing image
+    const pl = this.finalPlan(), c = this.count();
+    this.windFrame.set(-1);
+    this.frame.set(frameAt(pl, pl.tl.end));
+    const pk = parkTiming(pl, this.parkPlayFor(motionFor(this.outcome(), c.finalKind)));
+    if (!pk) return;
+    this.park.set(pk);
+    this.parkFade.set(1);
+    this.parkWord.set(null);
+    this.parkShake.set(0);
+    this.parkHold.set(pk.play.len);
+  }
+
   private next() {
     if (this.finished) return;
     this.loadSheet();
@@ -795,6 +833,7 @@ export class PitchScene {
     this.finished = true;
     clearTimeout(this.timer);
     this.clearFrames();
+    if (skipped) this.showFinal();
     const c = this.count();
     this.emitCue({ index: c.leadUp.length, final: true, moment: skipped ? 'skipped' : 'end' });
     this.done.emit();
