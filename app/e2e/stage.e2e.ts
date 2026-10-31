@@ -69,8 +69,10 @@ for (const who of ['righty', 'lefty'] as const) {
   test(`Duel ${who}: stage size, batter size, steady stage at every cue, Skip visible, no scroll, backdrop drawn by enter`, async ({ context, page }) => {
     const h = await serve(context, who === 'righty' ? { fixtures: RIGHTY } : {});
     await page.goto('/');
+    await page.waitForLoadState('networkidle');   // windup art preloaded, so the windup shows (re-review note 1)
     const { samples, colorsAtEnter, windupShown, windupBlank } = await playAndSample(page, () => page.getByRole('button', { name: 'Pitch', exact: true }).click());
     expect(samples.length).toBeGreaterThan(2);
+    expect(windupShown, 'the windup showed (art loaded before Pitch)').toBeGreaterThan(0);
     expect(windupBlank, `windup samples without its backdrop (of ${windupShown})`).toBe(0);
     const first = samples[0];
     for (const s of samples) {
