@@ -1,7 +1,7 @@
 // Plan 59 Round 1b test 9: the stage in the browser, righty and lefty Duel and one Last Licks at-bat, at every project
 // size (320x568, 390x844, 568x320). Sampled at every data-cue. Test 10: reduced motion skips the scene.
 import { expect, Page, test } from '@playwright/test';
-import { statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { LL_CODE, RIGHTY, serve } from './harness';
 
@@ -366,5 +366,76 @@ test('r2b test 11: Skip during the windup holds the final frame: band shows, cue
   await page.waitForTimeout(600);
   await page.screenshot({ path: `dist/e2e-results/r2b-duel-skip-${info.project.name}.png` });
   expect(await canvasColors(page, 'pr-pitch-scene .park canvas'), 'the double is held on a drawn field view').toBeGreaterThan(4);
+  expect(h.bad).toEqual([]);
+});
+
+// Plan 59 Round 2b test 10: Last Licks keeps the finished at-bat on screen, held, with the call over it.
+const LL_EXTRAS = (page: Page) => page.evaluate(() => {
+  const vis = (e: Element | null) => { if (!e) return 'none'; const cs = getComputedStyle(e); if (cs.display === 'none') return 'none';
+    const r = e.getBoundingClientRect(); return r.width <= 1 || r.height <= 1 ? 'hidden' : 'shown'; };
+  const band = document.querySelector('pr-pitch-scene .held-band .ll-extras'), below = document.querySelector('pr-pitch-scene .under .ll-extras');
+  return { band: vis(band), below: vis(below), text: (band ?? below)?.textContent?.trim() ?? '' };
+});
+async function llToHeld(page: Page) {
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Pitch', exact: true }).click();
+  await page.locator('pr-pitch-scene .stage').waitFor({ timeout: 15_000 });
+  await page.waitForTimeout(300);
+  const atBat = (await box(page, 'pr-pitch-scene .stage'))!;
+  await page.evaluate(() => { (document.querySelector('pr-pitch-scene .stage') as unknown as { r2b: number }).r2b = 1; });
+  await page.locator('pr-pitch-scene .stage[data-held="1"]').waitFor({ timeout: 20_000 });
+  await page.waitForTimeout(550);
+  return atBat;
+}
+
+test('r2b test 10: Last Licks holds the at-bat with the call over it; next batter below; same stage; extras where they fit; no scroll', async ({ context, page }, info) => {
+  const h = await serve(context);
+  await page.goto(`/c/${LL_CODE}`);
+  const atBat = await llToHeld(page);
+  await page.screenshot({ path: `dist/e2e-results/r2b-ll-held-${info.project.name}.png` });
+  expect(await page.evaluate(() => (document.querySelector('pr-pitch-scene .stage') as unknown as { r2b?: number }).r2b), 'same stage element').toBe(1);
+  const stage = (await box(page, 'pr-pitch-scene .stage'))!, band = (await box(page, 'pr-pitch-scene .held-band'))!;
+  for (const k of ['l', 't', 'w', 'h'] as const) expect(Math.abs(stage[k] - atBat[k]), `stage ${k}`).toBeLessThanOrEqual(1);
+  expect(inside(band, stage)).toBe(true);
+  expect(band.h).toBeLessThanOrEqual(stage.h * 0.5 + 0.5);
+  expect(await page.evaluate(() => { const b = document.querySelector('pr-pitch-scene .held-band') as HTMLElement; return b.scrollHeight <= b.clientHeight + 1; })).toBe(true);
+  await expect(page.locator('pr-pitch-scene .held-band .result-word')).toHaveText(/\S/);
+  await expect(page.locator('pr-pitch-scene .under')).toContainText('Next:');
+  const wrap = (await box(page, '.scene-wrap'))!;
+  for (const sel of ['.ll-next', '.ll-half']) {
+    const b = await box(page, `pr-pitch-scene .under ${sel}`);
+    if (b && b.h > 1) expect(inside(b, wrap), `${sel} not clipped`).toBe(true);
+  }
+  const x = await LL_EXTRAS(page);
+  expect(x.text.length, 'announcer on: recap or intro text exists').toBeGreaterThan(0);
+  const want = info.project.name === 'phone' ? { band: 'shown', below: 'none' } : info.project.name === 'landscape' ? { band: 'none', below: 'shown' } : { band: 'hidden', below: 'none' };
+  expect({ band: x.band, below: x.below }).toEqual(want);
+  if (info.project.name === 'landscape') {
+    const ex = (await box(page, 'pr-pitch-scene .under .ll-extras'))!, pbp = await box(page, '.game > .pbp-row');
+    if (pbp) expect(ex.b, 'extras end above the play-by-play row').toBeLessThanOrEqual(pbp.t + 0.5);
+  }
+  expect(await noScroll(page)).toBe(true);
+  await page.getByRole('button', { name: 'Pitch', exact: true }).click();
+  await page.locator('pr-pitch-scene .stage:not([data-held])').waitFor({ timeout: 15_000 });
+  expect(await page.evaluate(() => (document.querySelector('pr-pitch-scene .stage') as unknown as { r2b?: number }).r2b), 'a new scene').toBeUndefined();
+  expect(h.bad).toEqual([]);
+});
+
+test('r2b test 10: worst case at the 420 px boundary (long names, capped half note): the band stays within half the stage', async ({ context, page }, info) => {
+  test.skip(info.project.name !== 'phone', 'one boundary size');
+  const view = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'challenge-inning.json'), 'utf8'));
+  const long = 'Bartholomew Featherstonehaugh-Montgomery';
+  for (const a of view.game.atBats) { a.batter.name = `${long} ${a.batter.id}`; a.pitcher.name = `${long} Jr.`; }
+  view.game.notes = [...(view.game.notes ?? []), 'A half inning was stopped after 30 batters.'];
+  const h = await serve(context);
+  await page.route(`**/api/challenges/${LL_CODE}`, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(view) }));
+  for (const height of [700, 717, 735]) {
+    await page.setViewportSize({ width: 390, height });
+    await page.goto(`/c/${LL_CODE}`);
+    await llToHeld(page);
+    const stage = (await box(page, 'pr-pitch-scene .stage'))!, band = (await box(page, 'pr-pitch-scene .held-band'))!;
+    expect(band.h, `390x${height}: band ${band.h} of stage ${stage.h}`).toBeLessThanOrEqual(stage.h * 0.5 + 0.5);
+    expect(await noScroll(page)).toBe(true);
+  }
   expect(h.bad).toEqual([]);
 });
