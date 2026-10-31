@@ -76,9 +76,10 @@ test('plan 59 r1b test 11: field-view frame work vs the Part A build, backdrop r
     for (const e of performance.getEntriesByType('measure')) if (e.name.startsWith('pr-backdrop-')) bd[e.name.slice(12)] = Math.max(bd[e.name.slice(12)] ?? 0, e.duration);
     return { n: f.length, median: q(0.5), p95: q(0.95), backdropMs: bd };
   });
-  writeFileSync(info.outputPath('perf-r1b.json'), JSON.stringify(r));
+  writeFileSync(info.outputPath('perf-r1b.json'), JSON.stringify({ [info.project.name]: r }));   // merge the projects' files for PERF_BASE
   console.log(`perf-r1b ${info.project.name} ${JSON.stringify(r)}`);
   expect(r.n).toBeGreaterThan(20);
+  expect(Object.keys(r.backdropMs).sort(), 'both backdrops rendered and logged').toEqual(['side', 'windup']);
   for (const [view, ms] of Object.entries(r.backdropMs)) expect(ms, `backdrop ${view}`).toBeLessThanOrEqual(150);
   if (process.env['PERF_BASE']) {
     const base = JSON.parse(readFileSync(process.env['PERF_BASE'], 'utf8'))[info.project.name] as { median: number };

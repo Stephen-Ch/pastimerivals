@@ -18,26 +18,27 @@ const measure = (page: Page) => page.evaluate((): Sample | null => {
     bat: bat ? bat.height * 440 / 480 : 0, skip: sk ? [sk.left, sk.top, sk.right, sk.bottom] : null,
     scroll: se.scrollHeight > innerHeight + 1 || se.scrollWidth > innerWidth + 1, landscape: innerWidth > innerHeight && innerHeight < 500 };
 });
-/** Distinct colors on a 12 x 12 grid of the side backdrop image (0 when not drawn). The silhouette is two flat colors. */
+/** Distinct colors on a 12 x 12 grid of the side backdrop (0 when not drawn). The silhouette is two flat colors.
+ *  Read from a copy, so the stage's own canvas is never read back. */
 const backdropColors = (page: Page) => page.evaluate(() => {
-  const im = document.querySelector('pr-pitch-scene .stage > img.bg') as HTMLImageElement | null;
-  if (!im || !im.complete || im.naturalWidth < 2) return 0;
-  const cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+  const src = document.querySelector('pr-pitch-scene .stage > canvas.bg') as HTMLCanvasElement | null;
+  if (!src || src.width < 2) return 0;
+  const cv = document.createElement('canvas'); cv.width = src.width; cv.height = src.height;
   const g = cv.getContext('2d')!, seen = new Set<string>();
-  g.drawImage(im, 0, 0);
+  g.drawImage(src, 0, 0);
   for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) {
     const d = g.getImageData(Math.floor((i + 0.5) * cv.width / 12), Math.floor((j + 0.5) * cv.height / 12), 1, 1).data;
     if (d[3] > 0) seen.add(`${d[0]},${d[1]},${d[2]}`);
   }
   return seen.size;
 });
-/** Pixel aspect vs the stage's aspect, for the side backdrop image and (once the park cue has fired) the field view.
+/** Pixel aspect vs the stage's aspect, for the side backdrop and (once the park cue has fired) the field view.
  *  The field view's canvas exists, hidden, from the final pitch's start and is sized at its first draw (park cue). */
 const aspects = (page: Page) => page.evaluate(() => {
   const st = document.querySelector('pr-pitch-scene .stage') as HTMLElement, a = st.clientWidth / st.clientHeight;
   const out: [string, number, number][] = [];
-  const bg = document.querySelector('pr-pitch-scene .stage > img.bg') as HTMLImageElement | null;
-  if (bg && bg.naturalWidth > 1) out.push(['backdrop', bg.naturalWidth / bg.naturalHeight, a]);
+  const bg = document.querySelector('pr-pitch-scene .stage > canvas.bg') as HTMLCanvasElement | null;
+  if (bg && bg.width > 1) out.push(['backdrop', bg.width / bg.height, a]);
   const cv = document.querySelector('pr-pitch-scene .park canvas') as HTMLCanvasElement | null;
   if (st.dataset['cue'] === 'park' && cv && cv.width > 1) out.push(['field view', cv.width / cv.height, a]);
   return out;
@@ -46,27 +47,31 @@ const aspects = (page: Page) => page.evaluate(() => {
 /** Plays one at-bat, sampling the stage at each new cue; records the backdrop's colors at the first enter. */
 async function playAndSample(page: Page, start: () => Promise<void>) {
   const samples: Sample[] = [];
-  let colorsAtEnter = -1, last = '';
+  let colorsAtEnter = -1, last = '', windupShown = 0, windupBlank = 0;
   await start();
   await page.locator('pr-pitch-scene .stage').waitFor({ timeout: 15_000 });
   for (let i = 0; i < 1500; i++) {
     const s = await measure(page);
     if (!s) break;
+    // the windup layer only shows when its art loaded in time (app rule); whenever it shows, its backdrop is already drawn
+    const wd = await page.evaluate(() => { const c = document.querySelector('pr-pitch-scene .windup canvas.bg') as HTMLCanvasElement | null; return c ? (c.dataset['key'] ? 1 : 0) : -1; });
+    if (wd >= 0) { windupShown++; if (!wd) windupBlank++; }
     if (s.cue && s.cue !== last) {
       last = s.cue; samples.push(s);
       if (s.cue === 'enter' && colorsAtEnter < 0) colorsAtEnter = await backdropColors(page);
     }
     await page.waitForTimeout(10);
   }
-  return { samples, colorsAtEnter };
+  return { samples, colorsAtEnter, windupShown, windupBlank };
 }
 
 for (const who of ['righty', 'lefty'] as const) {
   test(`Duel ${who}: stage size, batter size, steady stage at every cue, Skip visible, no scroll, backdrop drawn by enter`, async ({ context, page }) => {
     const h = await serve(context, who === 'righty' ? { fixtures: RIGHTY } : {});
     await page.goto('/');
-    const { samples, colorsAtEnter } = await playAndSample(page, () => page.getByRole('button', { name: 'Pitch', exact: true }).click());
+    const { samples, colorsAtEnter, windupShown, windupBlank } = await playAndSample(page, () => page.getByRole('button', { name: 'Pitch', exact: true }).click());
     expect(samples.length).toBeGreaterThan(2);
+    expect(windupBlank, `windup samples without its backdrop (of ${windupShown})`).toBe(0);
     const first = samples[0];
     for (const s of samples) {
       expect(s.stage, `stage moved at ${s.cue}`).toEqual(first.stage);

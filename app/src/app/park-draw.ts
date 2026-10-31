@@ -299,7 +299,8 @@ export class ParkPainter {
     if (look === '1990') for (let d = 160; d < 400; d += 40) { const st: V3[] = []; for (let a = -45; a <= 45; a += 3) st.push([...pol(Math.min(d, wallDist(a)), a), 0]); for (let a = 45; a >= -45; a -= 3) st.push([...pol(Math.min(d + 20, wallDist(a)), a), 0]); this.poly(st, '#ffffff12'); }
     if (L.track) { const tr: V3[] = []; for (let a = -45; a <= 45; a += 2) tr.push([...pol(wallDist(a), a), 0]); for (let a = 45; a >= -45; a -= 2) tr.push([...pol(wallDist(a) - 15, a), 0]); this.poly(tr, '#a07a52'); }
     const dirt: V3[] = []; for (let a = -46; a <= 46; a += 3) dirt.push([...pol(155, a), 0]);
-    const dirtF = dirtFill(c, look);
+    // grain in the still backdrops only: on the moving field view a screen-fixed grain would swim over the dirt
+    const dirtF = this.thin ? dirtFill(c, look) : DIRT;
     this.poly([[0, -12, 0], ...dirt], dirtF);
     this.poly([[0, 12, 0], [52, 52, 0], [0, 104, 0], [-52, 52, 0]], L.grass);
     { const m: V3[] = []; for (let a = 0; a < 360; a += 20) m.push([Math.sin(rad(a)) * 9, 60.5 + Math.cos(rad(a)) * 9, 0]); this.poly(m, dirtF); }
@@ -329,7 +330,7 @@ export class ParkPainter {
         this.poly(face, '#00000030');
       }
       // only the figures inside the view are drawn; in wide shots every other row and nothing too small to see (plan 44 budget)
-      if (!cs || (cam.fov > 45 && row % 2)) continue;
+      if (!cs || (!this.thin && cam.fov > 45 && row % 2)) continue;   // backdrops are drawn once: every row
       for (const s of cs.byRow[row + 1]) {
         const b = this.proj(s[0], s[1], s[2]); if (!b || b[0] < -20 || b[0] > W + 20 || b[1] < -20 || b[1] > H + 40) continue;
         const hgt = (6 * this.f) / b[2]; if (hgt < 3) continue;
@@ -387,9 +388,17 @@ export class ParkPainter {
 export type BackdropView = 'side' | 'windup';
 /** Where a backdrop's camera sits on the stage: camera, focal length and center, in CSS px of the stage. */
 export interface BackdropPlace { cam: Camera; f: number; cx: number; cy: number; }
-/** The static park for one view drawn into a fresh offscreen canvas at the stage's size x density (capped at 2).
- *  Null when there is no canvas (jsdom). backdropUrl below caches the result. */
+/** The static park for one view drawn into an offscreen canvas at the stage's size x density (capped at 2), cached by
+ *  look, view, side, size and density (Last Licks reuses it across at-bats). Null when there is no canvas (jsdom). */
+const backdrops = new Map<string, HTMLCanvasElement>();
+const BACKDROP_KEEP = 4;
+export function backdropKey(look: ParkLook, view: BackdropView, side: 'L' | 'R', cssW: number, cssH: number, dpr: number): string {
+  return `${look}|${view}|${view === 'windup' ? '-' : side}|${cssW}x${cssH}|${Math.min(2, Math.max(1, dpr || 1))}`;   // the windup is the same for both sides
+}
 export function renderBackdrop(look: ParkLook, view: BackdropView, side: 'L' | 'R', cssW: number, cssH: number, dpr: number, place: BackdropPlace): HTMLCanvasElement | null {
+  const key = backdropKey(look, view, side, cssW, cssH, dpr);
+  const have = backdrops.get(key);
+  if (have) { backdrops.delete(key); backdrops.set(key, have); return have; }
   if (typeof document === 'undefined' || cssW <= 0 || cssH <= 0) return null;
   const k = Math.min(2, Math.max(1, dpr || 1));
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
@@ -401,29 +410,11 @@ export function renderBackdrop(look: ParkLook, view: BackdropView, side: 'L' | '
   g.setTransform(k, 0, 0, k, 0, 0);
   new ParkPainter(g).backdrop(look, place.cam, cssW, cssH, place.f, place.cx, place.cy, view !== 'side');
   try { performance.measure(`pr-backdrop-${view}`, { start: t0 }); } catch { /* perf log only (test 11) */ }
-  return cv;
-}
-/** Backdrops are shown as images (no extra live canvases on the page), cached as image URLs by look, view, side, size
- *  and density (Last Licks reuses them). */
-const backdropUrls = new Map<string, Promise<string | null>>();
-const BACKDROP_KEEP = 8;
-export function backdropKey(look: ParkLook, view: BackdropView, side: 'L' | 'R', cssW: number, cssH: number, dpr: number): string {
-  return `${look}|${view}|${side}|${cssW}x${cssH}|${Math.min(2, Math.max(1, dpr || 1))}`;
-}
-export function backdropUrl(look: ParkLook, view: BackdropView, side: 'L' | 'R', cssW: number, cssH: number, dpr: number, place: BackdropPlace): Promise<string | null> {
-  const key = backdropKey(look, view, side, cssW, cssH, dpr);
-  const have = backdropUrls.get(key);
-  if (have) { backdropUrls.delete(key); backdropUrls.set(key, have); return have; }
-  const cv = renderBackdrop(look, view, side, cssW, cssH, dpr, place);
-  const p: Promise<string | null> = !cv || typeof URL === 'undefined' || !URL.createObjectURL ? Promise.resolve(null)
-    : new Promise(res => { try { cv.toBlob(b => res(b ? URL.createObjectURL(b) : null)); } catch { res(null); } });
-  if (cv) {
-    backdropUrls.set(key, p);
-    while (backdropUrls.size > BACKDROP_KEEP) {
-      const [old, gone] = backdropUrls.entries().next().value!;
-      backdropUrls.delete(old);
-      void gone.then(u => { if (u) setTimeout(() => URL.revokeObjectURL(u), 5000); });   // after any image still showing it has moved on
-    }
+  backdrops.set(key, cv);
+  while (backdrops.size > BACKDROP_KEEP) {
+    const old = backdrops.keys().next().value!;
+    const c = backdrops.get(old)!; c.width = c.height = 0;   // give the memory back now (iOS Safari is slow to)
+    backdrops.delete(old);
   }
-  return p;
+  return cv;
 }

@@ -3,9 +3,9 @@ import { vi } from 'vitest';
 import { fielderArt, SideLook } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, callFor, countFor, OutcomeKey, PlayFacts } from './logic';
-import { BASE1, BASE2, ballAt, buildPlay, cameraAt, dist, fielderAt, hasPark, MAX_TILT, MAX_TURN, ParkPlay, PLATE_MID, polar, project, projectF, RUBBER, SIDE_F, sideCamera, skyOnly, wallDist, WINDUP_F, WINDUP_FOOT, windupCamera, windupSpriteH, ZONE } from './park';
+import { BASE1, BASE2, ballAt, buildPlay, cameraAt, dist, fielderAt, hasPark, MAX_TILT, MAX_TURN, ParkPlay, PLATE_MID, polar, project, projectF, RUBBER, SIDE_F, sideCamera, skyOnly, wallDist, WINDUP_F, WINDUP_FOOT, WINDUP_CAM, windupCamera, windupSpriteH, ZONE } from './park';
 import { W, H } from './park-draw';
-import { FINAL_TL, FOOT_Y, LEAD_TL, PANEL_W, PitchScene, planPitch, PLATE_X, SceneCue, motionFor, stageFit } from './pitch-scene';
+import { backdropPlace, FINAL_TL, FOOT_Y, LEAD_TL, PANEL_W, PitchScene, planPitch, PLATE_X, SceneCue, motionFor, stageFit } from './pitch-scene';
 
 const LOOKS: SideLook[] = ['1901', '1920', '1956', '1990'];
 const OUTS: PlayFacts[] = [
@@ -390,9 +390,10 @@ describe('plan 59 r1b: lens limits on narrow stages', () => {
 // sits in the top third of the stage on phones. (The windup camera's horizon is set by its own numbers: 20 ft back,
 // 5.5 ft up, 6.5 degrees, sprite feet at 92%; it lands near 32% of the stage and is not part of the top-third check.)
 describe('plan 59 r1b test 4: view cameras', () => {
+  // the component's own placement (backdropPlace), checked against stageFit's panel
   const sidePlace = (w: number, h: number, m: boolean) => {
-    const f = stageFit(w, h, m), cam = sideCamera(m);
-    return { f, cam, F: SIDE_F * f.s, cx: f.left + 380 * f.s, cy: f.top + 240 * f.s };
+    const p = backdropPlace('side', m, w, h);
+    return { f: stageFit(w, h, m), cam: p.cam, F: p.f, cx: p.cx, cy: p.cy };
   };
   it('side camera: the plate within 2% of (PLATE_X, FOOT_Y) at 358x506, 288x341 and 900x540, righty and lefty', () => {
     for (const [w, h] of [[358, 506], [288, 341], [900, 540]]) for (const m of [false, true]) {
@@ -407,9 +408,13 @@ describe('plan 59 r1b test 4: view cameras', () => {
     expect(sideCamera(false).pos!.x).toBeGreaterThan(30);
     expect(sideCamera(true).pos!.x).toBeLessThan(-30);
   });
+  it('view cameras report their real lens (review: the windup reported 177 degrees and lost every other crowd row)', () => {
+    expect(windupCamera().fov).toBeCloseTo(WINDUP_CAM.vfov, 6);
+    expect(sideCamera(false).fov).toBeLessThan(20);
+  });
   it('windup camera: the rubber within 2% of the windup foot line, centered, at 358x506, 288x313 and 437x324', () => {
     for (const [w, h] of [[358, 506], [288, 313], [437, 324]]) {
-      const p = projectF(windupCamera(), WINDUP_F * h, w / 2, h / 2, RUBBER.x, RUBBER.y, RUBBER.z)!;
+      const q = backdropPlace('windup', false, w, h), p = projectF(q.cam, q.f, q.cx, q.cy, RUBBER.x, RUBBER.y, RUBBER.z)!;
       expect(Math.abs(p[1] - WINDUP_FOOT * h), `${w}x${h}`).toBeLessThanOrEqual(0.02 * h);
       expect(Math.abs(p[0] - w / 2)).toBeLessThanOrEqual(0.02 * w);
     }
