@@ -45,7 +45,28 @@ pr-pitch-scene .held-scrim, pr-pitch-scene .held-band { display: none; }
 pr-pitch-scene .stage[data-held] .held-scrim { display: block; position: absolute; inset: 0; z-index: 6; background: rgba(0, 0, 0, .35); pointer-events: none;
   animation: held-in 450ms cubic-bezier(.2, 0, 0, 1); }
 pr-pitch-scene .stage[data-held] .held-band { display: block; position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; max-height: 100%; overflow: hidden;
-  padding: 10px 14px 12px; background: var(--band); color: #fff; animation: held-rise 450ms cubic-bezier(.2, 0, 0, 1); }
+  padding: 8px 12px 10px; background: var(--band); color: #fff; animation: held-rise 450ms cubic-bezier(.2, 0, 0, 1); }
 @keyframes held-in { from { opacity: 0; } }
 @keyframes held-rise { from { opacity: 0; transform: translateY(12px); } }
 @media (prefers-reduced-motion: reduce) { pr-pitch-scene .stage[data-held] .held-scrim, pr-pitch-scene .stage[data-held] .held-band { animation: none; } }
+/* Plan 59 Round 2b: The Duel's result over the held stage. The result word is an era-colored plate; the rest is white on the band. */
+.held-wrap { container-type: size; justify-content: center; overflow: hidden; }
+.held-band .result.held-result { margin: 0; padding: 0; background: none; border: 0; border-radius: 0; animation: none; }
+.held-band .result.held-result .result-word { display: inline-block; max-width: 100%; box-sizing: border-box; font-size: 1.05rem; line-height: 1.2; padding: 3px 8px;
+  border-top: 3px solid; border-radius: 4px; }
+.held-band .result.held-result .outcome-tag { margin: 4px 0 0; font-size: .8rem; color: #fff; }
+.result-links { display: flex; align-items: center; gap: 12px; margin: 0; min-width: 0; overflow: hidden; white-space: nowrap; }
+.result-links .note { margin: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (min-width: 700px) and (min-height: 501px) { .game:has(> .held-wrap pr-pitch-scene) { max-width: 932px; } }
+/* Short landscape: the held Duel stage sits in the left column with its links row under it (the actions keep the right column). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .held-wrap pr-pitch-scene { display: block; margin-top: 0; }
+  .held-wrap pr-pitch-scene .stage.stage { height: min(calc(100cqh - 52px), 60dvh); max-width: min(900px, calc(min(100cqh - 52px, 60dvh) * 1.35)); margin: 0 auto; }
+  .held-wrap pr-pitch-scene .under.under { width: auto; flex-direction: row; align-items: center; margin-top: 4px; }
+  .held-wrap .held-band { padding: 6px 10px 8px; }
+  .held-wrap .held-band .result.held-result .result-word { font-size: .9rem; padding: 2px 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: fit-content; }
+  .game:has(> .held-wrap) > .bar-odds.slim { grid-column: 1; grid-row: 3; align-self: center; }
+  .game:has(> .held-wrap) > pr-feedback { grid-column: 2; grid-row: 3; }
+  /* the count is on the scoreboard and the word names the result: the tag line is kept for screen readers only */
+  .held-wrap .held-band .result.held-result .outcome-tag { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
+}

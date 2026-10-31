@@ -55,6 +55,8 @@ async function playAndSample(page: Page, start: () => Promise<void>) {
   for (let i = 0; i < 1500; i++) {
     const s = await measure(page);
     if (!s) break;
+    // Plan 59 Round 2b: the at-bat is over once the stage is held (the result screen may size it differently).
+    if (await page.locator('pr-pitch-scene .stage[data-held]').count()) break;
     // the windup layer only shows when its art loaded in time (app rule); whenever it shows, its backdrop is already drawn
     const wd = await page.evaluate(() => { const c = document.querySelector('pr-pitch-scene .windup canvas.bg') as HTMLCanvasElement | null; return c ? (c.dataset['key'] ? 1 : 0) : -1; });
     if (wd >= 0) { windupShown++; if (!wd) windupBlank++; }
@@ -258,7 +260,7 @@ const bandContrast = (page: Page) => page.evaluate(() => {
   const scrim = rgba(getComputedStyle(document.querySelector('pr-pitch-scene .held-scrim')!).backgroundColor);
   const band = document.querySelector('pr-pitch-scene .held-band') as HTMLElement;
   const behind = over(rgba(getComputedStyle(band).backgroundColor), over(scrim, [255, 255, 255]));
-  const tag = band.querySelector('.outcome-tag, .held-line') as HTMLElement;
+  const tag = band.querySelector('.outcome-tag, .held-line') as HTMLElement;   // white text (visually hidden in short landscape, same color)
   const word = band.querySelector('.result-word') as HTMLElement;
   return { text: ratio(rgba(getComputedStyle(tag).color), behind),
     word: ratio(rgba(getComputedStyle(word).color), rgba(getComputedStyle(word).backgroundColor)) };
@@ -308,6 +310,8 @@ test('r2b test 8: with the feedback row showing (3rd pitch), the held band still
     await page.locator('pr-pitch-scene .stage[data-held="1"]').waitFor({ timeout: 15_000 });
   }
   await expect(page.locator('pr-feedback .fb-row')).toBeVisible();
+  await page.waitForTimeout(550);   // the band's rise has finished
+  await page.screenshot({ path: `dist/e2e-results/r2b-duel-feedback-${test.info().project.name}.png` });
   const stage = (await box(page, 'pr-pitch-scene .stage'))!, band = (await box(page, 'pr-pitch-scene .held-band'))!;
   expect(inside(band, stage)).toBe(true);
   expect(band.h).toBeLessThanOrEqual(stage.h * 0.5 + 0.5);

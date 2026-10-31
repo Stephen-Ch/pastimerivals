@@ -79,52 +79,70 @@
         </div>
       </div>
     }
-    @case ('atbat') {
+    @default {
+      <!-- Plan 59 Round 2b: the at-bat and the result share one block, so the scene stays on screen (held) under the result. -->
+      @let res = screen() === 'result';
+      @let heldStage = res && !!pending() && !!sceneArt();
       <header class="bar">
         <button type="button" class="link" (click)="goBack()">‹ Matchup</button>
-        <pr-scoreboard [look]="sceneLook() ?? '1990'" [names]="boardNames()" [short]="boardShort()" [count]="liveCount()" />
+        @if (res) { <pr-scoreboard [look]="sceneLook() ?? '1990'" [names]="resultNames()" [short]="resultShort()" [count]="finalCount()" /> }
+        @else { <pr-scoreboard [look]="sceneLook() ?? '1990'" [names]="boardNames()" [short]="boardShort()" [count]="liveCount()" /> }
         <pr-voice-button />
       </header>
-      @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
-      @if (announcer()) { <p class="pbp-row" aria-live="polite">{{ pbpLine() }}</p> }
-      <main class="flex scene-wrap">
-        <h1 #screenTitle tabindex="-1" class="sr-only">At bat</h1>
-        @if (pending(); as pr) {
-          <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [side]="sceneArt()" [windup]="sceneWindup()" [call]="sceneCall()" [fielders]="sceneFielders()" [look]="sceneLook()" [quietCaption]="announcer()" (cue)="onCue($event)" (boardChange)="liveCount.set($event)" (done)="sceneDone()" />
-        }
-      </main>
-    }
-    @case ('result') {
-      <header class="bar">
-        <button type="button" class="link" (click)="goBack()">‹ Matchup</button>
-        <pr-scoreboard [look]="sceneLook() ?? '1990'" [names]="resultNames()" [short]="resultShort()" [count]="finalCount()" />
-        <pr-voice-button />
-      </header>
-      @if (matchup()) {
+      @if (!res) {
+        @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
+        @if (announcer()) { <p class="pbp-row" aria-live="polite">{{ pbpLine() }}</p> }
+      } @else if (matchup()) {
         <div class="bar-odds slim" role="img" [attr.aria-label]="'Outcome probabilities: ' + topText()">
           @for (o of outcomes; track o) { <span class="seg" [class]="'seg c-' + o" [style.width]="barWidth(o)"></span> }
         </div>
       }
-      <main class="flex">
-        @if (result(); as r) {
-          <section class="result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
-            <h1 #screenTitle tabindex="-1" class="call duel-call">{{ callText() }}</h1>
-            <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ countText() }} count</p>
-            @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
-            <button type="button" class="link" (click)="openOverlay('why')">Why this result</button>
-            @if (shareNote()) { <p class="note">{{ shareNote() }}</p> }
-            @if (staleApp()) { <button type="button" class="link small" (click)="reload()">Refresh for the latest version</button> }
-          </section>
+      <main class="flex" [class.scene-wrap]="!res" [class.held-wrap]="heldStage">
+        @if (!res) { <h1 #screenTitle tabindex="-1" class="sr-only">At bat</h1> }
+        @if (pending(); as pr) {
+          @if (!res || heldStage) {
+            @for (k of [sceneN()]; track k) {
+              <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [side]="sceneArt()" [windup]="sceneWindup()" [call]="sceneCall()" [fielders]="sceneFielders()" [look]="sceneLook()" [quietCaption]="announcer()" [held]="res" (cue)="onCue($event)" (boardChange)="liveCount.set($event)" (done)="sceneDone()">
+                @if (res && result(); as r) {
+                  <section sceneOver class="result held-result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
+                    <h1 #screenTitle tabindex="-1" class="call duel-call result-word" [style.background]="wordColors().bg" [style.color]="wordColors().fg" [style.border-top-color]="wordColors().edge">{{ callText() }}</h1>
+                    <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ countText() }} count</p>
+                  </section>
+                }
+                @if (res && result()) {
+                  <p sceneBelow class="result-links">
+                    <button type="button" class="link" (click)="openOverlay('why')">Why this result</button>
+                    @if (staleApp()) { <button type="button" class="link small" (click)="reload()">Refresh for the latest version</button> }
+                    @else if (shareNote()) { <span class="note">{{ shareNote() }}</span> }
+                  </p>
+                }
+              </pr-pitch-scene>
+            }
+          }
         }
-        @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+        @if (res && !heldStage) {
+          @if (result(); as r) {
+            <section class="result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
+              <h1 #screenTitle tabindex="-1" class="call duel-call">{{ callText() }}</h1>
+              <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ countText() }} count</p>
+              @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
+              <button type="button" class="link" (click)="openOverlay('why')">Why this result</button>
+              @if (shareNote()) { <p class="note">{{ shareNote() }}</p> }
+              @if (staleApp()) { <button type="button" class="link small" (click)="reload()">Refresh for the latest version</button> }
+            </section>
+          }
+        }
+        @if (res) { @if (error()) { <p class="error" role="alert">{{ error() }}</p> } }
       </main>
-      @if (askFeedback()) { <pr-feedback where="practice" /> }
-      <div class="actions three">
-        <button class="primary big" type="button" (click)="throwPitch()" [disabled]="busy()">{{ artWaiting() ? 'Loading art' : 'Pitch again' }}</button>
-        <button type="button" (click)="share()">Share</button>
-        @if (firstResult()) { <button type="button" (click)="openChallenge('cpu')">Play an inning ›</button> }
-        @else { <button type="button" (click)="goBack()">New matchup</button> }
-      </div>
+      @if (res) {
+        @if (askFeedback()) { <pr-feedback where="practice" /> }
+        <div class="actions three">
+          <button class="primary big" type="button" (click)="throwPitch()" [disabled]="busy()">{{ artWaiting() ? 'Loading art' : 'Pitch again' }}</button>
+          <button type="button" (click)="share()">Share</button>
+          @if (firstResult()) { <button type="button" (click)="openChallenge('cpu')">Play an inning ›</button> }
+          @else { <button type="button" (click)="goBack()">New matchup</button> }
+        </div>
+      }
     }
   }
   @if (info(); as k) { <pr-how-sim [kind]="k" (more)="moreArtInfo()" (close)="closeInfo()" /> }

@@ -7,7 +7,7 @@ import { ChallengeFlow } from './challenge';
 import { Feedback, feedbackDue } from './feedback';
 import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
-import { lastName, Scoreboard, shortYear } from './scoreboard';
+import { ERA_BOARD, lastName, Scoreboard, shortYear } from './scoreboard';
 import { sideLine } from './side-line';
 import { announcerOn } from './announcer-setting';
 import { intro, lineText, PbpLine, pitchLines, rawLead, resultLine } from './pbp';
@@ -102,6 +102,8 @@ export class App {
   protected readonly pitcherReport = signal<Report | null>(null);
   protected readonly popup = signal<Report | null>(null);
   protected readonly pending = signal<PitchResult | null>(null);
+  /** Plan 59 Round 2b: one number per pitch thrown, so each pitch mounts its own scene (the finished one stays, held, until then). */
+  protected readonly sceneN = signal(0);
   /** Plan 59 Round 2a: the count on the at-bat scoreboard (0-0 on Pitch, then each change the scene sends). */
   protected readonly liveCount = signal<{ balls: number; strikes: number }>({ balls: 0, strikes: 0 });
   /** Plan 59 Round 2a: scoreboard names (pitcher, batter); short = last names on phones (with 'yy years on the result screen, and when both last names match). */
@@ -113,6 +115,8 @@ export class App {
   protected readonly resultShort = computed<[string, string]>(() =>
     [`${lastName(this.pitcher()?.name ?? '')} ${shortYear(this.pitcher()?.year)}`, `${lastName(this.batter()?.name ?? '')} ${shortYear(this.batter()?.year)}`]);
   protected readonly resultNames = computed<[string, string]>(() => [`${this.pitcher()?.name ?? ''} ${this.pitcher()?.year ?? ''}`, `${this.batter()?.name ?? ''} ${this.batter()?.year ?? ''}`]);
+  /** Plan 59 Round 2b: the result word over the held stage wears the era board's colors (one graphics style per game). */
+  protected readonly wordColors = computed(() => ERA_BOARD[this.sceneLook() ?? '1990']);
   /** The final count of the shown result (same numbers as countText()). */
   protected readonly finalCount = computed(() => {
     const r = this.result();
@@ -553,8 +557,8 @@ export class App {
     const key = this.matchKey();
     const intro = voiceOn() && !seed && !this.introduced.has(key) ? this.speakIntro() : null;   // a tap: ensure() above unlocked the audio
     try {
-      this.busy.set(true); this.result.set(null); this.shareNote.set(null);
-      if (!seed) this.deco.set(DECORATION_VERSION);
+      // Plan 59 Round 2b: the held result keeps its text (result, deco) until the new pitch is ready to play.
+      this.busy.set(true); this.shareNote.set(null);
       const r = await api.pitch(p, seed);
       if (!seed) api.event('pitch', this.session);
       const waits: Promise<unknown>[] = intro ? [intro] : [];
@@ -575,7 +579,10 @@ export class App {
       if (!seed) { this.lastPitcherShown.set(this.pitcher()?.id ?? null); }
       this.pbpLine.set(''); this.pbpResult.set(''); this.pbpTypeWord = false;
       this.liveCount.set({ balls: 0, strikes: 0 });
-      this.pending.set(r);   // the scene plays, then sceneDone() reveals the result
+      this.result.set(null);
+      if (!seed) this.deco.set(DECORATION_VERSION);
+      this.sceneN.update(n => n + 1);   // a fresh scene for every pitch, even one with the same seed
+      this.pending.set(r);   // the scene plays, then sceneDone() reveals the result (the scene stays on screen, held)
       if (intro) this.introduced.add(key);
       this.voicePitch(r);
       if (!seed) this.practiceN.update(n => n + 1);
@@ -697,8 +704,7 @@ export class App {
     const r = this.pending();
     if (!r) return;
     if (this.announcer() && !this.pbpResult()) this.pbpResult.set(this.pbpResultText(r));
-    this.pending.set(null);
-    this.result.set(r);
+    this.result.set(r);   // Plan 59 Round 2b: pending stays set, so the finished scene stays on screen under the result
     this.askFeedback.set(feedbackDue('p' + Date.now(), 3));   // plan 30: from the 3rd practice pitch
     this.screen.set('result');
   }
