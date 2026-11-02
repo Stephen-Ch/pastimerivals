@@ -155,4 +155,22 @@ public class SeoTests
         Assert.Contains("<meta name=\"robots\" content=\"noindex\">", html);
         Assert.DoesNotContain("rel=\"canonical\"", html);
     }
+
+    // Diff review: "/" keeps its revalidation headers, and challenge codes match in any letter case for HEAD as for GET.
+    [Fact]
+    public async Task Home_keeps_etag_and_last_modified()
+    {
+        var r = await Client().GetAsync("/");
+        Assert.NotNull(r.Headers.ETag);
+        Assert.NotNull(r.Content.Headers.LastModified);
+        var again = new HttpRequestMessage(HttpMethod.Get, "/");
+        again.Headers.IfNoneMatch.Add(r.Headers.ETag!);
+        Assert.Equal(HttpStatusCode.NotModified, (await Client().SendAsync(again)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Head_challenge_path_ignores_letter_case()
+    {
+        Assert.Equal(HttpStatusCode.OK, (await Send(Client(), "HEAD", "/C/abc")).StatusCode);
+    }
 }
