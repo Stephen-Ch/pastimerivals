@@ -390,7 +390,7 @@ export class App {
       });
     } else {
       const first = isFirstVisit(false, this.storage());
-      const opened = typeof location !== 'undefined' ? parseOpen(location.search) : null;
+      const opened = typeof location !== 'undefined' && this.challenge() === undefined ? parseOpen(location.search) : null;
       if (opened) {   // plan matchup-pages-1: a matchup page's button opens that matchup ready to pitch
         this.screen.set('matchup');
         this.batter.set({ id: opened.b, name: opened.b, year: opened.by, line: '' });

@@ -74,4 +74,22 @@ describe('App opened from a matchup page', () => {
     expect(events.find(e => e.name === 'open')?.source).toBe('mp-bonds-gibson');
     expect(app.result()).toBeNull();
   });
+
+  it('a brand-new visitor (art note not yet seen) still counts as a first view and no pitch is thrown', async () => {
+    localStorage.removeItem('pr_art_note');
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    for (let i = 0; i < 100 && !(app.pitcherReport() && app.batterReport()); i++) { await new Promise(r => setTimeout(r, 20)); fixture.detectChanges(); }
+    await new Promise(r => setTimeout(r, 0)); fixture.detectChanges(); await fixture.whenStable();
+    expect(app.batter().name).toBe('Barry Bonds');
+    expect(events.map(e => e.name)).toContain('first_view');
+    expect(calls.some(u => u.includes('/api/pitch'))).toBe(false);
+  });
+
+  it('a challenge link with matchup fields is left to the challenge screen', async () => {
+    history.replaceState(null, '', '/c/new?b=bondb001&by=2001&p=gibsb101&py=1968');
+    const fixture = TestBed.createComponent(App);
+    await new Promise(r => setTimeout(r, 50)); fixture.detectChanges(); await fixture.whenStable();
+    expect(calls.some(u => u.includes('/api/matchup?b=bondb001'))).toBe(false);
+  });
 });
