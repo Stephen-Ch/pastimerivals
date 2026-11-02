@@ -35,6 +35,18 @@ export function parseShare(search: string): { pick: Pick; seed: string; version:
   return { pick: { b, by, p, py }, seed: s, version: q.get('v') ?? '', deco: q.get('d') ?? '1' };
 }
 
+/** Plan matchup-pages-1: a plain matchup link (no seed) from a matchup page opens that matchup ready to pitch. */
+export function parseOpen(search: string): Pick | null {
+  const q = new URLSearchParams(search);
+  if (q.has('s')) return null;   // a seed means a share link (parseShare)
+  const b = q.get('b') ?? '', p = q.get('p') ?? '', by = q.get('by') ?? '', py = q.get('py') ?? '';
+  const id = /^[a-z0-9-]{8}$/, yr = /^\d{4}$/;
+  if (!id.test(b) || !id.test(p) || !yr.test(by) || !yr.test(py)) return null;
+  const nb = Number(by), np = Number(py);
+  if (nb < 1871 || nb > 2100 || np < 1871 || np > 2100) return null;
+  return { b, by: nb, p, py: np };
+}
+
 export function timesLeague(observed: number | null | undefined, league: number): string {
   if (observed == null || !(league > 0)) return 'n/a';
   return `${(observed / league).toFixed(1)}x`;

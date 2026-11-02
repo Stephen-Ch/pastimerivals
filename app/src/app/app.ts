@@ -16,7 +16,7 @@ import { VoiceButton } from './voice-button';
 import { SceneCue } from './pitch-scene';
 import { ArtManifest, Era, eraOf, fielderArt, isFirstVisit, lookOf, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, SideLook, WindupArt, windupArt } from './art';
 import { artNoteDue, artNoteShownThisVisit, markArtNoteShown } from './art-note';
-import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
+import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseOpen, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
 interface Chosen { id: string; name: string; year: number; line: string; }
@@ -390,7 +390,13 @@ export class App {
       });
     } else {
       const first = isFirstVisit(false, this.storage());
-      if (first) this.load();
+      const opened = typeof location !== 'undefined' ? parseOpen(location.search) : null;
+      if (opened) {   // plan matchup-pages-1: a matchup page's button opens that matchup ready to pitch
+        this.screen.set('matchup');
+        this.batter.set({ id: opened.b, name: opened.b, year: opened.by, line: '' });
+        this.pitcher.set({ id: opened.p, name: opened.p, year: opened.py, line: '' });
+        void this.load();
+      } else if (first) this.load();
       else void this.randomOpener(manifestLoad);   // plan 39 E: returning visitors get a random matchup
       capi.mine().then(m => this.myGames.set(m.length)).catch(() => undefined);
       if (this.challenge() === undefined && first) {

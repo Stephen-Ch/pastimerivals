@@ -260,4 +260,98 @@ public class SeoTests
         Assert.Contains("<loc>https://pastimerivals.com/about/methodology</loc>", await Client().GetStringAsync("/sitemap.xml"));
         Assert.Contains("<a href=\"/about/methodology\">How the odds work</a>", AppRoot(await Client().GetStringAsync("/")));
     }
+
+    // ---- Plan matchup-pages-1 (PLAN-2026-11-02-matchup-pages-v3, text DRAFT v2) ----
+    public static readonly TheoryData<string, string, string> Pages = new()
+    {
+        { "babe-ruth-vs-todays-pitchers", "How would Babe Ruth do against today&#x27;s pitchers?", "/?b=ruthb101&amp;by=1927&amp;p=skubt001&amp;py=2025&amp;ref=mp-ruth-skubal" },
+        { "barry-bonds-2001-vs-bob-gibson-1968", "Barry Bonds (2001) vs Bob Gibson (1968)", "/?b=bondb001&amp;by=2001&amp;p=gibsb101&amp;py=1968&amp;ref=mp-bonds-gibson" },
+        { "ted-williams-1941-vs-sandy-koufax-1965", "Ted Williams (1941) vs Sandy Koufax (1965)", "/?b=willt103&amp;by=1941&amp;p=koufs101&amp;py=1965&amp;ref=mp-williams-koufax" },
+    };
+
+    [Theory, MemberData(nameof(Pages))]
+    public async Task Matchup_page_serves_real_text(string slug, string h1, string href)
+    {
+        var r = await Client().GetAsync("/matchups/" + slug);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.Equal("text/html", r.Content.Headers.ContentType?.MediaType);
+        Assert.True(r.Headers.CacheControl?.NoCache == true);
+        var html = await r.Content.ReadAsStringAsync();
+        Assert.Contains($"<h1>{h1}</h1>", html);
+        Assert.Contains("obtained free of charge from and is copyrighted by Retrosheet", html);
+        Assert.Contains("not affiliated with or endorsed by Major League Baseball", html);
+        Assert.Contains($"<link rel=\"canonical\" href=\"https://pastimerivals.com/matchups/{slug}\">", html);
+        Assert.Contains($"<meta property=\"og:url\" content=\"https://pastimerivals.com/matchups/{slug}\">", html);
+        Assert.Contains($"<a class=\"play\" href=\"{href}\">", html);
+        Assert.Contains("<a href=\"/about/methodology\">How the odds work</a>", html);
+        Assert.DoesNotContain("<script", html);
+        Assert.DoesNotContain("&amp;s=", html);   // buttons carry no seed: nothing auto-plays
+    }
+
+    [Theory, MemberData(nameof(Pages))]
+    public async Task Matchup_page_head_and_repeat_visit(string slug, string h1, string href)
+    {
+        _ = h1; _ = href;
+        var head = await Send(Client(), "HEAD", "/matchups/" + slug);
+        Assert.Equal(HttpStatusCode.OK, head.StatusCode);
+        var r = await Client().GetAsync("/matchups/" + slug);
+        Assert.NotNull(r.Headers.ETag);
+        var again = new HttpRequestMessage(HttpMethod.Get, "/matchups/" + slug);
+        again.Headers.IfNoneMatch.Add(r.Headers.ETag!);
+        Assert.Equal(HttpStatusCode.NotModified, (await Client().SendAsync(again)).StatusCode);
+    }
+
+    [Theory]
+    [InlineData(Apex, "/matchups/barry-bonds-2001-vs-bob-gibson-1968/", "/matchups/barry-bonds-2001-vs-bob-gibson-1968")]
+    [InlineData(Apex, "/matchups/Barry-Bonds-2001-vs-Bob-Gibson-1968", "/matchups/barry-bonds-2001-vs-bob-gibson-1968")]
+    [InlineData(Apex, "/Matchups/barry-bonds-2001-vs-bob-gibson-1968", "/matchups/barry-bonds-2001-vs-bob-gibson-1968")]
+    [InlineData(Apex, "/matchups/barry-bonds-2001-vs-bob-gibson-1968.html", "https://pastimerivals.com/matchups/barry-bonds-2001-vs-bob-gibson-1968")]
+    [InlineData(Apex, "/MATCHUPS/Babe-Ruth-vs-Todays-Pitchers.HTML", "https://pastimerivals.com/matchups/babe-ruth-vs-todays-pitchers")]
+    [InlineData(Www, "/matchups/ted-williams-1941-vs-sandy-koufax-1965", "https://pastimerivals.com/matchups/ted-williams-1941-vs-sandy-koufax-1965")]
+    [InlineData(Www, "/matchups/ted-williams-1941-vs-sandy-koufax-1965.html", "https://pastimerivals.com/matchups/ted-williams-1941-vs-sandy-koufax-1965")]
+    public async Task Matchup_page_other_addresses_redirect(string host, string path, string location)
+    {
+        var r = await Client(host).GetAsync(path);
+        Assert.Equal(HttpStatusCode.MovedPermanently, r.StatusCode);
+        Assert.Equal(location, r.Headers.Location?.OriginalString);
+    }
+
+    [Theory]
+    [InlineData("/matchups")] [InlineData("/matchups/")] [InlineData("/matchups/nobody-vs-nobody")] [InlineData("/matchups/nobody-vs-nobody.html")]
+    [InlineData("/matchups/babe-ruth-vs-todays-pitchers/x")]
+    public async Task Matchup_page_neighbours_are_404(string path)
+    {
+        Assert.Equal(HttpStatusCode.NotFound, (await Client().GetAsync(path)).StatusCode);
+    }
+
+    [Theory]
+    [InlineData("POST")] [InlineData("PUT")] [InlineData("DELETE")]
+    public async Task Matchup_page_other_methods_are_not_500(string method)
+    {
+        var r = await Send(Client(), method, "/matchups/babe-ruth-vs-todays-pitchers");
+        Assert.Contains(r.StatusCode, new[] { HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed });
+    }
+
+    [Fact]
+    public async Task Sitemap_lists_the_matchup_pages()
+    {
+        var map = await Client().GetStringAsync("/sitemap.xml");
+        foreach (var slug in MatchupPages.Slugs) Assert.Contains($"<loc>https://pastimerivals.com/matchups/{slug}</loc>", map);
+    }
+
+    [Fact]
+    public void Matchup_page_copies_match()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "PastimeRivals.slnx"))) dir = dir.Parent;
+        Assert.NotNull(dir);
+        foreach (var slug in MatchupPages.Slugs)
+        {
+            var a = File.ReadAllBytes(Path.Combine(dir!.FullName, "app", "public", "matchups", slug + ".html"));
+            var b = File.ReadAllBytes(Path.Combine(dir.FullName, "src", "PastimeRivals.Api", "wwwroot", "matchups", slug + ".html"));
+            Assert.Equal(a, b);
+        }
+        Assert.Equal(File.ReadAllBytes(Path.Combine(dir!.FullName, "app", "public", "sitemap.xml")),
+            File.ReadAllBytes(Path.Combine(dir.FullName, "src", "PastimeRivals.Api", "wwwroot", "sitemap.xml")));
+    }
 }

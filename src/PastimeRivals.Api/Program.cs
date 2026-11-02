@@ -87,6 +87,20 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
+// Plan matchup-pages-1: the three matchup pages (plain HTML in wwwroot/matchups). Their file names redirect to the clean address.
+app.Use(async (ctx, next) =>
+{
+    var path = ctx.Request.Path.Value ?? "";
+    if (path.StartsWith("/matchups/", StringComparison.OrdinalIgnoreCase) && path.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
+        && MatchupPages.Find(path["/matchups/".Length..^".html".Length]) is { } slug)
+    {
+        ctx.Response.StatusCode = StatusCodes.Status301MovedPermanently;
+        ctx.Response.Headers.Location = "https://pastimerivals.com/matchups/" + slug;
+        return;
+    }
+    await next();
+});
+
 app.UseDefaultFiles();
 // Plan 39: the app page and the few unversioned files are always checked for a newer copy; versioned files (main-*.js, art) are not touched.
 static bool AlwaysCheck(PathString p) => p.Equals("/index.html", StringComparison.OrdinalIgnoreCase) || p.Equals("/sw.js", StringComparison.OrdinalIgnoreCase)
@@ -166,6 +180,25 @@ app.MapMethods("/about/methodology", new[] { "GET", "HEAD" }, (HttpContext ctx, 
         entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{(file.LastModified.UtcTicks ^ file.Length):x}\""), enableRangeProcessing: false);
 });
 
+// Plan matchup-pages-1: only the listed slugs exist; the file is always opened by its lowercase list name.
+// A trailing slash or other letter case gets one 301 to the clean lowercase address.
+app.MapMethods("/matchups/{slug}", new[] { "GET", "HEAD" }, (string slug, HttpContext ctx, IWebHostEnvironment env) =>
+{
+    ctx.Response.Headers.CacheControl = "no-cache";
+    var raw = ctx.Request.Path.Value ?? "";
+    if (MatchupPages.Find(slug) is not { } name)
+        return Results.Content(NotFoundPage, "text/html; charset=utf-8", statusCode: StatusCodes.Status404NotFound);
+    if (raw != "/matchups/" + name)
+    {
+        ctx.Response.Headers.Location = "/matchups/" + name;
+        return Results.StatusCode(StatusCodes.Status301MovedPermanently);
+    }
+    var file = env.WebRootFileProvider.GetFileInfo("matchups/" + name + ".html");
+    if (!file.Exists) return Results.Content(NotFoundPage, "text/html; charset=utf-8", statusCode: StatusCodes.Status404NotFound);
+    return Results.File(file.CreateReadStream(), "text/html; charset=utf-8", lastModified: file.LastModified,
+        entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{(file.LastModified.UtcTicks ^ file.Length):x}\""), enableRangeProcessing: false);
+});
+
 app.MapFallback((HttpContext ctx, IWebHostEnvironment env) =>
 {
     ctx.Response.Headers.CacheControl = "no-cache";
@@ -183,3 +216,15 @@ app.MapFallback((HttpContext ctx, IWebHostEnvironment env) =>
 app.Run();
 
 public partial class Program { }
+
+/// <summary>Plan matchup-pages-1: the matchup pages that exist. Add a slug here and a file in wwwroot/matchups to publish one.</summary>
+public static class MatchupPages
+{
+    public static readonly string[] Slugs =
+    {
+        "babe-ruth-vs-todays-pitchers",
+        "barry-bonds-2001-vs-bob-gibson-1968",
+        "ted-williams-1941-vs-sandy-koufax-1965",
+    };
+    public static string? Find(string slug) => Slugs.FirstOrDefault(s => string.Equals(s, slug, StringComparison.OrdinalIgnoreCase));
+}
