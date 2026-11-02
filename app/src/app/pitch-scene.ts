@@ -411,7 +411,8 @@ export function shakePx(wave: number, unit: number): number {
   const v = Math.round(Math.max(-8, Math.min(8, wave * unit)) * 100) / 100;
   return v === 0 ? 0 : v;
 }
-/** Home-run and hit-by-pitch shake (px) at time t. */
+/** Home-run and hit-by-pitch shake (px) at time t. Plan 59 Round 3: no longer used by the scene (see shakeWave);
+ *  kept as the reference that pitch-scene.spec test 3 compares shakeWave against. */
 export function shakeAt(pl: Plan, t: number): number {
   const { p, s } = pl;
   if (!s.isFinal || !((s.outcome === 'hr' && s.m === 'hit') || s.m === 'hbp')) return 0;

@@ -405,7 +405,7 @@ describe('plan 59 r3 juice', () => {
       f.componentRef.setInput('side', { sheet: '/s.webp', frames: Array.from({ length: 8 }, () => ({})), lineArt: false });
       f.componentRef.setInput('fielders', { sheet: '/f.webp', cell: [180, 210], footY: 205, era: '1990-2025' });
       f.detectChanges();
-      const c = f.componentInstance as unknown as { stageSize: { set(v: [number, number]): void }; fit(): StageFit | null; frame(): { fx: { shake: number } }; parkShake(): number };
+      const c = f.componentInstance as unknown as { stageSize: { set(v: [number, number]): void }; fit(): StageFit | null; frame(): { fx: { shake: number } }; parkShake(): number; parkFade(): number };
       c.stageSize.set([390, 506]);
       f.detectChanges();
       const fit = c.fit()!;
@@ -417,7 +417,7 @@ describe('plan 59 r3 juice', () => {
       const pl = planPitch({ m: motionFor(o, count.finalKind), kind: null, isFinal: true, outcome: o, era: '1990-2025', bats: 'R', call, contact: { x: 372, y: 200 }, seed, index: lead });
       const parkVals = new Set<number>();
       for (let ms = 0; ms <= 300; ms++) parkVals.add(shakePx(shakeWave(pl, pl.p.tPlate + ms / 1000), unit));
-      let sideSeen = 0, parkSeen = 0, cleared = false;
+      let sideSeen = 0, parkSeen = 0, cleared = false, lastSideBeforePark = 0, parkPeak = 0;
       for (let i = 0; i < 120; i++) {
         await vi.advanceTimersByTimeAsync(8);
         f.detectChanges();
@@ -426,14 +426,17 @@ describe('plan 59 r3 juice', () => {
         const tr = el?.style.transform ?? '';
         if (w) { sideSeen++; expect(tr).toBe(`translateX(${shakePx(w, unit)}px)`); }
         const ps = c.parkShake();
-        if ((f.nativeElement as HTMLElement).querySelector('.park')) {
-          if (ps) { parkSeen++; expect([...parkVals].some(v => Math.abs(v - ps) < 0.011)).toBe(true); }
-          if (!w && !tr) cleared = true;
+        if (c.parkFade() === 0 && w) lastSideBeforePark = w;   // still on the side view (t < tPark)
+        if (c.parkFade() > 0) {                                  // the park has taken over (t >= tPark)
+          if (ps) { parkSeen++; parkPeak = Math.max(parkPeak, Math.abs(ps)); expect([...parkVals].some(v => Math.abs(v - ps) < 0.011)).toBe(true); }
+          if (lastSideBeforePark && !w && !tr) cleared = true;
+          expect(w).toBe(0);
         }
       }
       expect(sideSeen).toBeGreaterThan(0);
       expect(parkSeen).toBeGreaterThan(0);
       expect(cleared).toBe(true);
+      expect(parkPeak).toBeLessThanOrEqual(0.88 * unit + 0.01);
     } finally { vi.useRealTimers(); }
   }, 30000);
 

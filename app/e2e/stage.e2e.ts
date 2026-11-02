@@ -508,6 +508,7 @@ for (const [name, fx, lefty] of [['HR', 'pitch-hr.json', false], ['HBP', 'pitch-
     // HBP shakes on the side view; a home run's contact point is at the plate (sprite contact x 218-238 vs PLATE_X 240),
     // so its whole shake plays on the field view (amendment A1 to the v6 card).
     const shown = name.startsWith('HBP') ? r.side : r.park;
+    if (!name.startsWith('HBP')) expect(r.side.length, 'a home run never shakes the side view (A1)').toBe(0);
     expect(shown.length).toBeGreaterThan(0);
     const peak = Math.max(...shown);
     expect(peak).toBeLessThanOrEqual(Math.min(8, 0.88 * unit) + 0.02);   // wave peak is about 0.87
