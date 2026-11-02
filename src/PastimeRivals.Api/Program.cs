@@ -133,7 +133,7 @@ app.MapGet("/robots.txt", (HttpContext ctx) =>
 
 // Single-page app: the home page and challenge links (/c/<one segment>) serve index.html for GET and HEAD.
 // Plan SEO-1: every other unknown address is a real 404 (was the app page with 200, which Google treats as a soft 404).
-var appPage = new System.Text.RegularExpressions.Regex("^/(c/[^/]+/?)?$");
+var appPage = new System.Text.RegularExpressions.Regex("^/(c/[^/]+/?)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 const string NotFoundPage = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Page not found | Pastime Rivals</title>"
     + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>"
     + "<body style=\"font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem;line-height:1.5\">"
@@ -145,7 +145,9 @@ app.MapFallback((HttpContext ctx, IWebHostEnvironment env) =>
     if ((HttpMethods.IsGet(req.Method) || HttpMethods.IsHead(req.Method)) && appPage.IsMatch(req.Path.Value ?? "/"))
     {
         var file = env.WebRootFileProvider.GetFileInfo("index.html");
-        if (file.Exists) return Results.File(file.CreateReadStream(), "text/html; charset=utf-8");
+        if (file.Exists)   // same ETag / Last-Modified the static file handler gave "/" before, so repeat visits get a short "not modified"
+            return Results.File(file.CreateReadStream(), "text/html; charset=utf-8", lastModified: file.LastModified,
+                entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{(file.LastModified.UtcTicks ^ file.Length):x}\""), enableRangeProcessing: false);
     }
     return Results.Content(NotFoundPage, "text/html; charset=utf-8", statusCode: StatusCodes.Status404NotFound);
 });
