@@ -173,4 +173,17 @@ public class SeoTests
     {
         Assert.Equal(HttpStatusCode.OK, (await Send(Client(), "HEAD", "/C/abc")).StatusCode);
     }
+
+    // T10 (amendment A1): visitors with scripts off are told why the game is not showing, high enough to be seen
+    // (the page cannot scroll), on the home page and on shared game links.
+    [Theory]
+    [InlineData("/")] [InlineData("/c/abc")]
+    public async Task No_script_visitors_are_told_to_turn_on_javascript(string path)
+    {
+        var inner = AppRoot(await Client().GetStringAsync(path));
+        var m = Regex.Match(inner, "</h1>\\s*<noscript>(.*?)</noscript>\\s*<p>", RegexOptions.Singleline);
+        Assert.True(m.Success, "no <noscript> right after the H1");
+        Assert.Contains("needs JavaScript", m.Groups[1].Value);
+        Assert.True(inner.IndexOf("<noscript>") < inner.IndexOf("<h2>"));
+    }
 }
