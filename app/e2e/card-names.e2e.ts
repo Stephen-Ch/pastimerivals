@@ -15,13 +15,14 @@ for (const [w, h] of SIZES) {
       await page.goto('/');
       const names = page.locator('.pcard-wrap > .pname');
       await expect(names).toHaveCount(2);
-      await expect(page.locator('.pcard-wrap .pimg').first()).toBeVisible();
+      await expect(page.locator('.pcard-wrap > .link')).toHaveCount(2);
+      await expect(page.locator('.pcard-wrap .pimg.skeleton')).toHaveCount(0);
       const m = await page.evaluate(() => {
-        const flex = document.querySelector('main.flex, .flex') as HTMLElement;
+        const flex = document.querySelector('main.flex') as HTMLElement | null;
         return {
           names: [...document.querySelectorAll('.pcard-wrap > .pname')].map(e => ({ ch: (e as HTMLElement).clientHeight, sh: e.scrollHeight })),
           page: document.documentElement.scrollHeight - document.documentElement.clientHeight,
-          flex: flex ? flex.scrollHeight - flex.clientHeight : 0,
+          flex: flex ? flex.scrollHeight - flex.clientHeight : null,
         };
       });
       for (const n of m.names) {
@@ -29,8 +30,10 @@ for (const [w, h] of SIZES) {
         expect(n.sh, 'name not clipped').toBeLessThanOrEqual(n.ch + 1);
       }
       expect(m.page, 'page scroll').toBeLessThanOrEqual(1);
-      // 568x320 returning already scrolled 3 px before this fix (checked on e604be6); allow that, catch anything worse.
-      expect(m.flex, 'matchup area scroll').toBeLessThanOrEqual(4);
+      expect(m.flex, 'matchup area found').not.toBeNull();
+      // 568x320 returning already scrolled 3 px before this fix (checked on e604be6); allow that there only.
+      const allowed = w === 568 && visit === 'returning' ? 4 : 1;
+      expect(m.flex!, 'matchup area scroll').toBeLessThanOrEqual(allowed);
       expect(hn.bad).toEqual([]);
     });
   }
