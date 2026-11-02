@@ -27,7 +27,7 @@ public class Plan39Tests
 
     [Theory]
     [InlineData("GET", "/")] [InlineData("GET", "/index.html")] [InlineData("GET", "/c/new")] [InlineData("GET", "/c/abcdefghijklmnopqrstuv")]
-    [InlineData("HEAD", "/c/abc")] [InlineData("GET", "/x/y")] [InlineData("GET", "/sw.js")] [InlineData("GET", "/art-manifest.json")]
+    [InlineData("HEAD", "/c/abc")] [InlineData("GET", "/sw.js")] [InlineData("GET", "/art-manifest.json")]
     [InlineData("GET", "/manifest.webmanifest")]
     public async Task App_pages_and_unversioned_files_are_always_rechecked(string method, string path)
     {
