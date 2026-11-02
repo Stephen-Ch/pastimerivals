@@ -186,4 +186,78 @@ public class SeoTests
         Assert.Contains("needs JavaScript", m.Groups[1].Value);
         Assert.True(inner.IndexOf("<noscript>") < inner.IndexOf("<h2>"));
     }
+
+    // ---- Plan odds-page-1 (PLAN-2026-11-02-odds-page-v2) ----
+    private const string OddsCanonical = "<link rel=\"canonical\" href=\"https://pastimerivals.com/about/methodology\">";
+
+    [Theory]
+    [InlineData("/about/methodology")] [InlineData("/About/Methodology")]
+    public async Task Odds_page_serves_real_text(string path)
+    {
+        var r = await Client().GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.Equal("text/html", r.Content.Headers.ContentType?.MediaType);
+        Assert.True(r.Headers.CacheControl?.NoCache == true);
+        var html = await r.Content.ReadAsStringAsync();
+        Assert.Contains("<h1>How the odds work</h1>", html);
+        Assert.Contains("obtained free of charge from and is copyrighted by Retrosheet", html);
+        Assert.Contains("not affiliated with or endorsed by Major League Baseball", html);
+        Assert.Contains(OddsCanonical, html);
+        Assert.Contains("<meta property=\"og:url\" content=\"https://pastimerivals.com/about/methodology\">", html);
+        Assert.DoesNotContain("<script", html);
+    }
+
+    [Fact]
+    public async Task Odds_page_head_is_200()
+    {
+        var r = await Send(Client(), "HEAD", "/about/methodology");
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.Equal("text/html", r.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task Odds_page_repeat_visit_is_not_modified()
+    {
+        var r = await Client().GetAsync("/about/methodology");
+        Assert.NotNull(r.Headers.ETag);
+        Assert.NotNull(r.Content.Headers.LastModified);
+        var again = new HttpRequestMessage(HttpMethod.Get, "/about/methodology");
+        again.Headers.IfNoneMatch.Add(r.Headers.ETag!);
+        Assert.Equal(HttpStatusCode.NotModified, (await Client().SendAsync(again)).StatusCode);
+    }
+
+    [Theory]
+    [InlineData(Apex, "/about/methodology/", "/about/methodology")]
+    [InlineData(Apex, "/about/methodology.html", "https://pastimerivals.com/about/methodology")]
+    [InlineData(Apex, "/About/Methodology.HTML", "https://pastimerivals.com/about/methodology")]
+    [InlineData(Www, "/about/methodology.html", "https://pastimerivals.com/about/methodology")]
+    [InlineData(Www, "/about/methodology", "https://pastimerivals.com/about/methodology")]
+    public async Task Odds_page_other_addresses_redirect(string host, string path, string location)
+    {
+        var r = await Client(host).GetAsync(path);
+        Assert.Equal(HttpStatusCode.MovedPermanently, r.StatusCode);
+        Assert.Equal(location, r.Headers.Location?.OriginalString);
+    }
+
+    [Theory]
+    [InlineData("/about/")] [InlineData("/about")] [InlineData("/about/other")] [InlineData("/about/methodology/x")]
+    public async Task Odds_page_neighbours_are_404(string path)
+    {
+        Assert.Equal(HttpStatusCode.NotFound, (await Client().GetAsync(path)).StatusCode);
+    }
+
+    [Theory]
+    [InlineData("POST")] [InlineData("PUT")] [InlineData("DELETE")]
+    public async Task Odds_page_other_methods_are_not_500(string method)
+    {
+        var r = await Send(Client(), method, "/about/methodology");
+        Assert.Contains(r.StatusCode, new[] { HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed });
+    }
+
+    [Fact]
+    public async Task Sitemap_and_home_link_the_odds_page()
+    {
+        Assert.Contains("<loc>https://pastimerivals.com/about/methodology</loc>", await Client().GetStringAsync("/sitemap.xml"));
+        Assert.Contains("<a href=\"/about/methodology\">How the odds work</a>", AppRoot(await Client().GetStringAsync("/")));
+    }
 }

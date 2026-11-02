@@ -75,6 +75,18 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
+// Plan odds-page-1: the odds page lives at one clean address; its file name redirects there (covers www + .html too).
+app.Use(async (ctx, next) =>
+{
+    if (string.Equals(ctx.Request.Path.Value, "/about/methodology.html", StringComparison.OrdinalIgnoreCase))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status301MovedPermanently;
+        ctx.Response.Headers.Location = "https://pastimerivals.com/about/methodology";
+        return;
+    }
+    await next();
+});
+
 app.UseDefaultFiles();
 // Plan 39: the app page and the few unversioned files are always checked for a newer copy; versioned files (main-*.js, art) are not touched.
 static bool AlwaysCheck(PathString p) => p.Equals("/index.html", StringComparison.OrdinalIgnoreCase) || p.Equals("/sw.js", StringComparison.OrdinalIgnoreCase)
@@ -138,6 +150,22 @@ const string NotFoundPage = "<!doctype html><html lang=\"en\"><head><meta charse
     + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>"
     + "<body style=\"font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem;line-height:1.5\">"
     + "<h1>Page not found</h1><p>There is nothing at this address.</p><p><a href=\"/\">Play Pastime Rivals</a></p></body></html>";
+// Plan odds-page-1: "How the odds work" (plain HTML in wwwroot/about/methodology.html). Routing treats a trailing slash
+// as the same route, so the handler sends that form to the clean address itself.
+app.MapMethods("/about/methodology", new[] { "GET", "HEAD" }, (HttpContext ctx, IWebHostEnvironment env) =>
+{
+    ctx.Response.Headers.CacheControl = "no-cache";
+    if ((ctx.Request.Path.Value ?? "").EndsWith('/'))
+    {
+        ctx.Response.Headers.Location = "/about/methodology";
+        return Results.StatusCode(StatusCodes.Status301MovedPermanently);
+    }
+    var file = env.WebRootFileProvider.GetFileInfo("about/methodology.html");
+    if (!file.Exists) return Results.Content(NotFoundPage, "text/html; charset=utf-8", statusCode: StatusCodes.Status404NotFound);
+    return Results.File(file.CreateReadStream(), "text/html; charset=utf-8", lastModified: file.LastModified,
+        entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{(file.LastModified.UtcTicks ^ file.Length):x}\""), enableRangeProcessing: false);
+});
+
 app.MapFallback((HttpContext ctx, IWebHostEnvironment env) =>
 {
     ctx.Response.Headers.CacheControl = "no-cache";

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How the odds work | Pastime Rivals</title>
+<meta name="description" content="How Pastime Rivals turns real season stats from 1901 to 2025 into fair odds for any pitcher against any batter, across eras.">
+<link rel="canonical" href="https://pastimerivals.com/about/methodology">
+<meta property="og:title" content="How the odds work | Pastime Rivals">
+<meta property="og:description" content="How Pastime Rivals turns real season stats from 1901 to 2025 into fair odds for any pitcher against any batter, across eras.">
+<meta property="og:url" content="https://pastimerivals.com/about/methodology">
+<meta property="og:image" content="https://pastimerivals.com/og/pr-share-v1.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+:root{--bg:#f4efe2;--ink:#1d2a23;--muted:#4a5650;--line:#d8cfb4;--accent:#1c5cab;--card:#fbf8f0}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.55;font-size:1.0625rem}
+header.top{background:var(--ink);color:var(--bg)}
+header.top a{color:var(--bg);text-decoration:none;font-weight:700;letter-spacing:.02em}
+header.top div,main{max-width:40rem;margin:0 auto;padding:0 16px}
+header.top div{padding-top:.75rem;padding-bottom:.75rem}
+main{padding-bottom:3rem}
+h1{font-size:2rem;line-height:1.15;margin:1.75rem 0 .75rem}
+h2{font-size:1.25rem;margin:2rem 0 .5rem}
+p,ul{margin:.5rem 0 1rem}
+ul{padding-left:1.25rem}
+li{margin:.35rem 0}
+.lede{font-size:1.15rem}
+table{width:100%;border-collapse:collapse;margin:.75rem 0 1rem;background:var(--card);font-size:.95rem}
+th,td{border:1px solid var(--line);padding:.5rem .6rem;text-align:left;vertical-align:top}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+@media (max-width:400px){table{font-size:.875rem}th,td{padding:.4rem .35rem}h1{font-size:1.75rem}}
+.note{color:var(--muted);font-size:.95rem}
+a{color:var(--accent)}
+a.play{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;font-weight:700;padding:.8rem 1.4rem;border-radius:.5rem;margin:1rem 0}
+a.play:focus-visible,a:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+footer{color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);margin-top:2rem;padding-top:1rem}
+</style>
+</head>
+<body>
+<header class="top"><div><a href="/">Pastime Rivals</a></div></header>
+<main>
+<h1>How the odds work</h1>
+<p class="lede">Every at-bat in Pastime Rivals is decided by real numbers. Here is how a hitter from 1927 and a pitcher from 1999 end up on a fair field.</p>
+
+<h2>1. Start with the real season</h2>
+<p>We use each player's actual season line: strikeouts, walks, hit by pitch, singles, doubles, triples, home runs, and outs in play. That is eight ways a plate appearance can end. The odds for those eight always add up to 100%.</p>
+
+<h2>2. Compare him to his own league</h2>
+<p>A home run in 1915 was rare. A home run in 1999 was not. So we don't compare raw totals. We ask: how many times the league rate did this player do it, in his own season and league? A slugger who homered at 3 times his league's rate stays a 3-times slugger in any era.</p>
+
+<h2>3. Be careful with small samples</h2>
+<p>A player with 40 plate appearances can look like a legend or a bust by luck. We pull short seasons toward the league average. The more a player batted or pitched, the more his own numbers count.</p>
+
+<h2>4. Meet on neutral ground</h2>
+<p>Both players are placed in one shared setting: the average major league from 1990 to 2019. The batter's "times the league" number and the pitcher's are combined against that average. Very extreme numbers are softened a little so dead-ball and 1920s outliers stay believable, but the order never flips: the better player is still better.</p>
+
+<h2>5. Lefty against righty</h2>
+<p>Batters usually do better against pitchers who throw from the other side. We take out the lefty-righty mix each player already had in his real season, then add the effect back once for the matchup on your screen.</p>
+
+<h2>6. Roll the dice</h2>
+<p>The game draws one result from those eight odds, like a weighted die. Each play has a stored seed, so a shared challenge replays exactly the same way for both players.</p>
+
+<h2>Does it work?</h2>
+<p>We tested it on real history. For each real plate appearance, we predicted the result using each player's stats from an earlier season, and scored how close the predictions came (lower is better).</p>
+<table>
+<thead><tr><th>Test</th><th class="n">League average only</th><th class="n">Our model</th></tr></thead>
+<tbody>
+<tr><td>Same era, 2016 to 2024</td><td class="n">1.494</td><td class="n">1.475</td></tr>
+<tr><td>Dead ball to live ball, 1920 to 1925</td><td class="n">1.242</td><td class="n">1.234</td></tr>
+<tr><td>Mound lowered, 1969 to 1972</td><td class="n">1.367</td><td class="n">1.352</td></tr>
+</tbody>
+</table>
+<p>The model beat plain league average every time. In the big era changes, using raw stats without the era step did worse than league average. The era step is what makes cross-era matchups fair.</p>
+
+<h2>What it can't do</h2>
+<ul>
+<li>No one can know how a 1920s hitter would really handle a modern fastball. These are fair odds, not a time machine.</li>
+<li>Base running in Last Licks uses modern averages for every era.</li>
+<li>Negro Leagues seasons (1933 to 1948) come from surviving box scores. Some are short, and strikeouts were not always recorded.</li>
+<li>Only regular-season major league games (American, National and Federal Leagues), plus the Negro Leagues above.</li>
+</ul>
+
+<a class="play" href="/">Play a matchup</a>
+
+<footer>
+<h2>Credits</h2>
+<p>The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.</p>
+<p>Pastime Rivals is an independent game, not affiliated with or endorsed by Major League Baseball, its teams or players.</p>
+</footer>
+</main>
+</body>
+</html>
