@@ -21,8 +21,22 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://pastimerivals.com/#org","name":"Pastime Rivals","url":"https://pastimerivals.com/","logo":"https://pastimerivals.com/icons/icon-512.png"},{"@type":"WebSite","@id":"https://pastimerivals.com/#site","name":"Pastime Rivals","url":"https://pastimerivals.com/","description":"Pick any pitcher and any batter from baseball history and see who wins, with real, era-adjusted odds.","publisher":{"@id":"https://pastimerivals.com/#org"}}]}</script>
 </head>
 <body>
-  <app-root></app-root>
+  <app-root>
+    <main style="font-family:system-ui,sans-serif;max-width:34rem;margin:2rem auto;padding:0 1rem;line-height:1.5;color:#1b1b1b">
+      <h1>Pastime Rivals</h1>
+      <p>Pick any pitcher and any batter from baseball history and see who wins, with real, era-adjusted odds.</p>
+      <h2>How to play</h2>
+      <ul>
+        <li>Pick a pitcher and a batter from any era.</li>
+        <li>Tap Pitch to play the at-bat. Every result comes from the two players' real season stats.</li>
+        <li>Tap Simulate 1,000 to see what usually happens in that matchup.</li>
+        <li>Play an inning against the computer, or challenge a friend with a link.</li>
+      </ul>
+      <p style="font-size:.8rem;color:#555">The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711. Pastime Rivals is an independent game, not affiliated with or endorsed by Major League Baseball, its teams or players.</p>
+    </main>
+  </app-root>
 </body>
 </html>
