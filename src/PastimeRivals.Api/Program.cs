@@ -56,6 +56,25 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
+// Plan SEO-1: page visits on www go to the main address. API calls, files (anything with a dot), other methods
+// and certificate checks pass through, so a www tab left open keeps working until it is reloaded.
+app.Use(async (ctx, next) =>
+{
+    var req = ctx.Request;
+    var path = req.Path.Value ?? "/";
+    var page = (HttpMethods.IsGet(req.Method) || HttpMethods.IsHead(req.Method))
+        && !path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+        && !path.StartsWith("/.well-known/", StringComparison.OrdinalIgnoreCase)
+        && !path.Contains('.');
+    if (page && string.Equals(req.Host.Host, "www.pastimerivals.com", StringComparison.OrdinalIgnoreCase))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status301MovedPermanently;
+        ctx.Response.Headers.Location = "https://pastimerivals.com" + req.Path.ToUriComponent() + req.QueryString.ToUriComponent();
+        return;
+    }
+    await next();
+});
+
 app.UseDefaultFiles();
 // Plan 39: the app page and the few unversioned files are always checked for a newer copy; versioned files (main-*.js, art) are not touched.
 static bool AlwaysCheck(PathString p) => p.Equals("/index.html", StringComparison.OrdinalIgnoreCase) || p.Equals("/sw.js", StringComparison.OrdinalIgnoreCase)
@@ -112,8 +131,24 @@ app.MapGet("/robots.txt", (HttpContext ctx) =>
     return Results.Text(body, "text/plain; charset=utf-8");
 });
 
-// Single-page app: unknown non-API paths serve index.html.
-app.MapFallbackToFile("index.html", new StaticFileOptions { OnPrepareResponse = c => c.Context.Response.Headers.CacheControl = "no-cache" });
+// Single-page app: the home page and challenge links (/c/<one segment>) serve index.html for GET and HEAD.
+// Plan SEO-1: every other unknown address is a real 404 (was the app page with 200, which Google treats as a soft 404).
+var appPage = new System.Text.RegularExpressions.Regex("^/(c/[^/]+/?)?$");
+const string NotFoundPage = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Page not found | Pastime Rivals</title>"
+    + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>"
+    + "<body style=\"font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem;line-height:1.5\">"
+    + "<h1>Page not found</h1><p>There is nothing at this address.</p><p><a href=\"/\">Play Pastime Rivals</a></p></body></html>";
+app.MapFallback((HttpContext ctx, IWebHostEnvironment env) =>
+{
+    ctx.Response.Headers.CacheControl = "no-cache";
+    var req = ctx.Request;
+    if ((HttpMethods.IsGet(req.Method) || HttpMethods.IsHead(req.Method)) && appPage.IsMatch(req.Path.Value ?? "/"))
+    {
+        var file = env.WebRootFileProvider.GetFileInfo("index.html");
+        if (file.Exists) return Results.File(file.CreateReadStream(), "text/html; charset=utf-8");
+    }
+    return Results.Content(NotFoundPage, "text/html; charset=utf-8", statusCode: StatusCodes.Status404NotFound);
+});
 
 app.Run();
 
