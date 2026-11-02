@@ -375,7 +375,7 @@ export function frameAt(pl: Plan, t: number): Frame {
   }
   const word = wordAt(pl, t, pl.tl.end);
   if (word) fx.word = word;
-  fx.shake = shakeAt(pl, t);
+  fx.shake = shakeWave(pl, t);   // Plan 59 Round 3: unitless; the template scales it to the stage
   return { ball, batter, fx };
 }
 
@@ -386,7 +386,7 @@ export function wordAt(pl: Plan, t: number, end: number): FxWord | undefined {
   const words = s.isFinal ? fxWord(s.outcome, s.m, tr, !!s.call?.insideTheParkHr) : null;
   const w0 = Math.max(p.tTarget + 0.2, pl.exitT + 0.02);
   if (!words || t < w0 || w0 >= end - 0.15) return undefined;
-  const u = (t - w0) / 0.15;
+  const u = (t - w0) / Math.min(0.2, end - w0);   // Plan 59 Round 3: arrival 200 ms where the window allows (was 150)
   const longest = Math.max(...words.map(x => x.length));
   const size = Math.min(s.outcome === 'hr' ? 72 : 62, 290 / (longest * 0.66));
   return {
@@ -396,6 +396,21 @@ export function wordAt(pl: Plan, t: number, end: number): FxWord | undefined {
   };
 }
 
+/** Plan 59 Round 3: the shake's shape (-1..1, decaying), with no size and no rounding; shakeAt = 3 px of it. */
+export function shakeWave(pl: Plan, t: number): number {
+  const { p, s } = pl;
+  if (!s.isFinal || !((s.outcome === 'hr' && s.m === 'hit') || s.m === 'hbp')) return 0;
+  const u = (t - p.tTarget) / 0.2;
+  return u >= 0 && u < 1 ? Math.sin(u * Math.PI * 4) * (1 - u) : 0;
+}
+/** Plan 59 Round 3: shake size in px for a side panel scale s. Tuned at 3 px when the panel was the whole 228 px
+ *  stage (s 0.475), so it keeps that share of the panel; no scale known (jsdom, not measured): today's 3 px. */
+export function shakeUnit(s: number | null | undefined): number { return s == null ? 3 : (3 / 0.475) * s; }
+/** Plan 59 Round 3: px offset for a wave value, capped at 8 px, rounded to 0.01 after scaling. */
+export function shakePx(wave: number, unit: number): number {
+  const v = Math.round(Math.max(-8, Math.min(8, wave * unit)) * 100) / 100;
+  return v === 0 ? 0 : v;
+}
 /** Home-run and hit-by-pitch shake (px) at time t. */
 export function shakeAt(pl: Plan, t: number): number {
   const { p, s } = pl;
@@ -461,7 +476,7 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
           <ellipse class="contact" cx="158" cy="469" rx="138" ry="9" fill="#000" opacity="0.2"/>
           <path d="M175 474 L305 474 L318 466 L188 466 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width="2"/>
         </svg>
-        <div class="shake" [style.transform]="frame().fx.shake ? 'translateX(' + frame().fx.shake + 'px)' : null">
+        <div class="shake" [style.transform]="sideShakePx() ? 'translateX(' + sideShakePx() + 'px)' : null">
           <div class="bat" [style.background-image]="'url(' + a.sheet + ')'" [style.--f]="frame().batter"></div>
           <svg class="fx" viewBox="0 0 760 480" preserveAspectRatio="none">
             @for (sm of frame().fx.smear ?? []; track $index) { <path [attr.d]="sm.d" [attr.opacity]="sm.o" fill="none" stroke="#1d1b19" stroke-width="3.5" stroke-linecap="round"/> }
@@ -605,6 +620,8 @@ export class PitchScene {
   protected readonly parkFade = signal(0);
   protected readonly parkWord = signal<FxWord | null>(null);
   protected readonly parkShake = signal(0);
+  /** Plan 59 Round 3: the side view's shake in px, scaled to the side panel. */
+  protected readonly sideShakePx = computed(() => shakePx(this.frame().fx.shake, shakeUnit(this.fit()?.s)));
   private readonly parkView = viewChild(BallparkView);
   /** Plan 59 Round 1b: the stage's size (CSS px) from a ResizeObserver; null until measured (and in jsdom). */
   private readonly stageEl = viewChild<ElementRef<HTMLElement>>('stage');
@@ -756,6 +773,7 @@ export class PitchScene {
       this.windFrame.set(-1);
       const t = Math.min(end, el - lead0);
       if (this.side() && (!pk || t < pk.tPark)) this.frame.set(frameAt(plan, Math.min(plan.tl.end, t)));   // the side view holds its last frame under the park
+      else if (pk && t >= pk.tPark && this.frame().fx.shake) this.frame.update(f => ({ ...f, fx: { ...f.fx, shake: 0 } }));   // Plan 59 Round 3: no frozen shake under the park
       if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); this.emitCue({ index: idx, final, moment: 'enter' }); }
       if (!called && t >= plan.p.tPlate) {
         called = true;
@@ -769,7 +787,7 @@ export class PitchScene {
         this.parkFade.set(Math.min(1, pt / PARK_FADE));
         this.parkView()?.draw(Math.min(pk.play.len, pt));
         this.parkWord.set(wordAt(plan, t, end) ?? null);
-        this.parkShake.set(shakeAt(plan, t));
+        this.parkShake.set(shakePx(shakeWave(plan, t), shakeUnit(this.fit()?.s)));
       }
       if (!this.finished && t < end) this.raf = raf(tick);
     };

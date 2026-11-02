@@ -471,3 +471,56 @@ test('r2b: turning the phone on a held field view redraws the park at the new sh
   expect(await canvasColors(page, 'pr-pitch-scene .park canvas')).toBeGreaterThan(4);
   expect(h.bad).toEqual([]);
 });
+
+// ---- Plan 59 Round 3 (PLAN-2026-11-02-59-r3-juice-v6): shake scaled to the side panel; word arrival 200 ms ----
+/** Records, every animation frame, the side view's shake (px) and the park's shake (px) until the stage is held. */
+const startShakeRecorder = (page: Page) => page.evaluate(() => {
+  const w = window as unknown as { __shake: { side: number[]; park: number[]; stage: [number, number] | null } };
+  w.__shake = { side: [], park: [], stage: null };
+  const px = (el: Element | null) => { const m = /translateX\((-?[\d.]+)px\)/.exec((el as HTMLElement | null)?.style.transform ?? ''); return m ? Math.abs(+m[1]) : 0; };
+  const loop = () => {
+    const st = document.querySelector('pr-pitch-scene .stage') as HTMLElement | null;
+    if (st && !w.__shake.stage) w.__shake.stage = [st.clientWidth, st.clientHeight];
+    const s = px(document.querySelector('pr-pitch-scene .shake')), p = px(document.querySelector('pr-pitch-scene .park'));
+    if (s) w.__shake.side.push(s);
+    if (p) w.__shake.park.push(p);
+    if (!document.querySelector('pr-pitch-scene .stage[data-held]')) requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+});
+
+for (const [name, fx, lefty] of [['HR', 'pitch-hr.json', false], ['HBP', 'pitch-hbp.json', false], ['HR lefty', 'pitch-hr.json', true]] as const) {
+  test(`r3 Duel ${name}: shake scaled to the side panel, capped, screenshot at the shake`, async ({ context, page }, info) => {
+    const fixtures: Record<string, string> = { 'pitch.json': fx, ...(lefty ? {} : RIGHTY) };
+    await serve(context, { fixtures });
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await startShakeRecorder(page);
+    await page.getByRole('button', { name: 'Pitch', exact: true }).click();
+    await page.waitForFunction(() => ['.shake', '.park'].some(q => /translateX/.test((document.querySelector('pr-pitch-scene ' + q) as HTMLElement | null)?.style.transform ?? '')), null, { polling: 'raf', timeout: 20_000 });
+    await page.screenshot({ path: info.outputPath(`r3-${name.replace(' ', '-')}-${info.project.name}.png`) });
+    await page.locator('pr-pitch-scene .stage[data-held]').waitFor({ timeout: 20_000 });
+    const r = await page.evaluate(() => (window as unknown as { __shake: { side: number[]; park: number[]; stage: [number, number] } }).__shake);
+    const [w, h] = r.stage;
+    const s = Math.min((h * 0.8) / 480, w / 560), unit = (3 / 0.475) * s;
+    const side = r.side.length ? Math.max(...r.side) : 0;
+    console.log(`[r3 ${name} ${info.project.name}] stage ${w}x${h} s ${s.toFixed(3)} unit ${unit.toFixed(2)} px; side max ${side} (${r.side.length} frames); park max ${r.park.length ? Math.max(...r.park) : 0}`);
+    // HBP shakes on the side view; a home run's contact point is at the plate (sprite contact x 218-238 vs PLATE_X 240),
+    // so its whole shake plays on the field view (amendment A1 to the v6 card).
+    const shown = name.startsWith('HBP') ? r.side : r.park;
+    expect(shown.length).toBeGreaterThan(0);
+    const peak = Math.max(...shown);
+    expect(peak).toBeLessThanOrEqual(Math.min(8, 0.88 * unit) + 0.02);   // wave peak is about 0.87
+    expect(peak).toBeGreaterThanOrEqual(0.3 * unit);
+  });
+}
+
+test('r3 Duel: impact word mid-arrival screenshot', async ({ context, page }, info) => {
+  await serve(context, { fixtures: { 'pitch.json': 'pitch-hr.json', ...RIGHTY } });
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Pitch', exact: true }).click();
+  await page.waitForFunction(() => !!document.querySelector('pr-pitch-scene g.word'), null, { polling: 'raf', timeout: 20_000 });
+  await page.waitForTimeout(80);
+  await page.screenshot({ path: info.outputPath(`r3-word-${info.project.name}.png`) });
+});

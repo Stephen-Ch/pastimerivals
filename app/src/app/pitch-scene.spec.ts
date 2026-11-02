@@ -330,3 +330,149 @@ describe('plan 59 r2b test 2b: BallparkView holdAt', () => {
     expect(spy.mock.calls.at(-1)![0]).toBe(1.25);
   });
 });
+
+// ---- Plan 59 Round 3 (juice tuning): PLAN-2026-11-02-59-r3-juice-v6 ----
+import { FINAL_TL, LEAD_TL, Plan, shakeAt, shakePx, shakeUnit, shakeWave, wordAt } from './pitch-scene';
+import { OutcomeKey } from './logic';
+
+/** Today's (pre-Round 3) wordAt, kept inline so start and fade times can be compared after the change. */
+function oldWordAt(pl: Plan, t: number, end: number) {
+  const { p, s } = pl;
+  const tr = s.call?.trajectory ?? null;
+  const words = s.isFinal ? (s.outcome === 'oip' || (s.outcome !== 'k' && s.outcome !== 'bb' && s.outcome !== 'hbp' && s.outcome !== 'hr' && tr === 'bloop') ? null : ['x']) : null;
+  const w0 = Math.max(p.tTarget + 0.2, pl.exitT + 0.02);
+  if (!words || t < w0 || w0 >= end - 0.15) return undefined;
+  return { w0, o: t > end - 0.2 ? Math.max(0, (end - t) / 0.2) : 1 };
+}
+
+const R3_OUT: OutcomeKey[] = ['k', 'bb', 'hbp', 'single', 'double', 'triple', 'hr', 'oip'];
+function r3Final(o: OutcomeKey, seed: string, deco: Deco, bats: 'L' | 'R') {
+  const count = countFor(o, seed, deco);
+  const call = ['single', 'double', 'triple', 'hr', 'oip'].includes(o) ? callFor(o, seed, count, 'Babe Ruth', bats, 'R', deco, 1927) : null;
+  const pl = planPitch({ m: motionFor(o, count.finalKind), kind: o === 'bb' ? 'ball' : null, isFinal: true, outcome: o, era: '1990-2025', bats, call, contact: { x: 372, y: 200 }, seed, index: count.leadUp.length });
+  const pk = call && hasPark(o, call) ? parkTiming(pl, buildPlay({ outcome: o, call, play: null, seed, look: '1956' })) : null;
+  return { pl, pk };
+}
+
+describe('plan 59 r3 juice', () => {
+  it('test 1 (characterize): final pitches with no impact word today, against tl.end and the park end', () => {
+    let words = 0, noSide = 0, noPark = 0, parks = 0;
+    for (let i = 0; i < 2000; i++) {
+      const o = R3_OUT[i % R3_OUT.length], { pl, pk } = r3Final(o, `w${i}`, (['1', '2', '3'] as Deco[])[i % 3], i % 3 ? 'R' : 'L');
+      const has = (end: number) => [...Array(Math.ceil(end * 100) + 1).keys()].some(k => !!oldWordAt(pl, k / 100, end));
+      const hasWord = !!oldWordAt(pl, 99, 1e9);   // a word exists for this result at all
+      if (!hasWord) continue;
+      words++;
+      if (!pk && !has(pl.tl.end)) noSide++;
+      if (pk) { parks++; if (!has(pk.end)) noPark++; }
+    }
+    console.log(`[r3 test 1] finals with a word: ${words}; dropped on side-view end: ${noSide}; park plays: ${parks}, dropped on park end: ${noPark}`);
+    expect(words).toBeGreaterThan(0);
+  }, 60000);
+
+  it('test 2: shakeUnit and shakePx', () => {
+    expect(shakeUnit(0.475)).toBeCloseTo(3, 6);
+    expect(shakeUnit(null)).toBe(3);
+    expect(shakeUnit(0.95)).toBeCloseTo(6, 6);
+    expect(shakePx(1, 20)).toBe(8);
+    expect(shakePx(-1, 20)).toBe(-8);
+    expect(shakePx(0, 5)).toBe(0);
+    expect(shakePx(0.002, 3)).toBe(0.01);   // rounding after scaling
+  });
+
+  it('test 3: shakeWave x 3 is today\'s shakeAt', () => {
+    let nonzero = 0;
+    for (const o of ['hr', 'hbp'] as OutcomeKey[]) for (let i = 0; i < 5; i++) {
+      const { pl } = r3Final(o, `s${i}`, '2', 'R');
+      for (let k = 0; k < 50; k++) {
+        const t = pl.p.tTarget - 0.02 + k * 0.005;
+        const w = shakeWave(pl, t);
+        expect(Math.round(3 * w * 100) / 100).toBe(shakeAt(pl, t));
+        if (w) nonzero++;
+      }
+    }
+    expect(nonzero).toBeGreaterThan(100);
+  });
+
+  it('test 3b: side and park bindings use the stage scale; the side shake clears under the park', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame'] });
+    try {
+      const seed = 'g7', o: OutcomeKey = 'hr';
+      const f = TestBed.createComponent(PitchScene);
+      const count = countFor(o, seed, '3');
+      const call = callFor(o, seed, count, 'Babe Ruth', 'R', 'R', '3', 1927);
+      for (const [k, v] of Object.entries({ era: '1990-2025', outcome: o, seed, deco: '3', call, look: '1956' })) f.componentRef.setInput(k, v);
+      f.componentRef.setInput('side', { sheet: '/s.webp', frames: Array.from({ length: 8 }, () => ({})), lineArt: false });
+      f.componentRef.setInput('fielders', { sheet: '/f.webp', cell: [180, 210], footY: 205, era: '1990-2025' });
+      f.detectChanges();
+      const c = f.componentInstance as unknown as { stageSize: { set(v: [number, number]): void }; fit(): StageFit | null; frame(): { fx: { shake: number } }; parkShake(): number };
+      c.stageSize.set([390, 506]);
+      f.detectChanges();
+      const fit = c.fit()!;
+      expect(fit).not.toBeNull();
+      const unit = shakeUnit(fit.s);
+      expect(unit).toBeGreaterThan(3);
+      const lead = count.leadUp.length;
+      await vi.advanceTimersByTimeAsync(lead * (LEAD_TL.end * 1000 + 60));
+      const pl = planPitch({ m: motionFor(o, count.finalKind), kind: null, isFinal: true, outcome: o, era: '1990-2025', bats: 'R', call, contact: { x: 372, y: 200 }, seed, index: lead });
+      const parkVals = new Set<number>();
+      for (let ms = 0; ms <= 300; ms++) parkVals.add(shakePx(shakeWave(pl, pl.p.tPlate + ms / 1000), unit));
+      let sideSeen = 0, parkSeen = 0, cleared = false;
+      for (let i = 0; i < 120; i++) {
+        await vi.advanceTimersByTimeAsync(8);
+        f.detectChanges();
+        const el = (f.nativeElement as HTMLElement).querySelector('.shake') as HTMLElement | null;
+        const w = c.frame().fx.shake;
+        const tr = el?.style.transform ?? '';
+        if (w) { sideSeen++; expect(tr).toBe(`translateX(${shakePx(w, unit)}px)`); }
+        const ps = c.parkShake();
+        if ((f.nativeElement as HTMLElement).querySelector('.park')) {
+          if (ps) { parkSeen++; expect([...parkVals].some(v => Math.abs(v - ps) < 0.011)).toBe(true); }
+          if (!w && !tr) cleared = true;
+        }
+      }
+      expect(sideSeen).toBeGreaterThan(0);
+      expect(parkSeen).toBeGreaterThan(0);
+      expect(cleared).toBe(true);
+    } finally { vi.useRealTimers(); }
+  }, 30000);
+
+  it('test 4: the word arrives over min(0.2, end - w0); start and fade unchanged', () => {
+    const { pl } = r3Final('k', 'a1', '2', 'R');
+    const w0 = Math.max(pl.p.tTarget + 0.2, pl.exitT + 0.02);
+    for (const win of [0.16, 0.25, 1.0]) {
+      const end = w0 + win, dur = Math.min(0.2, win);
+      // peak overshoot (1.15) lands at 60% of the arrival; settled at 1.0 when the arrival ends
+      expect(wordAt(pl, w0 + 0.6 * dur, end)!.scale).toBeCloseTo(1.15, 5);
+      expect(wordAt(pl, w0 + dur, end)!.scale).toBeCloseTo(1, 5);
+    }
+    let checked = 0;
+    for (let i = 0; i < 2000; i++) {
+      const o = R3_OUT[i % R3_OUT.length], { pl: p2, pk } = r3Final(o, `w${i}`, (['1', '2', '3'] as Deco[])[i % 3], 'R');
+      const end = pk ? pk.end : p2.tl.end;
+      for (let k = 0; k * 0.01 <= end + 0.01; k++) {
+        const t = k * 0.01, a = oldWordAt(p2, t, end), b = wordAt(p2, t, end);
+        expect(!!b).toBe(!!a);
+        if (a && b) { expect(b.o).toBeCloseTo(a.o, 9); checked++; }
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+  }, 60000);
+
+  it('test 5 (characterize): reduced motion shows the still final frame with no shake', async () => {
+    const orig = globalThis.matchMedia;
+    globalThis.matchMedia = ((q: string) => ({ matches: q.includes('reduce') })) as unknown as typeof matchMedia;
+    try {
+      for (const o of ['hr', 'hbp'] as OutcomeKey[]) {
+        const f = TestBed.createComponent(PitchScene);
+        for (const [k, v] of Object.entries({ era: '1990-2025', outcome: o, seed: 'g7', deco: '3', look: '1956' })) f.componentRef.setInput(k, v);
+        f.componentRef.setInput('side', { sheet: '/s.webp', frames: Array.from({ length: 8 }, () => ({})), lineArt: false });
+        await f.whenStable();
+        const c = f.componentInstance as unknown as { frame(): { fx: { shake: number } }; parkShake(): number };
+        expect(c.frame().fx.shake).toBe(0);
+        expect(c.parkShake()).toBe(0);
+        expect(((f.nativeElement as HTMLElement).querySelector('.shake') as HTMLElement | null)?.style.transform ?? '').toBe('');
+      }
+    } finally { globalThis.matchMedia = orig; }
+  });
+});
