@@ -60,6 +60,10 @@ def to_card(img):
     return img.resize((CW, CH), Image.LANCZOS)
 
 def main():
+    # Plan 59 Round 4: the cards are final (some recolored to the era palette; originals in art/sprites/matchup-orig).
+    # A re-run would overwrite them, so this tool refuses on purpose.
+    if os.path.isdir(os.path.join(os.path.dirname(OUT), "matchup-orig")):
+        print("refused: cards are final since plan 59 Round 4 (see art/sprites/matchup-orig)"); sys.exit(2)
     files = sorted(glob.glob(os.path.join(SRC, "*.png")))
     before = {f: sha(f) for f in files}
     os.makedirs(os.path.join(OUT, "pitcher"), exist_ok=True)

@@ -75,12 +75,20 @@ export type ParkLook = '1901' | '1920' | '1956' | '1970' | '1990';
 export function parkLookOf(year: number): ParkLook {
   return year < 1920 ? '1901' : year < 1946 ? '1920' : year < 1970 ? '1956' : year < 1990 ? '1970' : '1990';
 }
-/** The batter's sheet. No researched tone: the pen-and-ink sheet (every fill white), so no skin tone is shown or guessed. */
+/** Plan 59 Round 4: the side key for a toned batter: look by helmet rules, uniform colours by card era. */
+export function sideKey(year: number, tone: SheetTone): string {
+  return `${lookOf(year)}/${eraOf(year).slice(0, 4)}/${tone}`;
+}
+
+/** The batter's sheet. No researched tone: the pen-and-ink sheet (every fill white), so no skin tone is shown or guessed.
+ *  Plan 59 Round 4: a toned batter wears his card era's uniform (key look/era/tone); the old look/tone key is the fallback. */
 export function sideArt(m: ArtManifest | null, id: string, year: number): SideArt | null {
   if (!m?.side) return null;
   const tone = m.tones?.[id];
   const t: SheetTone | 'line' = tone ? sheetTone(tone) : 'line';
-  const key = `${lookOf(year)}/${t}`;
+  const base = `${lookOf(year)}/${t}`;
+  const era = t === 'line' ? null : sideKey(year, t);
+  const key = era && m.side.sheets[era] && m.side.frames[era] ? era : base;
   const sheet = m.side.sheets[key], frames = m.side.frames[key];
   return sheet && frames ? { sheet, frames, lineArt: !tone } : null;
 }

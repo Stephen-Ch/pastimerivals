@@ -141,8 +141,50 @@ def main():
     print(f"sheets {len(man['sheets'])}, cards {len(man['cards'])}, tones {len(man['tones'])}, art bytes {total}")
     if errors: print('ERRORS', errors); sys.exit(1)
 
+def recolor_only(keys):
+    """Plan 59 Round 4: patch named keys from art/sprites/recolor/out (or the base art when a key needs no recolor).
+    Keys: sheets 'pitcher/<era>/<tone>', side '<look>/<era short>/<tone>' (new; frames copied from '<look>/<tone>'),
+    fielder '<era>'. No deletes; nothing else in the manifest changes. Every file passes known_bad."""
+    path = 'app/public/art-manifest.json'
+    man = json.load(open(path)); rc = 'art/sprites/recolor/out'
+    for k in keys:
+        parts = k.split('/')
+        if parts[0] == 'pitcher' and len(parts) == 3:
+            _, era, tone = parts
+            if era not in SHORT_OF or tone not in SHEET_TONES: raise SystemExit(f'bad key {k}')
+            p = f'{rc}/pitcher-{SHORT_OF[era]}-{tone}.png'
+            src = Image.open(p).convert('RGBA'); known_bad.check_source(p)
+            if src.size != (CELL_W * 8, CELL_H): raise SystemExit(f'bad size {p} {src.size}')
+            sheet = Image.new('RGBA', ((CELL_W + 2 * PADX) * 8, CELL_H), (0, 0, 0, 0))
+            for i in range(8):
+                sheet.paste(src.crop((i * CELL_W, 0, (i + 1) * CELL_W, CELL_H)), (i * (CELL_W + 2 * PADX) + PADX, 0))
+            url, n = save_hashed(sheet, f'pitcher-{SHORT_OF[era]}-{tone}', 80)
+            if n >= 150_000: raise SystemExit(f'too big {url} {n}')
+            old = man['sheets'].get(k); man['sheets'][k] = url
+        elif len(parts) == 3 and parts[0] in ('1901', '1920', '1956', '1990'):
+            look, short, tone = parts
+            if short not in ERAS or tone not in SHEET_TONES: raise SystemExit(f'bad key {k}')
+            base = f'{look}/{tone}'
+            p = f'{rc}/side-{look}-{short}-{tone}.png'
+            if os.path.exists(p): known_bad.check_source(p)
+            if not os.path.exists(p):   # this look already wears the era palette (1990): same file as the base key
+                url, n = man['side']['sheets'][base], 0
+            else:
+                for q in (80, 72, 64):
+                    url, n = save_hashed(Image.open(p).convert('RGBA'), f'side-{look}-{short}-{tone}', q)
+                    if n < 200_000: break
+                    os.remove(os.path.join(OUT, url.rsplit('/', 1)[1]))
+                if n >= 200_000: raise SystemExit(f'too big {p} {n}')
+            old = man['side']['sheets'].get(k)
+            man['side']['sheets'][k] = url; man['side']['frames'][k] = man['side']['frames'][base]
+        else:
+            raise SystemExit(f'bad key {k}')
+        print(f'{k} -> {url} ({n} bytes)' + (f' (was {old})' if old and old != url else ''))
+    json.dump(man, open(path, 'w'), separators=(',', ':'))
+
 if __name__ == '__main__':
     if '--tones-only' in sys.argv: tones_only('--allow-changes' in sys.argv)
     elif '--cards-only' in sys.argv: cards_only(sys.argv[sys.argv.index('--cards-only') + 1:])
+    elif '--recolor-only' in sys.argv: recolor_only(sys.argv[sys.argv.index('--recolor-only') + 1:])
     elif '--full' in sys.argv: main()   # deletes every webp and rebuilds everything: banned until the fielder source is fixed (plan 52)
-    else: print('usage: export-app-art.py --cards-only <manifest key>... | --full'); sys.exit(2)
+    else: print('usage: export-app-art.py --cards-only <manifest key>... | --recolor-only <key>... | --full'); sys.exit(2)
