@@ -1031,7 +1031,8 @@
     "gate": "gray",
     "minus": [
      "sleeve"
-    ]
+    ],
+    "sam": "pants"
    }
   ],
   "prompts": {
@@ -1152,10 +1153,7 @@
      ]
     ]
    }
-  },
-  "leftover_ignore": [
-   "pants"
-  ]
+  }
  },
  "card-batter-1990-darkbrown-a": {
   "src": "art/sprites/matchup-orig/batter/1990-darkbrown-a.webp",
@@ -1181,7 +1179,8 @@
     "gate": "gray",
     "minus": [
      "jersey"
-    ]
+    ],
+    "below": 578
    }
   ],
   "prompts": {
@@ -2456,7 +2455,8 @@
     "gate": "gray",
     "minus": [
      "jersey"
-    ]
+    ],
+    "below": 552
    }
   ],
   "prompts": {
@@ -2533,20 +2533,39 @@
    "navy": {
     "b_max": -4,
     "L_max": 50
+   },
+   "pad": {
+    "L_min": 85,
+    "C_max": 12
    }
   },
   "parts": [
    {
+    "name": "gloves",
+    "to": "keep",
+    "gate": [
+     "navy",
+     "pad"
+    ],
+    "sam": "gear"
+   },
+   {
     "name": "jersey",
     "to": "body",
     "gate": "gray",
-    "sam": "jersey"
+    "sam": "jersey",
+    "minus": [
+     "gloves"
+    ]
    },
    {
     "name": "sleeve",
     "to": "body",
     "gate": "navy",
-    "sam": "sleeve"
+    "sam": "sleeve",
+    "minus": [
+     "gloves"
+    ]
    },
    {
     "name": "helmet",
@@ -2560,7 +2579,8 @@
     "gate": "gray",
     "minus": [
      "jersey"
-    ]
+    ],
+    "below": 566
    }
   ],
   "prompts": {
@@ -2673,9 +2693,6 @@
     }
    }
   },
-  "leftover_ignore": [
-   "gear"
-  ],
   "leftover_ignore_below": 566
  }
 }

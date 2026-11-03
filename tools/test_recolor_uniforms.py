@@ -89,7 +89,8 @@ CHANGED_URLS = {   # plan 59 Round 4: the only existing manifest keys whose file
 
 def _head_manifest():
     import json, subprocess
-    return json.loads(subprocess.run(['git', 'show', 'HEAD:app/public/art-manifest.json'], capture_output=True, check=True, text=True).stdout)
+    # 7a2f626 = plan59-r3-juice, the branch this round starts from (HEAD would compare the manifest with itself)
+    return json.loads(subprocess.run(['git', 'show', '7a2f626:app/public/art-manifest.json'], capture_output=True, check=True, text=True).stdout)
 
 
 def test_manifest_keys_only_grow_and_only_listed_urls_change():
@@ -113,3 +114,41 @@ def test_play_screen_bytes_at_most_1_2x():
         if k.count('/') == 2:
             look, _, t = k.split('/')
             assert size(u) <= 1.2 * size(m[f'{look}/{t}']), (k, size(u), size(m[f'{look}/{t}']))
+
+
+def test_play_screen_bytes_worst_case_at_most_1_2x():
+    """Per at-bat images: pitcher card + batter card + windup + side sheet, every era/tone/variant, new vs the branch base."""
+    import json, os
+    old, new = _head_manifest(), json.load(open('app/public/art-manifest.json'))
+    size = lambda u: os.path.getsize('app/public' + u)
+    looks = {'1901-1919': ['1901'], '1920-1945': ['1920'], '1946-1969': ['1920', '1956'], '1970-1989': ['1956'], '1990-2025': ['1990']}
+    worst = 0.0
+    for era, lks in looks.items():
+        for t in ('light', 'darkbrown', 'line'):
+            for v in ('a', 'b'):
+                for lk in lks:
+                    side_t = 'line' if t == 'line' else t
+                    o = size(old['cards'][f'pitcher/{era}/{t}/{v}']) + size(old['cards'][f'batter/{era}/{t}/{v}']) + size(old['side']['sheets'][f'{lk}/{side_t}'])
+                    nk = f'{lk}/{era[:4]}/{t}' if t != 'line' else f'{lk}/line'
+                    n = size(new['cards'][f'pitcher/{era}/{t}/{v}']) + size(new['cards'][f'batter/{era}/{t}/{v}']) + size(new['side']['sheets'][nk])
+                    if t != 'line':
+                        o += size(old['sheets'][f'pitcher/{era}/{t}']); n += size(new['sheets'][f'pitcher/{era}/{t}'])
+                    worst = max(worst, n / o)
+    assert worst <= 1.2, worst
+
+
+def test_planted_shrunk_card_mask_fails(monkeypatch):
+    """Shrink a card's SAM jersey mask before regions() runs (as if SAM missed a patch): the leftover check must fail."""
+    for n in [k for k in NAMES if k.startswith('card-')]:
+        cfg = ru.REGIONS[n]; body = next(p for p in cfg['parts'] if p['to'] == 'body' and 'sam' in p)
+        a, _, _ = ru.load(cfg); parts, _, _, _ = ru.regions(n, a)
+        ys, xs = np.nonzero(parts[body['name']]); y, x = int(np.median(ys)), int(np.median(xs))
+        real = ru.sam_masks
+        def shrunk(name, real=real, key=body['sam'], y=y, x=x):
+            m = real(name); m = dict(m); k = m[key].copy(); k[y - 40:y + 40, x - 40:x + 40] = False; m[key] = k; return m
+        monkeypatch.setattr(ru, 'sam_masks', shrunk)
+        hole = parts[body['name']] & ~ru.regions(n, a)[0][body['name']]
+        o = out_of(n); o[hole] = a[hole]
+        r = ru.check(n, out=o)
+        monkeypatch.setattr(ru, 'sam_masks', real)
+        assert hole.sum() > 300 and any('leftover' in f for f in r['fails']), (n, int(hole.sum()), r['fails'])

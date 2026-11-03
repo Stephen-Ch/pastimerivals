@@ -110,6 +110,9 @@ def regions(name, a=None, lab=None):
         for gn in p['gate'] if isinstance(p['gate'], list) else [p['gate']]: g |= gate(lab, gates[gn])
         m &= g
         if 'sam' in p: m &= sm[p['sam']]
+        if 'below' in p: m[:p['below']] = False   # a part that only exists below a row (pants under the belt)
+        if p['to'] == 'keep' and 'sam' not in p and 'below' not in p:
+            raise SystemExit(f'{name}: keep part {p["name"]} needs a sam mask or a below row (else it hides missed pixels)')
         for o in p.get('minus', []):
             m &= ~(sm[o] if o in sm else parts[o])
         for o in p.get('minus_sam', []): m &= ~sm[o]
@@ -222,6 +225,11 @@ def check(name, out=None, parts_override=None):
         worst = max(worst, float((left & fm).sum() / max((fig & fm).sum(), 1)))
     r['leftover_pct'] = round(worst * 100, 2)
     if worst > 0.01: r['fails'].append(f'leftover source colour {worst*100:.2f}% of a frame')
+    # a missed patch is one blob; scattered flecks are not (an 80 px square missed on a card is only 0.25% of it)
+    lbl, k = ndi.label(ndi.binary_closing(left, structure=np.ones((3, 3), bool)))
+    blob = int(np.bincount(lbl.ravel())[1:].max()) if k else 0
+    r['leftover_blob'] = blob
+    if blob > cfg.get('blob_max', 300): r['fails'].append(f'leftover patch of {blob} px')
     # 5. smoke: palette vs region median per frame
     pal = PALETTE[cfg['era']]; de = []
     for p in cfg['parts']:

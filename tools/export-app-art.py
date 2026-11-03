@@ -159,7 +159,8 @@ def recolor_only(keys):
             for i in range(8):
                 sheet.paste(src.crop((i * CELL_W, 0, (i + 1) * CELL_W, CELL_H)), (i * (CELL_W + 2 * PADX) + PADX, 0))
             url, n = save_hashed(sheet, f'pitcher-{SHORT_OF[era]}-{tone}', 80)
-            if n >= 150_000: raise SystemExit(f'too big {url} {n}')
+            if n >= 150_000:
+                os.remove(os.path.join(OUT, url.rsplit('/', 1)[1])); raise SystemExit(f'too big {url} {n}')
             old = man['sheets'].get(k); man['sheets'][k] = url
         elif len(parts) == 3 and parts[0] in ('1901', '1920', '1956', '1990'):
             look, short, tone = parts
@@ -168,6 +169,7 @@ def recolor_only(keys):
             p = f'{rc}/side-{look}-{short}-{tone}.png'
             if os.path.exists(p): known_bad.check_source(p)
             if not os.path.exists(p):   # this look already wears the era palette (1990): same file as the base key
+                if look != '1990': raise SystemExit(f'missing {p}: only 1990 may reuse the base sheet')
                 url, n = man['side']['sheets'][base], 0
             else:
                 for q in (80, 72, 64):
