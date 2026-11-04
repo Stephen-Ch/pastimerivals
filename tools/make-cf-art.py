@@ -78,12 +78,29 @@ def clear_pockets(sheet, min_area=120):
     for i, sl in enumerate(ndi.find_objects(lab), 1):
         if sl is None: continue
         m = lab[sl] == i
-        if m.sum() >= min_area and a[sl][m][:, :3].mean() > 246: a[sl][..., 3][m] = 0
+        px = a[sl][m][:, :3].astype(float)
+        # paper white between the arms and the head (hands-up poses); white jerseys lower down stay
+        cell = sl[1].start // CW; fy = np.nonzero(a[:, cell * CW:(cell + 1) * CW, 3].max(1) > 128)[0]
+        high = fy.size and sl[0].stop < fy.min() + 0.3 * (fy.max() - fy.min())
+        if cell == 1 and m.sum() >= min_area and px.mean() > 246 and px.std() < 4 and high: a[sl][..., 3][m] = 0   # hands-up pose only
     return Image.fromarray(a)
 
 
+def _outer_background(a):
+    """slice-sprites background() without its enclosed-pocket rule (it eats flat white jerseys); pockets are cleared
+    later by clear_pockets, high on the figure only."""
+    near = a.min(2) > 240
+    # close small gaps in the ink outline first, so a flat white jersey is not flooded from outside
+    inner = near & ~ndi.binary_dilation(~near, iterations=2)
+    lab, n = ndi.label(inner)
+    border = set(np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))) - {0}
+    return ndi.binary_dilation(np.isin(lab, list(border)), iterations=3) & near
+
+
 def back(src, era, tone):
-    fr, err = slicer.frames_of(src, 'pitcher')
+    keep = slicer.background; slicer.background = _outer_background
+    try: fr, err = slicer.frames_of(src, 'pitcher')
+    finally: slicer.background = keep
     if err: raise SystemExit(f'{src}: {err}')
     ref = Image.open(f'art/sprites/pitcher/{era}-{tone}.png')
     want = float(np.median(heights(ref)))
@@ -97,6 +114,8 @@ def back(src, era, tone):
 def strip(look, era, tone):
     src_tone = 'light' if tone == 'line' else tone
     s = Image.open(f'art/sprites/batter/{FRONT_SHEET[look]}-{src_tone}.png').convert('RGBA').crop((0, 0, 2 * CW, CH))
+    rule = RECOLOR.get((look, era)) or RECOLOR.get((look, era, tone))
+    if rule and tone != 'line': s = recolor(s, rule, era)
     if tone == 'line': s = line_art(s)
     os.makedirs(OUT, exist_ok=True)
     p = f'{OUT}/front-{look}-{era}-{tone}.png' if tone != 'line' else f'{OUT}/front-{look}-line.png'
@@ -137,6 +156,63 @@ def hybrid(sheet):
     return Image.fromarray(out)
 
 
+# ---- Part 2: era colours for the front strips (simple Lab gates; the strips are 2 still frames) ----
+PAL = {'1946': {'body': (87, 2, 16), 'trim': (35, 47, 35)}, '1970': {'body': (89, 0, 10), 'trim': (26, 8, -34)},
+       '1990': {'body': (15, 0, 2), 'pants': (78, 2, 10)}}
+# (look, era short, tone) -> what to recolour. 1920 look in 1946-55: gray flannel to cream, navy trim to red.
+# 1956 look in 1970-89: red trim to royal blue. 1990 darkbrown: cream jersey to black, cream pants to gray.
+RECOLOR = {('1920', '1946'): 'gray-navy', ('1956', '1970'): 'red', ('1990', '1990', 'darkbrown'): 'cream'}
+
+
+def _lab(rgb):
+    c = rgb / 255.0; c = np.where(c > 0.04045, ((c + 0.055) / 1.055) ** 2.4, c / 12.92)
+    M = np.array([[0.4124, 0.3576, 0.1805], [0.2126, 0.7152, 0.0722], [0.0193, 0.1192, 0.9505]])
+    xyz = c @ M.T / np.array([0.95047, 1.0, 1.08883])
+    f = np.where(xyz > 0.008856, np.cbrt(xyz), 7.787 * xyz + 16 / 116)
+    return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], -1)
+
+
+def _rgb(lab):
+    fy = (lab[..., 0] + 16) / 116; fx = fy + lab[..., 1] / 500; fz = fy - lab[..., 2] / 200
+    f = np.stack([fx, fy, fz], -1); xyz = np.where(f ** 3 > 0.008856, f ** 3, (f - 16 / 116) / 7.787) * np.array([0.95047, 1.0, 1.08883])
+    M = np.array([[3.2406, -1.5372, -0.4986], [-0.9689, 1.8758, 0.0415], [0.0557, -0.2040, 1.0570]])
+    c = xyz @ M.T; c = np.where(c > 0.0031308, 1.055 * np.clip(c, 0, None) ** (1 / 2.4) - 0.055, 12.92 * c)
+    return np.clip(c * 255, 0, 255)
+
+
+def _paint(lab, m, target, k=0.7):
+    if not m.any(): return
+    L = lab[..., 0]; med = np.median(L[m])
+    lab[..., 0][m] = np.clip(target[0] + (L[m] - med) * k, 0, 100)
+    lab[..., 1][m] = target[1]; lab[..., 2][m] = target[2]
+
+
+def recolor(im, rule, era):
+    a = np.asarray(im.convert('RGBA')).astype(float); lab = _lab(a[..., :3]); al = a[..., 3] > 128
+    L, A, B = lab[..., 0], lab[..., 1], lab[..., 2]; C = np.hypot(A, B)
+    if rule == 'gray-navy':
+        gray = al & (C < 10) & (L > 45) & (L < 95)
+        navy = al & (L < 50) & (B < -6) & (C > 6)
+        _paint(lab, gray, PAL[era]['body']); _paint(lab, navy, PAL[era]['trim'], 0.5)
+    elif rule == 'red':
+        red = al & (A > 30) & (A > 0.9 * B) & (L < 75)
+        _paint(lab, red, PAL[era]['trim'], 0.6)
+    elif rule == 'cream':
+        cream = al & (L > 62) & (C < 28) & (A < 9) & (B > -3)
+        for i in range(a.shape[1] // CW):   # per frame: split jersey and pants at the belt (row with the least cream mid-body)
+            sl = np.s_[:, i * CW:(i + 1) * CW]; m = cream[sl]
+            ys = np.nonzero((al[sl]).any(1))[0]; y0, y1 = ys.min(), ys.max()
+            rows = m.sum(1); lo, hi = int(y0 + 0.38 * (y1 - y0)), int(y0 + 0.62 * (y1 - y0))
+            belt = lo + int(np.argmin(rows[lo:hi]))
+            top = np.zeros_like(m); top[:belt] = True
+            jl, pl = lab[sl].copy(), lab[sl].copy()
+            jm, pm = m & top, m & ~top
+            _paint(jl, jm, PAL[era]['body'], 0.3); _paint(pl, pm, PAL[era]['pants'])
+            out = lab[sl]; out[jm] = jl[jm]; out[pm] = pl[pm]; lab[sl] = out
+    rgb = _rgb(lab); out = a.copy(); out[..., :3] = np.where(al[..., None], rgb, a[..., :3])
+    return Image.fromarray(out.astype(np.uint8))
+
+
 def check():
     bad = []
     for f in sorted(os.listdir(OUT)):
@@ -149,6 +225,11 @@ def check():
             era, tone = f[5:-4].split('-')
             ref = heights(Image.open(f'art/sprites/pitcher/{era}-{tone}.png'))
             if abs(np.median(heights(im)) / np.median(ref) - 1) > 0.03: bad.append(f'{f}: height off the front windup')
+            al = np.asarray(im)[..., 3] > 128
+            for i in range(8):
+                if i == 1: continue   # hands up: the gap between the arms is real
+                c = al[:, i * CW:(i + 1) * CW]; holes = ndi.binary_fill_holes(c) & ~c
+                if holes.sum() > 0.01 * c.sum(): bad.append(f'{f}: frame {i} has see-through holes ({holes.sum()} px)')
         if f.startswith('front-') and f.endswith('-line.png'):
             a = np.asarray(im); fill = (a[..., 3] > 128) & (a[..., :3].min(2) < 250) & (a[..., :3].max(2) > 40)
             if fill.mean() > 0.002: bad.append(f'{f}: line strip has colour fill')

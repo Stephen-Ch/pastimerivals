@@ -36,3 +36,10 @@ def test_planted_wrong_height_fails(tmp_path, monkeypatch):
             c = Image.fromarray(a[:, i * 360:(i + 1) * 360]); s = c.resize((360, 400))
             out = Image.new('RGBA', (360, 480)); out.paste(s, (0, 80)); a[:, i * 360:(i + 1) * 360] = np.asarray(out)
     assert not _planted(tmp_path, monkeypatch, 'back-1990-light.png', shrink)
+
+
+def test_planted_hole_in_the_jersey_fails(tmp_path, monkeypatch):
+    def hole(a):
+        ys, xs = np.nonzero(a[:, :360, 3] > 128); cy, cx = int(ys.mean()), int(xs.mean())
+        a[cy - 20:cy + 20, cx - 12:cx + 12, 3] = 0
+    assert not _planted(tmp_path, monkeypatch, 'back-1970-light.png', hole)
