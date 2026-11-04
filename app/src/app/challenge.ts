@@ -16,6 +16,7 @@ import { outAt } from './inning';
 import { artNoteDue, markArtNoteShown } from './art-note';
 import { HowSim, InfoKind } from './how-sim';
 import { pushEntry } from './nav';
+import { awayHome, boardOrder, firstWord, headerParts, ownTag, sideColor, TEAM_BLUE } from './team';
 import {
   CAtBat, capi, CEra, ChallengeError, CClash, CMine, CPlayer, CSlot, CView, GameMode, keyFor, links, saveKey, setWatched, takeKeyFromHash, toBody, watched,
 } from './challenge-api';
@@ -167,7 +168,49 @@ export class ChallengeFlow {
   /** Plan 59 Round 2a: the count on the scoreboard while a scene plays (0-0 at its start); none between at-bats. */
   protected readonly liveCount = signal<{ balls: number; strikes: number }>({ balls: 0, strikes: 0 });
   protected readonly boardCount = computed(() => this.scene() ? this.liveCount() : null);
-  protected readonly boardNames = computed<[string, string]>(() => [this.sideName(0), this.sideName(1)]);
+  /** Team identity (plan 2026-11-04): Last Licks boards show AWAY left, HOME right; names, scores and pills follow the same order. */
+  protected readonly boardSides = computed(() => boardOrder(this.isInningGame()));
+  protected readonly boardNames = computed<[string, string]>(() => { const [l, r] = this.boardSides(); return [this.sideName(l), this.sideName(r)]; });
+  /** Phones: "You" for your side, the nickname's first word for the other ("Bleacher"); null keeps the full names (The Duel). */
+  protected readonly boardShort = computed<[string, string] | null>(() => {
+    if (!this.isInningGame()) return null;
+    const [l, r] = this.boardSides(), you = this.yourSide();
+    const one = (s: number) => (s === you ? 'You' : firstWord(this.plainName(s).replace(/^The /, '')));
+    return [one(l), one(r)];
+  });
+  protected readonly boardPills = computed<[string, string] | null>(() => {
+    if (!this.isInningGame()) return null;
+    const [l, r] = this.boardSides(), you = this.yourSide();
+    return [sideColor(l, you), sideColor(r, you)];
+  });
+  /** Board position of the team at bat (the at-bat playing, else the next one); none once the game is over. */
+  protected readonly boardBatting = computed<0 | 1 | null>(() => {
+    if (!this.isInningGame()) return null;
+    const ab = this.scene()?.ab ?? this.nextAtBat();
+    return ab ? (this.boardSides().indexOf(ab.battingSide) as 0 | 1) : null;
+  });
+  protected boardScores(t: [number, number] | null | undefined): [number, number] | null {
+    if (!t) return null;
+    const [l, r] = this.boardSides();
+    return [t[l], t[r]];
+  }
+  protected readonly sideColor = (side: number) => sideColor(side, this.yourSide());
+  protected readonly ownTag = (side: number) => ownTag(side, this.yourSide());
+  /** Chip text: white on blue (6.5:1), near-black on orange (9:1). */
+  protected readonly chipInk = (side: number) => (sideColor(side, this.yourSide()) === TEAM_BLUE ? '#fff' : '#111');
+  protected readonly awayHome = awayHome;
+  /** The side's name without " (you)". */
+  protected readonly plainName = (side: number) => this.sideName(side).replace(' (you)', '');
+  /** "You" for your own side in Last Licks, else the plain name (half change line, half headings, line score). */
+  protected readonly teamWord = (side: number) => (this.isInningGame() && side === this.yourSide() ? 'You' : this.plainName(side));
+  /** Fallback card: "Your team bats (away)" / "Their team bats (home)"; spectators "<name> bats". */
+  protected readonly batsLine = (side: number) => {
+    const you = this.yourSide();
+    if (you === null) return `${this.plainName(side)} bats`;
+    return `${side === you ? 'Your' : 'Their'} team bats (${awayHome(side)})`;
+  };
+  /** The play just finished (held scene or last play shown), for the result chip. */
+  protected readonly lastSide = computed(() => (this.heldScene()?.ab ?? this.lastPlay())?.battingSide ?? null);
   protected readonly boardBases = computed<[boolean, boolean, boolean]>(() => { const b = this.diamond().bases; return [!!b[0], !!b[1], !!b[2]]; });
   protected readonly lastCall = signal<string | null>(null);
 
@@ -836,14 +879,14 @@ export class ChallengeFlow {
     const lp = this.lastPlay(), g = this.game();
     if (!lp || !g) return null;
     const capped = (g.notes ?? []).includes(CAP_NOTE);
-    return halfChange(lp, this.nextAtBat(), this.score(), s => this.sideName(s).replace(' (you)', ''), capped);
+    return halfChange(lp, this.nextAtBat(), this.score(), this.teamWord, capped);
   });
-  /** "Top 1 · Batter 4": the half of the next plate appearance (or the last one shown) and its number in that half. */
-  protected readonly inningProgress = computed(() => {
+  /** Team identity: header parts, "Top 1 · You bat (away) · Batter 4" for players (who/where empty for spectators). */
+  protected readonly inningHead = computed(() => {
     const g = this.game(), a = this.nextAtBat() ?? this.lastPlay();
-    if (!g || !a) return '';
+    if (!g || !a) return null;
     const n = g.atBats.filter(x => x.inning === a.inning && x.battingSide === a.battingSide && x.index <= a.index).length;
-    return `${halfLabel(a.inning ?? 1, a.battingSide)} · Batter ${n}`;
+    return headerParts(halfLabel(a.inning ?? 1, a.battingSide), a.battingSide, this.yourSide(), n);
   });
   protected readonly halvesList = computed(() => { const g = this.game(); return g ? halves(g) : []; });
   protected readonly lineInnings = computed(() => {

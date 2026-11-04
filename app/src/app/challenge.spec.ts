@@ -86,3 +86,59 @@ describe('plan 59 r2b: Last Licks held scene', () => {
     } finally { voiceOn.set(wasOn); globalThis.fetch = origFetch; vi.restoreAllMocks(); history.replaceState(null, '', '/'); }
   });
 });
+
+// ---- PLAN-2026-11-04-team-identity-v3 Part A: away left / home right, colors and "you / they" on screen only ----
+describe('team identity (plan 2026-11-04)', () => {
+  it('Last Licks as home: board order, scores, short names, pills, header, tags; spoken lines carry none of the new words', async () => {
+    history.replaceState(null, '', '/c/' + LL_VIEW.code);
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => new Response(String(url).includes('/api/challenges/' + LL_VIEW.code) ? JSON.stringify(LL_VIEW) : '[]',
+      { status: 200, headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
+    const wasOn = voiceOn();
+    const say = vi.spyOn(voice, 'say').mockResolvedValue(undefined as never);
+    vi.spyOn(voice, 'running').mockReturnValue(true);
+    vi.spyOn(voice, 'prefetch').mockImplementation(() => undefined as never);
+    vi.spyOn(voice, 'enable').mockResolvedValue(undefined as never);
+    try {
+      const f = TestBed.createComponent(ChallengeFlow);
+      f.componentRef.setInput('code', LL_VIEW.code);
+      for (let i = 0; i < 5; i++) { await new Promise(r => setTimeout(r, 0)); f.detectChanges(); await f.whenStable(); }
+      const c = f.componentInstance as any, el = f.nativeElement as HTMLElement;
+      voiceOn.set(true);
+      // creator = side 0 = home; the away Computer bats first and sits on the left
+      expect(c.boardNames()).toEqual(['The Computer', 'Tester (you)']);
+      expect(c.boardShort()).toEqual(['Computer', 'You']);
+      expect(c.boardScores([3, 5])).toEqual([5, 3]);
+      expect(c.boardPills()).toEqual(['#f5a142', '#1f5fbf']);
+      expect(c.boardBatting()).toBe(0);
+      expect(el.querySelector('.vs-line')?.textContent?.replace(/\s+/g, ' ').trim()).toMatch(/^Top 1 · They bat \(away\) · Batter \d$/);
+      const ab = c.game().atBats[0];
+      c.scene.set({ ab, art: LL_SIDE, windup: null });
+      f.detectChanges(); await f.whenStable();
+      c.sceneDone();
+      f.detectChanges(); await f.whenStable();
+      expect(el.querySelector('.ll-next')?.textContent).toContain('(theirs)');
+      expect(el.querySelector('.result-word .team-chip')?.textContent).toBe('THEM');
+      expect(el.querySelector('.result-word .team-chip')?.getAttribute('aria-hidden')).toBe('true');
+      expect(c.teamWord(0)).toBe('You');
+      const spoken = say.mock.calls.map(([t]) => String(t)).join(' | ');
+      expect(spoken.length).toBeGreaterThan(0);
+      for (const w of ['You bat', 'They bat', '(yours)', '(theirs)', 'Your team', 'Their team', 'YOU', 'THEM']) expect(spoken).not.toContain(w);
+      // spectator: no who/where, home blue / away orange
+      c.view.set({ ...c.view(), you: null });
+      f.detectChanges(); await f.whenStable();
+      expect(c.boardPills()).toEqual(['#f5a142', '#1f5fbf']);
+      expect(c.ownTag(1)).toBe('');
+      expect(c.teamWord(0)).toBe('Tester');
+      // classic / Duel-style games: unchanged order, no pills, no short names, no batting dim
+      c.view.set({ ...c.view(), you: 'creator', mode: 'classic' });
+      f.detectChanges(); await f.whenStable();
+      expect(c.boardNames()).toEqual(['Tester (you)', 'The Computer']);
+      expect(c.boardScores([3, 5])).toEqual([3, 5]);
+      expect(c.boardPills()).toBeNull();
+      expect(c.boardShort()).toBeNull();
+      expect(c.boardBatting()).toBeNull();
+      expect(c.teamWord(0)).toBe('Tester');
+    } finally { voiceOn.set(wasOn); globalThis.fetch = origFetch; vi.restoreAllMocks(); history.replaceState(null, '', '/'); }
+  });
+});

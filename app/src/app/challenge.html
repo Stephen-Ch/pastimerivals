@@ -192,11 +192,12 @@
       @let sc = score();
       <header class="bar">
         <button type="button" class="link" (click)="leave()">‹ Home</button>
-        <span class="vs-line">{{ isInningGame() ? inningProgress() : progress() }}</span>
+        <span class="vs-line">@if (isInningGame()) { @if (inningHead(); as h) { {{ h.half }}@if (h.who) { · {{ h.who }}<span class="ha"> {{ h.where }}</span> } · {{ h.batter }} } } @else { {{ progress() }} }</span>
         <pr-voice-button />
       </header>
-      <pr-scoreboard [look]="parkLook() ?? '1990'" [names]="boardNames()" [scores]="sc" [count]="boardCount()"
-                     [outs]="isInningGame() ? diamond().outs : null" [bases]="isInningGame() ? boardBases() : null" />
+      <pr-scoreboard [look]="parkLook() ?? '1990'" [names]="boardNames()" [short]="boardShort()" [scores]="boardScores(sc)" [count]="boardCount()"
+                     [outs]="isInningGame() ? diamond().outs : null" [bases]="isInningGame() ? boardBases() : null"
+                     [pills]="boardPills()" [batting]="boardBatting()" />
       @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
       @if (announcer()) { <p class="pbp-row" aria-live="polite">{{ pbpLine() }}</p> }
       <main class="flex scene-wrap">
@@ -208,7 +209,7 @@
                             [seed]="s.ab.seed" [deco]="deco().deco" [side]="artFor(s)" [windup]="s.windup" [call]="callOf(s.ab)" [fielders]="fieldersFor(s.ab)" [look]="parkLook()" [play]="playOf(s.ab)" [quietCaption]="announcer()" [held]="!scene()" (cue)="onCue($event)" (boardChange)="liveCount.set($event)" (done)="sceneDone()">
               @if (!scene()) {
                 <div sceneOver class="ll-held">
-                  @if (lastCall()) { <p class="result-word" role="status" [style.background]="wordColors().bg" [style.color]="wordColors().fg" [style.border-top-color]="wordColors().edge">{{ lastCall() }}</p> }
+                  @if (lastCall()) { <p class="result-word" role="status" [style.background]="wordColors().bg" [style.color]="wordColors().fg" [style.border-top-color]="wordColors().edge">@if (isInningGame() && yourSide() !== null && lastSide() !== null) { <span class="team-chip" aria-hidden="true" [style.background]="sideColor(lastSide()!)" [style.color]="chipInk(lastSide()!)">{{ lastSide() === yourSide() ? 'YOU' : 'THEM' }}</span> }{{ lastCall() }}</p> }
                   @if (baseText()) { <p class="held-line">{{ baseText() }}</p> }
                   @if (heldExtras().length) { <p class="ll-extras">{{ heldExtras().join(' ') }}</p> }
                 </div>
@@ -218,8 +219,9 @@
                   @if (baseText()) { <p class="ll-base" aria-hidden="true">{{ baseText() }}</p> }
                   @if (halfCard()) { <p class="ll-half">{{ halfCard() }}</p> }
                   @if (nextAtBat(); as n) {
-                    <p class="ll-next">Next: {{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) : roundLabel(n) }} ·
-                      <span class="full">{{ n.batter.name }} {{ n.batter.year }} vs {{ n.pitcher.name }} {{ n.pitcher.year }}</span><span class="short">{{ lastName(n.batter.name) }} {{ n.batter.year }} vs {{ lastName(n.pitcher.name) }} {{ n.pitcher.year }}</span></p>
+                    @let tag = isInningGame() ? ownTag(n.battingSide) : '';
+                    <p class="ll-next" [class.team-edge]="isInningGame()" [style.border-left-color]="isInningGame() ? sideColor(n.battingSide) : null">Next: {{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) : roundLabel(n) }} ·
+                      <span class="full">{{ n.batter.name }} {{ n.batter.year }}{{ tag ? ' (' + tag + ')' : '' }} vs {{ n.pitcher.name }} {{ n.pitcher.year }}</span><span class="short">{{ lastName(n.batter.name) }} {{ n.batter.year }}@if (tag) { <span class="tag">{{ ' (' + tag + ')' }}</span> } vs {{ lastName(n.pitcher.name) }} {{ n.pitcher.year }}</span></p>
                   }
                   @if (heldExtras().length) { <p class="ll-extras">{{ heldExtras().join(' ') }}</p> }
                 </div>
@@ -227,16 +229,16 @@
             </pr-pitch-scene>
           }
         } @else {
-          <section class="result">
-            @if (lastCall()) { <p class="outcome-tag" role="status">{{ lastCall() }}</p> }
+          <section class="result" [class.team-edge]="isInningGame() && !!nextAtBat()" [style.border-left-color]="isInningGame() && nextAtBat() ? sideColor(nextAtBat()!.battingSide) : null">
+            @if (lastCall()) { <p class="outcome-tag" role="status">@if (isInningGame() && yourSide() !== null && lastSide() !== null) { <span class="team-chip" aria-hidden="true" [style.background]="sideColor(lastSide()!)" [style.color]="chipInk(lastSide()!)">{{ lastSide() === yourSide() ? 'YOU' : 'THEM' }}</span> }{{ lastCall() }}</p> }
             @if (pbpRecap().length) { <p class="base-line">{{ pbpRecap().join(' ') }}</p> }
             @else if (baseText()) { <p class="base-line">{{ baseText() }}</p> }
             @if (halfCard()) { <p class="half-card">{{ halfCard() }}</p> }
             @if (revealed() === 0) { <p class="note">Tap Pitch to see each at-bat.</p> }
             @if (nextAtBat(); as n) {
-              <p class="muted">{{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) : roundLabel(n) }} · {{ sideName(n.battingSide) }} batting</p>
+              <p class="muted">{{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) + ' · ' + batsLine(n.battingSide) : roundLabel(n) + ' · ' + sideName(n.battingSide) + ' batting' }}</p>
               <p class="call">{{ n.batter.name }} <span class="muted">{{ n.batter.year }}</span></p>
-              <p class="how">vs {{ n.pitcher.name }} {{ n.pitcher.year }}</p>
+              <p class="how">vs {{ n.pitcher.name }} {{ n.pitcher.year }}@if (isInningGame() && yourSide() !== null) { · {{ n.battingSide !== yourSide() ? 'your' : 'their' }} pitcher }</p>
               @if (pbpIntro().length) { <p class="pbp-intro">{{ pbpIntro().join(' ') }}</p> }
             }
           </section>
@@ -251,7 +253,7 @@
     @case ('final') {
       @let g = game();
       <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button><button type="button" class="link" (click)="watchAgain()">Watch again</button></header>
-      <pr-scoreboard [look]="parkLook() ?? '1990'" [names]="boardNames()" [scores]="g?.totals ? [g.totals[0], g.totals[1]] : null" />
+      <pr-scoreboard [look]="parkLook() ?? '1990'" [names]="boardNames()" [short]="boardShort()" [scores]="boardScores(g?.totals ? [g.totals[0], g.totals[1]] : null)" [pills]="boardPills()" />
       <main class="flex">
         <h1 #stepTitle tabindex="-1" class="call">{{ finalText() }}</h1>
         @if (announcer() && pbpFinal().length) { <p class="pbp-result">{{ pbpFinal().join(' ') }}</p> }
@@ -266,7 +268,7 @@
             <thead><tr><th></th>@for (n of lineInnings(); track n) { <th>{{ n }}</th> }<th>R</th></tr></thead>
             <tbody>
               @for (sd of [1, 0]; track sd) {
-                <tr><th class="tname">{{ sideName(sd) }}</th>@for (n of lineInnings(); track n) { <td>{{ g.lineScore?.[sd]?.[n - 1] ?? 'x' }}</td> }<td><strong>{{ g.totals[sd] }}</strong></td></tr>
+                <tr><th class="tname"><i class="pill" aria-hidden="true" [style.background]="sideColor(sd)"></i>{{ awayHome(sd) === 'away' ? 'AWAY' : 'HOME' }} · {{ teamWord(sd) }}</th>@for (n of lineInnings(); track n) { <td>{{ g.lineScore?.[sd]?.[n - 1] ?? 'x' }}</td> }<td><strong>{{ g.totals[sd] }}</strong></td></tr>
               }
             </tbody>
           </table>
@@ -274,7 +276,7 @@
           @if (g.notes.includes(capNote)) { <p class="note">{{ capNote }}</p> }
           <div class="plays-card">
             @for (h of halvesList(); track h.label) {
-              <p class="half-head">{{ h.label }}</p>
+              <p class="half-head"><i class="pill" aria-hidden="true" [style.background]="sideColor(h.plays[0].battingSide)"></i>{{ h.label }} · {{ teamWord(h.plays[0].battingSide) }}</p>
               <ol class="plays">
                 @for (a of h.plays; track a.index) {
                   <li>{{ a.batter.name }}: <strong>{{ shortLabel(a) }}</strong>@if (a.points) { , {{ a.points }} {{ a.points === 1 ? 'run' : 'runs' }} }</li>

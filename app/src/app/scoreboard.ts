@@ -56,8 +56,10 @@ export const shortYear = (y: number | null | undefined) => y ? `'${String(y).sli
   },
   template: `
     @let m = model();
-    <span class="side">
+    <span class="side" [class.dim]="batting() === 1">
+      @if (pills(); as pl) { <i class="pill" aria-hidden="true" [style.background]="pl[0]"></i> }
       <span class="nm"><span class="full">{{ names()[0] }}</span><span class="short">{{ shortNames()[0] }}</span></span>
+      @if (batting() === 0) { <span class="sr"> batting</span> }
       @if (m.scores) { <strong class="num sc">{{ m.scores[0] }}</strong> }
     </span>
     <span class="mid">
@@ -74,9 +76,11 @@ export const shortYear = (y: number | null | undefined) => y ? `'${String(y).sli
       }
       @if (m.count) { <span class="num cnt" role="group" [attr.aria-label]="m.countLabel">{{ m.count }}</span> }
     </span>
-    <span class="side end">
+    <span class="side end" [class.dim]="batting() === 0">
       @if (m.scores) { <strong class="num sc">{{ m.scores[1] }}</strong> }
+      @if (pills(); as pl) { <i class="pill" aria-hidden="true" [style.background]="pl[1]"></i> }
       <span class="nm"><span class="full">{{ names()[1] }}</span><span class="short">{{ shortNames()[1] }}</span></span>
+      @if (batting() === 1) { <span class="sr"> batting</span> }
     </span>
   `,
   styles: `
@@ -86,6 +90,10 @@ export const shortYear = (y: number | null | undefined) => y ? `'${String(y).sli
     .end { justify-content: flex-end; }
     .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .short { display: none; }
+    /* Team identity (plan 2026-11-04): fill tells the sides apart, the ring in the board's text color carries the contrast.
+       The batting team's name is full strength, the other name dims (scores never dim). */
+    .pill { flex: none; width: 10px; height: 10px; border-radius: 50%; align-self: center; box-shadow: 0 0 0 1.5px var(--b-fg); }
+    .dim .nm { opacity: .7; }
     @media (max-width: 439px) { .full { display: none; } .short { display: inline; } }
     @media (max-width: 359px) { :host { gap: 4px; } .side { gap: 4px; } .nm { font-size: .82rem; } }
     .mid { flex: none; display: flex; align-items: center; gap: 8px; }
@@ -118,6 +126,10 @@ export class Scoreboard {
   readonly scores = input<[number, number] | null>(null);
   readonly outs = input<number | null>(null);
   readonly bases = input<[boolean, boolean, boolean] | null>(null);
+  /** Pill fills for the left and right team (Last Licks only); null shows no pills (The Duel, classic games). */
+  readonly pills = input<[string, string] | null>(null);
+  /** Board position (0 left, 1 right) of the team now batting; null = no dimming (between games, final, The Duel). */
+  readonly batting = input<0 | 1 | null>(null);
 
   protected readonly shortNames = computed(() => this.short() ?? this.names());
   protected readonly colors = computed(() => ERA_BOARD[this.look()] ?? ERA_BOARD['1990']);
