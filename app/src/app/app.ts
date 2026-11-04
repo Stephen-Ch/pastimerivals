@@ -323,8 +323,10 @@ export class App {
   protected readonly cf = computed<CfArt | null>(() => {
     const p = this.pitcherReport(), b = this.batterReport();
     if (!p || !b) return null;
-    return cfArt(this.manifest(), p, { id: b.id, year: b.year, bats: hitsFrom(b.bats, p.throws) }, !!this.side());
+    const r = cfArt(this.manifest(), p, { id: b.id, year: b.year, bats: hitsFrom(b.bats, p.throws) }, !!this.side());
+    return r && !this.cfFailed().has(r.urls.join('|')) ? r : null;   // CF art that failed to load: today's front windup instead
   });
+  private readonly cfFailed = signal<ReadonlySet<string>>(new Set());
   protected readonly sceneCf = signal<CfArt | null>(null);
   private readonly windupOk = signal(false);
   private windupReady: Promise<boolean> = Promise.resolve(false);
@@ -407,7 +409,11 @@ export class App {
       const w = this.windup(), c = this.cf();
       this.windupOk.set(false);
       if (!w) { this.windupReady = Promise.resolve(false); return; }
-      this.windupReady = preloadImages(c ? c.urls : [w.sheet]).then(ok => { if (this.windup() === w) this.windupOk.set(ok); return ok; });
+      this.windupReady = preloadImages(c ? c.urls : [w.sheet]).then(ok => {
+        if (!ok && c) { this.cfFailed.update(f => new Set([...f, c.urls.join('|')])); return false; }   // the effect runs again with the front windup
+        if (this.windup() === w) this.windupOk.set(ok);
+        return ok;
+      });
     });
     api.event('open', this.session, sourceFromSearch());
     if (this.canHistory()) stampBase(this.challenge() !== undefined);   // plan 39: history depth

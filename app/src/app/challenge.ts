@@ -693,13 +693,17 @@ export class ChallengeFlow {
     // Plan 40 A: the pitcher's windup before every pitch, loaded on its own so a failed pitcher sheet never drops the batter art.
     // Plan 59 Round 5: the center-field shot replaces the front windup when its art exists (same timing).
     const cf = art ? cfArt(m, ab.pitcher, { id: ab.batter.id, year: ab.batter.year, bats: hitsFrom(ab.batter.bats, ab.pitcher.throws) }, true) : null;
-    const wind = cf ? cf.back : art ? windupArt(m, ab.pitcher.id, eraOf(ab.pitcher.year), ab.pitcher.throws) : null;
+    const front = art ? windupArt(m, ab.pitcher.id, eraOf(ab.pitcher.year), ab.pitcher.throws) : null;
+    let wind = cf ? cf.back : front, useCf = !!cf;
     let ok = false, windOk = false;
     if (art) {
       this.loadingArt.set(true);
       const limit = new Promise<void>(res => setTimeout(res, 3000));
       const a = preloadImages([art.sheet]).then(r => { ok = r; });
-      const w = wind ? preloadImages(cf ? cf.urls : [wind.sheet]).then(r => { windOk = r; }) : Promise.resolve();
+      const w = wind ? preloadImages(cf ? cf.urls : [wind.sheet]).then(async r => {
+        windOk = r;
+        if (!r && cf && front) { useCf = false; wind = front; windOk = await preloadImages([front.sheet]); }   // CF art failed: today's front windup
+      }) : Promise.resolve();
       await Promise.race([Promise.all([a, w]), limit]);
       this.loadingArt.set(false);
     }
@@ -709,7 +713,7 @@ export class ChallengeFlow {
     this.liveCount.set({ balls: 0, strikes: 0 });
     this.lastPlay.set(null);   // Plan 59 Round 2b: the held result keeps its lines until the next scene starts
     this.heldScene.set(null);
-    this.scene.set({ ab, art: ok ? art : null, windup: ok && windOk ? wind : null, cf: ok && windOk ? cf : null });
+    this.scene.set({ ab, art: ok ? art : null, windup: ok && windOk ? wind : null, cf: ok && windOk && useCf ? cf : null });
   }
 
   protected callOf(ab: CAtBat) {

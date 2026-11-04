@@ -130,6 +130,9 @@ def cu(src, era):
     keep = [i + 1 for i in np.argsort(sizes)[::-1][:2]]
     objs = sorted(((ndi.find_objects(lab)[k - 1], k) for k in keep), key=lambda o: o[0][1].start)   # left to right
     if len(objs) != 2: raise SystemExit(f'{src}: {len(objs)} figures')
+    (sa, _), (sb, _) = objs; ha, hb = sa[0].stop - sa[0].start, sb[0].stop - sb[0].start
+    if not (1.1 < hb / ha < 2.0) or min(sa[1].stop - sa[1].start, sb[1].stop - sb[1].start) < 0.4 * max(sa[1].stop - sa[1].start, sb[1].stop - sb[1].start):
+        raise SystemExit(f'{src}: the two figures do not look like a catcher and a taller umpire ({ha}, {hb} px tall)')
     rgba = slicer.defringe(a, fg)
     sheet = Image.new('RGBA', (CW * 2, CH), (0, 0, 0, 0))
     for i, ((sl, k), name) in enumerate(zip(objs, ('catcher', 'umpire'))):
@@ -221,6 +224,9 @@ def check():
         bx = boxes(im, n)
         if any(b is None for b in bx): bad.append(f'{f}: empty frame'); continue
         if any(abs(b[1] - BASE) > 2 for b in bx): bad.append(f'{f}: feet off the baseline {[b[1] for b in bx]}')
+        if f.startswith('front-'):   # the stance (bat up) is 6.0-7.6 ft at the cell scale
+            ft = heights(im, n)[0] / PX_PER_FT
+            if not 6.0 <= ft <= 7.6: bad.append(f'{f}: batter {ft:.1f} ft tall')
         if f.startswith('back-'):
             era, tone = f[5:-4].split('-')
             ref = heights(Image.open(f'art/sprites/pitcher/{era}-{tone}.png'))
@@ -232,7 +238,7 @@ def check():
                 if holes.sum() > 0.01 * c.sum(): bad.append(f'{f}: frame {i} has see-through holes ({holes.sum()} px)')
         if f.startswith('front-') and f.endswith('-line.png'):
             a = np.asarray(im); fill = (a[..., 3] > 128) & (a[..., :3].min(2) < 250) & (a[..., :3].max(2) > 40)
-            if fill.mean() > 0.002: bad.append(f'{f}: line strip has colour fill')
+            if fill.sum() > 0.002 * (a[..., 3] > 128).sum(): bad.append(f'{f}: line strip has colour fill')
     print('\n'.join(bad) or 'cf check ok')
     return not bad
 

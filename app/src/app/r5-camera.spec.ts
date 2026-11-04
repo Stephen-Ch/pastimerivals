@@ -118,7 +118,7 @@ const M = (over: Partial<ArtManifest> = {}): ArtManifest => ({
   cf: {
     cell: [364, 480],
     back: { '1990-2025/light': '/bl.webp', '1990-2025/darkbrown': '/bd.webp', '1920-1945/light': '/b20.webp' },
-    front: { '1990/1990/light': '/fl.webp', '1990/1990/darkbrown': '/fd.webp', '1990/line': '/fline.webp', '1920/1946/light': '/f2046.webp', '1956/1946/light': '/f5646.webp', '1956/1970/darkbrown': '/f5670.webp' },
+    front: { '1990/1990/light': '/fl.webp', '1990/1990/darkbrown': '/fd.webp', '1990/line': '/fline.webp', '1901/line': '/f01line.webp', '1920/line': '/f20line.webp', '1956/line': '/f56line.webp', '1920/1946/light': '/f2046.webp', '1956/1946/light': '/f5646.webp', '1956/1970/darkbrown': '/f5670.webp' },
     cu: { '1990-2025': '/cu.webp' },
   },
   ...over,
@@ -141,10 +141,10 @@ describe('plan 59 r5 test 6: back, front and cu art lookups', () => {
     expect(frontArt(M(), 'ruth', 1960, 'R')!.sheet).toBe('/f5646.webp');    // look 1956, 1946 colours
     expect(frontArt(M(), 'clem', 1975, 'R')!.sheet).toBe('/f5670.webp');    // mediumbrown to darkbrown
     expect(frontArt(M(), 'ruth', 1975, 'R')).toBeNull();                   // missing key
-    expect(frontArt(M(), 'nobody', 1930, 'R')).toBeNull();                 // no 1920 line strip in this manifest
+    expect(frontArt(M(), 'nobody', 1930, 'R')!.sheet).toBe('/f20line.webp');
     for (const y of [1945, 1946, 1955, 1956, 1969, 1970, 1989, 1990]) {
-      const a = frontArt(M(), 'nobody', y, 'R');
-      if (a) { expect(a.line).toBe(true); expect(a.sheet).toContain('line'); }
+      const a = frontArt(M(), 'nobody', y, 'R')!;
+      expect(a.line).toBe(true); expect(a.sheet).toContain('line');
     }
   });
   it('cu by the pitcher era', () => {

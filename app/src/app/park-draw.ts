@@ -51,7 +51,7 @@ export interface Crowd { img: HTMLCanvasElement; seats: [number, number, number,
   /** Plan 59 Round 1b: the same seats grouped by row (index row + 1; row -1 = the 1901 standing fans), same order. */
   byRow: [number, number, number, number, number][][]; }
 const crowds = new Map<ParkLook, Crowd>();
-/** The crowd figure sheet at k x (2 for the field view; Round 5: 8 for the fans behind home). Same figures at any k. */
+/** The crowd figure sheet at k x (2 for the field view; Round 5: 4 for the fans behind home). Same figures at any k. */
 function crowdSheet(look: ParkLook, k0: number): HTMLCanvasElement | null {
   const s = document.createElement('canvas'); s.width = FW * NV * k0; s.height = FH * k0;
   let g: CanvasRenderingContext2D | null = null;
@@ -137,9 +137,9 @@ export const BACKSTOP: Record<ParkLook, { d: number; h: number; net: number; wal
   '1970': { d: 60, h: 4.5, net: 30, wall: '#2f5a3e', cap: '#22432d', boards: true },    // padded, the outfield wall's green
   '1990': { d: 60, h: 4.5, net: 30, wall: '#1f4f8a', cap: '#163a66', boards: true },    // padded, plain panels (no logos)
 };
-const HOME_ROWS = 10, BIG = 8;
+const HOME_ROWS = 10, BIG = 4;
 const bigCrowds = new Map<ParkLook, { img: HTMLCanvasElement } | null>();
-/** The crowd figures drawn at 8x (the center-field lens makes the fans behind home big); same figures as crowdFor. */
+/** The crowd figures drawn at 4x (the center-field lens makes the fans behind home big); same figures as crowdFor. */
 function bigCrowdFor(look: ParkLook): { img: HTMLCanvasElement } | null {
   if (bigCrowds.has(look)) return bigCrowds.get(look)!;
   if (typeof document === 'undefined') return null;

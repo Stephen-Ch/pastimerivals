@@ -79,7 +79,8 @@ test('plan 59 r1b test 11: field-view frame work vs the Part A build, backdrop r
   writeFileSync(info.outputPath('perf-r1b.json'), JSON.stringify({ [info.project.name]: r }));   // merge the projects' files for PERF_BASE
   console.log(`perf-r1b ${info.project.name} ${JSON.stringify(r)}`);
   expect(r.n).toBeGreaterThan(20);
-  expect(Object.keys(r.backdropMs).sort(), 'both backdrops rendered and logged').toEqual(['side', 'windup']);
+  // plan 59 r5: the default matchup (Ruth 1927 vs Pedro 1999) now gets the center-field shot instead of the front windup
+  expect(Object.keys(r.backdropMs).sort(), 'both backdrops rendered and logged').toEqual(['cf', 'side']);
   for (const [view, ms] of Object.entries(r.backdropMs)) expect(ms, `backdrop ${view}`).toBeLessThanOrEqual(150);
   if (process.env['PERF_BASE']) {
     const base = JSON.parse(readFileSync(process.env['PERF_BASE'], 'utf8'))[info.project.name] as { median: number };

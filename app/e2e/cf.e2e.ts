@@ -46,7 +46,7 @@ test('r5 untoned pitcher: no windup and no CF shot (D2)', async ({ context, page
   await page.goto('/');
   await page.waitForLoadState('networkidle');
   let seen = 0;
-  const poll = setInterval(() => { void page.locator('pr-pitch-scene .windup').count().then(n => { seen += n; }).catch(() => {}); }, 40);
+  const poll = setInterval(() => { void page.evaluate(() => (document.querySelectorAll('pr-pitch-scene .windup').length + (document.querySelector('pr-pitch-scene .stage')?.getAttribute('data-cue') === 'windup' ? 1 : 0))).then(n => { seen += n; }).catch(() => {}); }, 40);
   await page.getByRole('button', { name: 'Pitch', exact: true }).click();
   await page.locator('pr-pitch-scene .stage[data-held="1"]').waitFor({ timeout: 20_000 });
   clearInterval(poll);

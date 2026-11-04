@@ -217,6 +217,9 @@ def cf_only():
         if n >= limit: raise SystemExit(f'too big {p} {n}')
         cf[block][key] = url; print(f'{block} {key} -> {url} ({n} bytes)')
     man['cf'] = cf
+    keep = {u.rsplit('/', 1)[1] for blk in ('back', 'front', 'cu') for u in cf[blk].values()}
+    for f in os.listdir(OUT):
+        if f.startswith('cf-') and f not in keep: os.remove(os.path.join(OUT, f)); print('removed old', f)
     json.dump(man, open(path, 'w'), separators=(',', ':'))
 
 if __name__ == '__main__':
