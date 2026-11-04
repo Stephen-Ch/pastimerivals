@@ -203,10 +203,10 @@ export class ChallengeFlow {
   protected readonly plainName = (side: number) => this.sideName(side).replace(' (you)', '');
   /** "You" for your own side in Last Licks, else the plain name (half change line, half headings, line score). */
   protected readonly teamWord = (side: number) => (this.isInningGame() && side === this.yourSide() ? 'You' : this.plainName(side));
-  /** Fallback card: "Your team bats (away)" / "Their team bats (home)"; spectators "<name> bats". */
+  /** Fallback card: "Your team bats (away)" / "Their team bats (home)"; spectators keep "<name> batting". */
   protected readonly batsLine = (side: number) => {
     const you = this.yourSide();
-    if (you === null) return `${this.plainName(side)} bats`;
+    if (you === null) return `${this.sideName(side)} batting`;
     return `${side === you ? 'Your' : 'Their'} team bats (${awayHome(side)})`;
   };
   /** The play just finished (held scene or last play shown), for the result chip. */

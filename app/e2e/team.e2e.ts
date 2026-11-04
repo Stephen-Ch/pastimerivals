@@ -22,18 +22,31 @@ for (const [w, h] of SIZES) {
     await page.getByRole('button', { name: 'Pitch', exact: true }).click();
     await page.locator('pr-pitch-scene .stage[data-held="1"]').waitFor({ timeout: 20_000 });
     const next = page.locator('.ll-next');
-    if (await next.count()) {
-      await expect(next).toContainText('(yours)');
+    await expect(next).toHaveCount(1);
+    {
+      // visible text only: under 360 px the tag is hidden on purpose (the stripe stays)
+      const seen = await next.evaluate(e => (e as HTMLElement).innerText);
+      if (w >= 360) expect(seen).toContain('(yours)'); else expect(seen).not.toContain('(yours)');
       const lines = await next.evaluate(e => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)));
       expect(lines, 'Next line stays on one line').toBe(1);
       expect(await next.evaluate(e => getComputedStyle(e).borderLeftColor)).toBe('rgb(31, 95, 191)');
     }
     await expect(page.locator('.result-word .team-chip')).toHaveText('YOU');
+    // every board pill has the ring in the board's text color
+    const rings = await board.locator('.pill').evaluateAll(els => els.map(e => getComputedStyle(e).boxShadow));
+    for (const r of rings) expect(r).toMatch(/1\.5px/);
+    // the batting team (you, left) is full strength, the other name dimmed
+    const ops = await board.locator('.side .nm').evaluateAll(els => els.map(e => getComputedStyle(e).opacity));
+    expect(ops).toEqual(['1', '0.7']);
     expect(await pageScroll(page), 'page scroll held').toBeLessThanOrEqual(1);
     await page.getByRole('button', { name: 'Skip to final' }).click();
     await expect(page.locator('.linescore .tname').first()).toContainText('AWAY · You');
     await expect(page.locator('.linescore .tname').nth(1)).toContainText('HOME · Bleacher 5012');
     await expect(page.locator('.half-head').first()).toContainText('Top 1 · You');
+    // final board: away (you) left, home right, no dimming
+    await expect(page.locator('pr-scoreboard .pill')).toHaveCount(2);
+    expect(await page.locator('pr-scoreboard .side .nm').evaluateAll(els => els.map(e => getComputedStyle(e).opacity))).toEqual(['1', '1']);
+    await expect(page.locator('pr-scoreboard .side').first()).toContainText('You');
     expect(hn.bad).toEqual([]);
   });
 }

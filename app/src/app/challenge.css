@@ -54,7 +54,7 @@
 .half-head { margin: 6px 0 0; font-size: .82rem; font-weight: 700; color: var(--text-secondary); }
 .how-link { align-self: flex-start; }
 /* Team identity (plan 2026-11-04): side color pills, chip and edge; words always carry the meaning too. */
-.pill { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; box-shadow: 0 0 0 1.5px var(--text-primary); vertical-align: baseline; }
+.pill { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; box-shadow: 0 0 0 1.5px var(--text-primary); vertical-align: -1px; }
 .team-chip { display: inline-block; margin-right: 6px; padding: 0 4px; border-radius: 3px; font: 700 .62rem/1.5 var(--display); letter-spacing: .04em; vertical-align: middle; }
 .team-edge { border-left: 4px solid transparent; padding-left: 6px; }
 .ll-next .tag { opacity: .8; }
