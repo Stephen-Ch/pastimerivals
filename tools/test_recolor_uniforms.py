@@ -152,3 +152,30 @@ def test_planted_shrunk_card_mask_fails(monkeypatch):
         r = ru.check(n, out=o)
         monkeypatch.setattr(ru, 'sam_masks', real)
         assert hole.sum() > 300 and any('leftover' in f for f in r['fails']), (n, int(hole.sum()), r['fails'])
+
+
+def test_cf_play_screen_bytes_at_most_1_2x():
+    """Plan 59 Round 5 test 9: with the CF shot an at-bat loads cards + back sheet + front strip + catcher/umpire + side
+    instead of cards + front windup + side: at most 1.2x, for every era/tone/variant that has CF art."""
+    import json, os
+    m = json.load(open('app/public/art-manifest.json')); cf = m.get('cf') or {}
+    size = lambda u: os.path.getsize('app/public' + u)
+    looks = {'1901-1919': ['1901'], '1920-1945': ['1920'], '1946-1969': ['1920', '1956'], '1970-1989': ['1956'], '1990-2025': ['1990']}
+    worst, n = 0.0, 0
+    for era, lks in looks.items():
+        for t in ('light', 'darkbrown'):
+            back = cf.get('back', {}).get(f'{era}/{t}')
+            if not back: continue
+            for bt in ('light', 'darkbrown', 'line'):
+                for lk in lks:
+                    fk = f'{lk}/line' if bt == 'line' else f'{lk}/{era[:4]}/{bt}'
+                    front = cf.get('front', {}).get(fk)
+                    if not front: continue
+                    sk = f'{lk}/line' if bt == 'line' else f'{lk}/{era[:4]}/{bt}'
+                    for v in ('a', 'b'):
+                        base = size(m['cards'][f'pitcher/{era}/{t}/{v}']) + size(m['cards'][f'batter/{era}/{bt}/{v}']) + size(m['side']['sheets'][sk])
+                        o = base + size(m['sheets'][f'pitcher/{era}/{t}'])
+                        nn = base + size(back) + size(front) + (size(cf['cu'][era]) if era in cf.get('cu', {}) else 0)
+                        worst = max(worst, nn / o); n += 1
+    assert n > 0
+    assert worst <= 1.2, worst

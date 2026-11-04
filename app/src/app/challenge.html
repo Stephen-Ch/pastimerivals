@@ -206,7 +206,7 @@
           <!-- Plan 59 Round 2b: after the at-bat the scene stays on screen, held (scene() is null, heldScene() keeps it) -->
           @for (k of [s.ab.index]; track k) {
             <pr-pitch-scene [era]="eraOf(s.ab.pitcher.year)" [throws]="s.ab.pitcher.throws" [bats]="hitsFrom(s.ab.batter.bats, s.ab.pitcher.throws)" [outcome]="s.ab.outcome"
-                            [seed]="s.ab.seed" [deco]="deco().deco" [side]="artFor(s)" [windup]="s.windup" [call]="callOf(s.ab)" [fielders]="fieldersFor(s.ab)" [look]="parkLook()" [play]="playOf(s.ab)" [quietCaption]="announcer()" [held]="!scene()" (cue)="onCue($event)" (boardChange)="liveCount.set($event)" (done)="sceneDone()">
+                            [seed]="s.ab.seed" [deco]="deco().deco" [side]="artFor(s)" [windup]="s.windup" [cf]="s.cf ?? null" [call]="callOf(s.ab)" [fielders]="fieldersFor(s.ab)" [look]="parkLook()" [play]="playOf(s.ab)" [quietCaption]="announcer()" [held]="!scene()" (cue)="onCue($event)" (boardChange)="liveCount.set($event)" (done)="sceneDone()">
               @if (!scene()) {
                 <div sceneOver class="ll-held">
                   @if (lastCall()) { <p class="result-word" role="status" [style.background]="wordColors().bg" [style.color]="wordColors().fg" [style.border-top-color]="wordColors().edge">@if (isInningGame() && yourSide() !== null && lastSide() !== null) { <span class="team-chip" aria-hidden="true" [style.background]="sideColor(lastSide()!)" [style.color]="chipInk(lastSide()!)">{{ lastSide() === yourSide() ? 'YOU' : 'THEM' }}</span> }{{ lastCall() }}</p> }

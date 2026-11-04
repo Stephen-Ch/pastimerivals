@@ -102,7 +102,7 @@
         @if (pending(); as pr) {
           @if (!res || heldStage) {
             @for (k of [sceneN()]; track k) {
-              <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [side]="sceneArt()" [windup]="sceneWindup()" [call]="sceneCall()" [fielders]="sceneFielders()" [look]="sceneLook()" [quietCaption]="announcer()" [held]="res" (cue)="onCue($event)" (boardChange)="liveCount.set($event)" (done)="sceneDone()">
+              <pr-pitch-scene [era]="pitcherEra()" [throws]="pitcherReport()?.throws ?? 'R'" [bats]="hitsFrom(batterReport()?.bats, pitcherReport()?.throws)" [outcome]="pr.outcome" [seed]="pr.seed" [deco]="deco()" [side]="sceneArt()" [windup]="sceneWindup()" [cf]="sceneCf()" [call]="sceneCall()" [fielders]="sceneFielders()" [look]="sceneLook()" [quietCaption]="announcer()" [held]="res" (cue)="onCue($event)" (boardChange)="liveCount.set($event)" (done)="sceneDone()">
                 @if (res && result(); as r) {
                   <section sceneOver class="result held-result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
                     <h1 #screenTitle tabindex="-1" class="call duel-call result-word" [style.background]="wordColors().bg" [style.color]="wordColors().fg" [style.border-top-color]="wordColors().edge">{{ callText() }}</h1>

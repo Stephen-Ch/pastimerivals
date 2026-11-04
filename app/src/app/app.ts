@@ -16,7 +16,7 @@ import { voiceOn } from './voice-setting';
 import { VoiceButton } from './voice-button';
 import { PerfOverlay, perfFromSearch } from './perf-overlay';
 import { SceneCue } from './pitch-scene';
-import { ArtManifest, Era, eraOf, fielderArt, isFirstVisit, PairArt, pairArt, ParkLook, parkLookOf, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, WindupArt, windupArt } from './art';
+import { ArtManifest, CfArt, cfArt, Era, eraOf, fielderArt, isFirstVisit, PairArt, pairArt, ParkLook, parkLookOf, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, WindupArt, windupArt } from './art';
 import { artNoteDue, artNoteShownThisVisit, markArtNoteShown } from './art-note';
 import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
@@ -314,9 +314,18 @@ export class App {
   /** Plan 36/40: pitcher windup before every pitch (both or neither with the batter's side art). */
   protected readonly sceneWindup = signal<WindupArt | null>(null);
   protected readonly windup = computed<WindupArt | null>(() => {
+    const c = this.cf();
+    if (c) return c.back;   // plan 59 r5: the CF shot replaces the front windup (same timing)
     const p = this.pitcherReport();
     return p ? windupArt(this.manifest(), p.id, eraOf(p.year), p.throws) : null;
   });
+  /** Plan 59 Round 5: the center-field windup shot (needs the side art too), or null for today's views. */
+  protected readonly cf = computed<CfArt | null>(() => {
+    const p = this.pitcherReport(), b = this.batterReport();
+    if (!p || !b) return null;
+    return cfArt(this.manifest(), p, { id: b.id, year: b.year, bats: hitsFrom(b.bats, p.throws) }, !!this.side());
+  });
+  protected readonly sceneCf = signal<CfArt | null>(null);
   private readonly windupOk = signal(false);
   private windupReady: Promise<boolean> = Promise.resolve(false);
   /** Plan 36/39: first visit (hint line, art note, first_view event); the first result offers an inning. */
@@ -395,10 +404,10 @@ export class App {
       this.sideReady = preloadImages([s.sheet]).then(ok => { if (this.side() === s) this.sideOk.set(ok); return ok; });
     });
     effect(() => {
-      const w = this.windup();
+      const w = this.windup(), c = this.cf();
       this.windupOk.set(false);
       if (!w) { this.windupReady = Promise.resolve(false); return; }
-      this.windupReady = preloadImages([w.sheet]).then(ok => { if (this.windup() === w) this.windupOk.set(ok); return ok; });
+      this.windupReady = preloadImages(c ? c.urls : [w.sheet]).then(ok => { if (this.windup() === w) this.windupOk.set(ok); return ok; });
     });
     api.event('open', this.session, sourceFromSearch());
     if (this.canHistory()) stampBase(this.challenge() !== undefined);   // plan 39: history depth
@@ -572,6 +581,7 @@ export class App {
       if (throwId !== this.throwToken || this.pick() !== p) return;
       this.sceneArt.set(this.sideOk() ? this.side() : null);
       this.sceneWindup.set(this.sideOk() && this.windupOk() ? this.windup() : null);   // both or neither
+      this.sceneCf.set(this.sceneWindup() ? this.cf() : null);
       if (!seed && this.firstView()) {
         try { this.storage()?.setItem(SEEN_KEY, '1'); } catch { /* private mode: fine */ }
         this.firstView.set(false); this.firstResult.set(true);

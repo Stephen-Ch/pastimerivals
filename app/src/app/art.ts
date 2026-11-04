@@ -27,6 +27,9 @@ export interface ArtManifest {
   side?: { cell: [number, number]; footY: number; sheets: Record<string, string>; frames: Record<string, SideFrame[]> };
   /** Plan 44: fielder sheets by the pitcher's era (hybrid look: uniform colors, pen-and-ink skin). */
   fielder?: { cell: [number, number]; footY: number; sheets: Record<string, string> };
+  /** Plan 59 Round 5: center-field windup shot. back '<era>/<tone>' (8 frames, as the windup), front '<look>/<era short>/<tone>'
+   *  or '<look>/line' (2 frames: stance, load), cu '<era>' (2 frames: catcher, umpire). Cells as the windup, feet at 468. */
+  cf?: { cell: [number, number]; back: Record<string, string>; front: Record<string, string>; cu: Record<string, string> };
 }
 
 /** line = the blank-paper card (plan 52): no researched tone, so no skin is shown. */
@@ -124,4 +127,37 @@ export interface FielderArt { sheet: string; cell: [number, number]; footY: numb
 export function fielderArt(m: ArtManifest | null, era: Era): FielderArt | null {
   const f = m?.fielder, sheet = f?.sheets[era];
   return f && sheet ? { sheet, cell: f.cell, footY: f.footY, era } : null;
+}
+
+// ---- Plan 59 Round 5: center-field windup shot ----
+/** The pitcher from behind, by his era and tone; toned pitchers only (D2: untoned pitchers keep today's view). */
+export function backArt(m: ArtManifest | null, id: string, era: Era, throws: string): WindupArt | null {
+  const tone = m?.tones?.[id];
+  const sheet = tone ? m?.cf?.back[`${era}/${sheetTone(tone)}`] : undefined;
+  return sheet ? { sheet, mirror: throws === 'L' } : null;
+}
+/** The batter from the front (stance, load), keyed like the side sheet: look by helmet rules, colours by card era.
+ *  No researched tone: the pen-and-ink strip, never a toned one. Missing: null. */
+export interface FrontArt { sheet: string; mirror: boolean; line: boolean; }
+export function frontArt(m: ArtManifest | null, id: string, year: number, bats: string): FrontArt | null {
+  const f = m?.cf?.front;
+  if (!f) return null;
+  const tone = m!.tones?.[id];
+  const sheet = tone ? f[sideKey(year, sheetTone(tone))] : f[`${lookOf(year)}/line`];
+  return sheet ? { sheet, mirror: bats === 'L', line: !tone } : null;
+}
+/** Catcher and umpire by the pitcher's era (the fielding team). */
+export function cuArt(m: ArtManifest | null, era: Era): string | null {
+  return m?.cf?.cu[era] ?? null;
+}
+/** Plan 59 Round 5 fallback order: back sheet AND front strip AND side art = the CF shot; otherwise null, and the caller
+ *  uses today's front windup (toned pitcher with side art) or no windup. */
+export interface CfArt { kind: 'cf'; back: WindupArt; front: FrontArt; cu: string | null; bats: 'L' | 'R'; urls: string[]; }
+export function cfArt(m: ArtManifest | null, pit: { id: string; year: number; throws: string }, bat: { id: string; year: number; bats: string },
+                      sideShows: boolean): CfArt | null {
+  if (!sideShows) return null;
+  const back = backArt(m, pit.id, eraOf(pit.year), pit.throws), front = frontArt(m, bat.id, bat.year, bat.bats);
+  if (!back || !front) return null;
+  const cu = cuArt(m, eraOf(pit.year));
+  return { kind: 'cf', back, front, cu, bats: bat.bats === 'L' ? 'L' : 'R', urls: [back.sheet, front.sheet, ...(cu ? [cu] : [])] };
 }

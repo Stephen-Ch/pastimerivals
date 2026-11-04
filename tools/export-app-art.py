@@ -184,9 +184,45 @@ def recolor_only(keys):
         print(f'{k} -> {url} ({n} bytes)' + (f' (was {old})' if old and old != url else ''))
     json.dump(man, open(path, 'w'), separators=(',', ':'))
 
+def cf_only():
+    """Plan 59 Round 5: export every file in art/sprites/cf into the manifest's `cf` block (rebuilt from the folder; no other
+    key changes). back-<era>-<tone> -> back '<era>/<tone>'; front-<look>-<era short>-<tone> -> front '<look>/<era short>/<tone>';
+    front-<look>-line -> front '<look>/line'; cu-<era short> -> cu '<era>'. Cells padded 360 -> 364 like the windup sheets.
+    Limits: back 150 KB, front strip and cu 40 KB. Every file passes known_bad."""
+    path = 'app/public/art-manifest.json'
+    man = json.load(open(path)); src_dir = 'art/sprites/cf'
+    cf = {'cell': [CELL_W + 2 * PADX, CELL_H], 'back': {}, 'front': {}, 'cu': {}}
+    for f in sorted(os.listdir(src_dir)):
+        if not f.endswith('.png'): continue
+        p = f'{src_dir}/{f}'; known_bad.check_source(p)
+        src = Image.open(p).convert('RGBA'); n_fr = src.width // CELL_W
+        if src.height != CELL_H or src.width % CELL_W: raise SystemExit(f'bad size {p} {src.size}')
+        sheet = Image.new('RGBA', ((CELL_W + 2 * PADX) * n_fr, CELL_H), (0, 0, 0, 0))
+        for i in range(n_fr):
+            sheet.paste(src.crop((i * CELL_W, 0, (i + 1) * CELL_W, CELL_H)), (i * (CELL_W + 2 * PADX) + PADX, 0))
+        stem, parts = f[:-4], f[:-4].split('-')
+        if parts[0] == 'back' and len(parts) == 3 and parts[1] in ERAS and parts[2] in SHEET_TONES:
+            block, key, limit = 'back', f'{ERAS[parts[1]]}/{parts[2]}', 150_000
+        elif parts[0] == 'front' and len(parts) == 4 and parts[2] in ERAS and parts[3] in SHEET_TONES:
+            block, key, limit = 'front', f'{parts[1]}/{parts[2]}/{parts[3]}', 40_000
+        elif parts[0] == 'front' and len(parts) == 3 and parts[2] == 'line':
+            block, key, limit = 'front', f'{parts[1]}/line', 40_000
+        elif parts[0] == 'cu' and len(parts) == 2 and parts[1] in ERAS:
+            block, key, limit = 'cu', ERAS[parts[1]], 40_000
+        else: raise SystemExit(f'bad name {f}')
+        for q in (80, 72, 64):
+            url, n = save_hashed(sheet, f'cf-{stem}', q)
+            if n < limit: break
+            os.remove(os.path.join(OUT, url.rsplit('/', 1)[1]))
+        if n >= limit: raise SystemExit(f'too big {p} {n}')
+        cf[block][key] = url; print(f'{block} {key} -> {url} ({n} bytes)')
+    man['cf'] = cf
+    json.dump(man, open(path, 'w'), separators=(',', ':'))
+
 if __name__ == '__main__':
     if '--tones-only' in sys.argv: tones_only('--allow-changes' in sys.argv)
     elif '--cards-only' in sys.argv: cards_only(sys.argv[sys.argv.index('--cards-only') + 1:])
+    elif '--cf-only' in sys.argv: cf_only()
     elif '--recolor-only' in sys.argv: recolor_only(sys.argv[sys.argv.index('--recolor-only') + 1:])
     elif '--full' in sys.argv: main()   # deletes every webp and rebuilds everything: banned until the fielder source is fixed (plan 52)
     else: print('usage: export-app-art.py --cards-only <manifest key>... | --recolor-only <key>... | --full'); sys.exit(2)

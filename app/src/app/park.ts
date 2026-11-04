@@ -344,7 +344,12 @@ export function fielderAt(f: FielderPlan, t: number): { at: XY; frame: number; m
 export interface Camera { yaw: number; pitch: number; fov: number;
   /** Plan 59 Round 1b: where the camera stands (feet). Default CAM, so every existing camera is unchanged. */
   pos?: { x: number; y: number; z: number }; }
+/** Plan 59 Round 5: the field camera with the fielder zoom on top of the base camera below. */
 export function cameraAt(p: ParkPlay, t: number, aspect: number): Camera {
+  return zoomCamera(p, t, aspect, baseCameraAt(p, t, aspect));
+}
+/** The TV-operator camera before Round 5 (unchanged): turn to the ball, tilt to its height, zoom with distance. */
+export function baseCameraAt(p: ParkPlay, t: number, aspect: number): Camera {
   const b = ballAt(p, t);
   const bx = b[0] - CAM.x, by = b[1] - CAM.y, d = Math.hypot(bx, by);
   const bearing = deg(Math.atan2(bx, by)), elev = deg(Math.atan2(b[2] - CAM.z, Math.max(0.5, d)));
@@ -467,4 +472,82 @@ export function windupCamera(): Camera {
 export function windupSpriteH(): number {
   const cam = windupCamera(), d = toCam(cam, RUBBER.x, RUBBER.y, RUBBER.z)[1];
   return (PITCHER_CELL_FT * WINDUP_F) / d;
+}
+
+// ---- Plan 59 Round 5: fielder zoom ----
+/** Zoom window: eases in over ZOOM_IN s ending ZOOM_LEAD s before the touch, holds to the touch, eases out over ZOOM_OUT s. */
+export const ZOOM_IN = 0.3, ZOOM_LEAD = 0.2, ZOOM_OUT = 0.3;
+/** Narrowest zoom: 3 degrees each side of center; the fielder (6 ft) at most a quarter of the frame height. */
+const ZOOM_MIN_H = 3, ZOOM_MAN = 0.25;
+export function zoomAmount(p: ParkPlay, t: number): number {
+  if (!p.named || p.named === 'C' || !p.touch || p.noTurn) return 0;   // the catcher plays next to the camera: no close-up
+  const t0 = p.touchT - ZOOM_LEAD - ZOOM_IN, t1 = p.touchT - ZOOM_LEAD, t2 = p.touchT, t3 = p.touchT + ZOOM_OUT;
+  if (t <= t0 || t >= t3) return 0;
+  if (t < t1) return ease((t - t0) / ZOOM_IN);
+  if (t <= t2) return 1;
+  return 1 - ease((t - t2) / ZOOM_OUT);
+}
+function zoomCamera(p: ParkPlay, t: number, aspect: number, base: Camera): Camera {
+  const z = zoomAmount(p, t);
+  if (z <= 0) return base;
+  const fp = p.fielders.find(f => f.pos === p.named);
+  if (!fp) return base;
+  const at = fielderAt(fp, t).at, b = ballAt(p, t);
+  const look = (x: number, y: number, h: number): [number, number, number] => {
+    const dx = x - CAM.x, dy = y - CAM.y, d = Math.hypot(dx, dy);
+    return [deg(Math.atan2(dx, dy)), deg(Math.atan2(h - CAM.z, Math.max(0.5, d))), d];
+  };
+  const [fy, fe, fd] = look(at[0], at[1], 3), [by, be] = look(b[0], b[1], b[2]);
+  const tH = (hh: number) => Math.tan(rad(hh)), hOf = (vv: number) => deg(Math.atan(Math.tan(rad(vv)) * aspect));
+  // the zoomed frame: centered on the fielder; wide enough for the ball inside 70% of each half and the man at most ZOOM_MAN
+  const hb = base.fov / 2;
+  const man = Math.min(Math.max(ZOOM_MIN_H, hOf(deg(Math.atan(6 / fd)) / (2 * ZOOM_MAN))), hb);   // never wider than the base for the man alone
+  const need = (d: number) => deg(Math.atan(Math.tan(rad(Math.min(80, Math.abs(d)))) / 0.6));   // the ball inside 60% of the half frame
+  const lens = Math.min(40, hOf(35));   // the Round 1b lens limits: at most 80 degrees across and 70 up and down
+  const hz = Math.min(lens, Math.max(man, need(by - fy), hOf(need(be - fe))));
+  // blend from the base camera (angles and the half-width in tangent space, so the frame grows and shrinks smoothly)
+  // a ball still outside 60% at the lens limit (a pop caught near the camera): aim part of the way toward it, keeping the
+  // fielder inside the middle third (at most 30% of each half frame off center)
+  const vz = deg(Math.atan(tH(hz) / aspect));
+  const off = (d: number, half: number) => { const lim = deg(Math.atan(Math.tan(rad(half)) * 0.6)); return Math.abs(d) <= lim ? 0 : Math.sign(d) * Math.min(Math.abs(d) - lim, deg(Math.atan(Math.tan(rad(half)) * 0.3))); };
+  const ay = fy + off(by - fy, hz), ap = fe + off(be - fe, vz);
+  const yaw = lerp(base.yaw, ay, z), pitch = lerp(base.pitch, ap, z);
+  const hh = deg(Math.atan(lerp(tH(hb), tH(hz), z)));
+  return { yaw, pitch, fov: hh * 2 };
+}
+
+// ---- Plan 59 Round 5: center-field windup shot ----
+/** CF camera: 110 ft behind the rubber (shallow center field), 14 ft up, long lens; units of stage height (as the windup). */
+export const CF_CAM = { back: 110, z: 14 };
+/** Focal length per unit of stage height: the 7.3 ft pitcher cell fills 0.62 of the stage at the rubber. */
+export const CF_F = (0.62 * CF_CAM.back) / PITCHER_CELL_FT;
+/** Where the feet land: pitcher at CF_PITCH (x share of stage height, + = right; y below center), batter at CF_BAT_X. */
+export const CF_PITCH = { x: -0.12, y: 0.45 }, CF_BAT_X = 0.11;
+/** The front batter cell is 480 px for the same 7.3 ft as the pitcher cell (tools/make-cf-art.py PX_PER_FT). */
+export const CF_BATTER_FT = PITCHER_CELL_FT;
+/** Batter's feet, catcher and umpire (feet; righty batter, third-base side = negative x). */
+export const CF_SPOT = { batter: { x: -2.6, y: 0.9 }, catcher: { x: 0, y: -2.6 }, umpire: { x: -0.9, y: -5.6 } };
+export interface CfSprite { x: number; y: number; h: number; }
+export interface CfLayout { cam: Camera; f: number; pitcher: CfSprite; batter: CfSprite; catcher: CfSprite; umpire: CfSprite; spot: typeof CF_SPOT; }
+const cfMemo = new Map<string, CfLayout>();
+/** The CF camera and where each sprite stands (x from the stage center, y from the stage center, + = down; h = cell
+ *  height), all in units of stage height. A lefty batter mirrors the whole layout. Pure; worked out once per side. */
+export function cfLayout(bats: 'L' | 'R'): CfLayout {
+  const have = cfMemo.get(bats);
+  if (have) return have;
+  const s = bats === 'L' ? -1 : 1;
+  const spot = { batter: { x: s * CF_SPOT.batter.x, y: CF_SPOT.batter.y }, catcher: { ...CF_SPOT.catcher, x: s * CF_SPOT.catcher.x }, umpire: { x: s * CF_SPOT.umpire.x, y: CF_SPOT.umpire.y } } as typeof CF_SPOT;
+  const pos = { x: 0, y: RUBBER.y + CF_CAM.back, z: CF_CAM.z };
+  const scr = (cam: Camera, x: number, y: number) => { const v = toCam(cam, x, y, 0); return [(v[0] / v[1]) * CF_F, -(v[2] / v[1]) * CF_F, v[1]] as const; };
+  const at = (yaw: number) => aimed(pos, yaw, RUBBER, CF_F, s * CF_PITCH.x, CF_PITCH.y, 0.5);
+  // the pitcher lands at CF_PITCH for any yaw (aimed slides the camera); turn until the batter lands at CF_BAT_X
+  let lo = 160, hi = 200;
+  const bx = (yaw: number) => scr(at(yaw), spot.batter.x, spot.batter.y)[0] - s * CF_BAT_X;
+  for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (Math.sign(bx(mid)) === Math.sign(bx(lo))) lo = mid; else hi = mid; }
+  const cam = at((lo + hi) / 2);
+  const sprite = (x: number, y: number): CfSprite => { const [sx, sy, d] = scr(cam, x, y); return { x: sx, y: sy, h: (PITCHER_CELL_FT * CF_F) / d }; };
+  const L: CfLayout = { cam, f: CF_F, pitcher: sprite(RUBBER.x, RUBBER.y), batter: sprite(spot.batter.x, spot.batter.y),
+    catcher: sprite(spot.catcher.x, spot.catcher.y), umpire: sprite(spot.umpire.x, spot.umpire.y), spot };
+  cfMemo.set(bats, L);
+  return L;
 }

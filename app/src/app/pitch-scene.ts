@@ -1,8 +1,8 @@
 import { afterRenderEffect, Component, computed, DestroyRef, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
-import { Era, FielderArt, ParkLook, SideArt, WindupArt } from './art';
+import { CfArt, Era, FielderArt, ParkLook, SideArt, WindupArt } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, PlayFacts, Trajectory } from './logic';
-import { buildPlay, hasPark, ParkPlay, PITCHER_CELL_FOOT, SIDE_F, sideCamera, WINDUP_F, WINDUP_FOOT, windupCamera, windupSpriteH } from './park';
+import { buildPlay, CF_F, cfLayout, hasPark, ParkPlay, PITCHER_CELL_FOOT, SIDE_F, sideCamera, WINDUP_F, WINDUP_FOOT, windupCamera, windupSpriteH } from './park';
 import { backdropKey, BackdropPlace, BackdropView, FielderSheet, LOOKS, renderBackdrop } from './park-draw';
 import { parkOn } from './park-setting';
 
@@ -454,8 +454,9 @@ export function stageFit(w: number, h: number, mirror: boolean): StageFit {
 
 /** Plan 59 Round 1b: where a backdrop's camera sits on a stage of w x h CSS px: the side view's center on the side
  *  panel's center through stageFit (so the plate lands on PLATE_X, FOOT_Y), the windup's on the stage's center. */
-export function backdropPlace(view: 'side' | 'windup', mirror: boolean, w: number, h: number): BackdropPlace {
+export function backdropPlace(view: BackdropView, mirror: boolean, w: number, h: number): BackdropPlace {
   if (view === 'windup') return { cam: windupCamera(), f: WINDUP_F * h, cx: w / 2, cy: h / 2 };
+  if (view === 'cf') return { cam: cfLayout(mirror ? 'L' : 'R').cam, f: CF_F * h, cx: w / 2, cy: h / 2 };   // plan 59 r5: mirror = lefty batter
   const fit = stageFit(w, h, mirror);
   return { cam: sideCamera(mirror), f: SIDE_F * fit.s, cx: fit.left + 380 * fit.s, cy: fit.top + 240 * fit.s };
 }
@@ -510,7 +511,25 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
           }
         </div>
       }
-      @if (windFrame() >= 0 && windup(); as w) {
+      @if (windFrame() >= 0 && windup() && cf(); as c) {
+        <div class="windup cf" aria-hidden="true" [style.--whz]="cfHz()">
+          <canvas class="bg" #bgWind></canvas>
+          @if (cfBox(); as b) {
+            @if (c.cu) {
+              <div class="cfs" [class.mirror]="c.bats === 'L'" [style.left.px]="b.ump.left" [style.top.px]="b.ump.top" [style.height.px]="b.ump.h" [style.background-image]="'url(' + c.cu + ')'" style="--n: 2; --f: 1"></div>
+              <div class="shadow" [style.left.px]="b.cat.cx" [style.top.px]="b.cat.foot" [style.width.px]="b.cat.h * 0.3" [style.height.px]="b.cat.h * 0.04"></div>
+              <div class="cfs" [class.mirror]="c.bats === 'L'" [style.left.px]="b.cat.left" [style.top.px]="b.cat.top" [style.height.px]="b.cat.h" [style.background-image]="'url(' + c.cu + ')'" style="--n: 2; --f: 0"></div>
+            }
+            <div class="shadow" [style.left.px]="b.bat.cx" [style.top.px]="b.bat.foot" [style.width.px]="b.bat.h * 0.32" [style.height.px]="b.bat.h * 0.04"></div>
+            <div class="cfs" [class.mirror]="c.front.mirror" [style.left.px]="b.bat.left" [style.top.px]="b.bat.top" [style.height.px]="b.bat.h" [style.background-image]="'url(' + c.front.sheet + ')'" style="--n: 2" [style.--f]="windFrame() >= 2 ? 1 : 0"></div>
+            <div class="shadow" [style.left.px]="b.pit.cx" [style.top.px]="b.pit.foot" [style.width.px]="b.pit.h * 0.32" [style.height.px]="b.pit.h * 0.04"></div>
+            <div class="cfs pitb" [class.mirror]="c.back.mirror" [style.left.px]="b.pit.left" [style.top.px]="b.pit.top" [style.height.px]="b.pit.h" [style.background-image]="'url(' + c.back.sheet + ')'" [style.--f]="windFrame()"></div>
+            @if (windBlend().next !== null) {
+              <div class="cfs pitb top" [class.mirror]="c.back.mirror" [style.left.px]="b.pit.left" [style.top.px]="b.pit.top" [style.height.px]="b.pit.h" [style.background-image]="'url(' + c.back.sheet + ')'" [style.--f]="windBlend().next" [style.opacity]="windBlend().top"></div>
+            }
+          }
+        </div>
+      } @else if (windFrame() >= 0 && windup(); as w) {
         <div class="windup" aria-hidden="true">
           <canvas class="bg" #bgWind></canvas>
           <div class="contact" [style.top.%]="100 * WINDUP_FOOT" [style.aspect-ratio]="pitBox.shadow"></div>
@@ -549,6 +568,13 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
       background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
     .windup .pit.mirror { transform: translateX(-50%) scaleX(-1); }
     .windup .pit.top { z-index: 2; }
+    /* Plan 59 Round 5: center-field shot sprites (cells 364 x 480; --n frames per sheet, --f the frame). */
+    .windup .cfs { position: absolute; z-index: 1; aspect-ratio: 364 / 480; --n: 8;
+      background-repeat: no-repeat; background-size: calc(var(--n) * 100%) 100%; background-position: calc(var(--f, 0) * 100% / (var(--n) - 1)) 0; }
+    .windup .cfs.mirror { transform: scaleX(-1); }
+    .windup .cfs.pitb { z-index: 3; }
+    .windup .cfs.pitb.top { z-index: 4; }
+    .windup .shadow { position: absolute; z-index: 1; transform: translate(-50%, -50%); border-radius: 50%; background: #000; opacity: .2; }
     /* Plan 59 Round 1b finish pass: contact shadow under the pitcher's feet; a light vignette over every view (12% at most). */
     .windup .contact { position: absolute; left: 50%; height: 2.2%; transform: translate(-50%, -50%); border-radius: 50%; background: #000; opacity: .2; z-index: 1; }
     .stage::after { content: ''; position: absolute; inset: 0; z-index: 6; pointer-events: none; border-radius: inherit;
@@ -591,6 +617,21 @@ export class PitchScene {
   readonly side = input<SideArt | null>(null);
   /** Plan 36/40: the pitcher's windup sheet, played before every pitch (only when the batter's side art shows too). */
   readonly windup = input<WindupArt | null>(null);
+  /** Plan 59 Round 5: the center-field shot for the windup (back sheet, batter strip, catcher and umpire); null = the
+   *  front windup above. Same timing and cues: only the picture changes. */
+  readonly cf = input<CfArt | null>(null);
+  /** Where each CF sprite sits on this stage (CSS px), from the CF layout in units of stage height. */
+  protected readonly cfBox = computed(() => {
+    const z = this.stageSize(), c = this.cf();
+    if (!z || !c || z[0] <= 0 || z[1] <= 0) return null;
+    const L = cfLayout(c.bats), [w, h] = z, foot = 468 / 480;
+    const box = (sp: { x: number; y: number; h: number }) => {
+      const hh = sp.h * h, cx = w / 2 + sp.x * h, fy = h / 2 + sp.y * h;
+      return { h: hh, left: cx - (hh * 364) / 480 / 2, top: fy - hh * foot, cx, foot: fy };
+    };
+    return { pit: box(L.pitcher), bat: box(L.batter), cat: box(L.catcher), ump: box(L.umpire) };
+  });
+  protected readonly cfHz = computed(() => { const c = this.cf(); if (!c) return null; const cam = cfLayout(c.bats).cam; return (50 + 100 * CF_F * Math.tan((cam.pitch * Math.PI) / 180)) + '%'; });
   protected readonly windFrame = signal(-1);
   /** Plan 39: the fading-in next pose over the current one (the bottom pose stays fully visible). */
   protected readonly windBlend = signal<WindupBlend>({ base: 0, next: null, top: 0 });
@@ -659,11 +700,12 @@ export class PitchScene {
     const z = this.stageSize(), look = this.look() ?? '1956', side = this.bats() === 'L' ? 'L' : 'R';
     if (!z) return;
     const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
-    for (const [view, ref] of [['windup', this.bgWind()], ['side', this.bgSide()]] as [BackdropView, ElementRef<HTMLCanvasElement> | undefined][]) {
-      if (view === 'windup' && !this.windup()) continue;
+    const wv: BackdropView = this.cf() ? 'cf' : 'windup';   // plan 59 r5: the CF shot has its own backdrop
+    for (const [view, ref] of [[wv, this.bgWind()], ['side', this.bgSide()]] as [BackdropView, ElementRef<HTMLCanvasElement> | undefined][]) {
+      if (view !== 'side' && !this.windup()) continue;
       // Plan 59 Round 2b: a held stage under the field view needs no side backdrop; a held stage keeps its old picture until the new one is in.
       const held = untracked(() => this.held());
-      if (held && (view === 'windup' || untracked(() => !!this.park() && this.parkFade() >= 1))) continue;   // the windup layer is gone once held
+      if (held && (view !== 'side' || untracked(() => !!this.park() && this.parkFade() >= 1))) continue;   // the windup layer is gone once held
       const place = this.place(view), key = backdropKey(look, view, side, z[0], z[1], dpr);
       if (!place) continue;
       const draw = () => {
@@ -678,7 +720,7 @@ export class PitchScene {
       };
       const cv = ref?.nativeElement;
       if (cv && cv.dataset['key'] && cv.dataset['key'] !== key && !held) { cv.width = 0; delete cv.dataset['key']; }
-      if (view === 'windup') draw();
+      if (view !== 'side') draw();
       else setTimeout(() => { if (this.stageSize() === z) draw(); }, 0);
     }
   }

@@ -1,7 +1,7 @@
 import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, DestroyRef, effect, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { api, PlayerHit, SeasonItem } from './api';
-import { ArtManifest, eraOf, fielderArt, ParkLook, parkLookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
+import { ArtManifest, CfArt, cfArt, eraOf, fielderArt, ParkLook, parkLookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
 import { sideLine, sideNameLine } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
@@ -156,10 +156,10 @@ export class ChallengeFlow {
 
   // Playing out a resolved game, one tap per at-bat.
   protected readonly revealed = signal(0);
-  protected readonly scene = signal<{ ab: CAtBat; art: SideArt | null; windup: WindupArt | null } | null>(null);
+  protected readonly scene = signal<{ ab: CAtBat; art: SideArt | null; windup: WindupArt | null; cf?: CfArt | null } | null>(null);
   /** Plan 59 Round 2b: the finished at-bat's scene, kept on screen (held) until the next Pitch; scene() is null meanwhile,
    *  so everything that reads scene() behaves as between at-bats (Pitch enabled, no live count, next batter's side and intro). */
-  protected readonly heldScene = signal<{ ab: CAtBat; art: SideArt | null; windup: WindupArt | null } | null>(null);
+  protected readonly heldScene = signal<{ ab: CAtBat; art: SideArt | null; windup: WindupArt | null; cf?: CfArt | null } | null>(null);
   /** Plan 59 Round 2b: the result word wears the game's era board colors. */
   protected readonly wordColors = computed(() => ERA_BOARD[this.parkLook() ?? '1990']);
   protected readonly lastName = lastName;
@@ -691,13 +691,15 @@ export class ChallengeFlow {
     const m = this.manifest();
     const art = sideArt(m, ab.batter.id, ab.batter.year);
     // Plan 40 A: the pitcher's windup before every pitch, loaded on its own so a failed pitcher sheet never drops the batter art.
-    const wind = art ? windupArt(m, ab.pitcher.id, eraOf(ab.pitcher.year), ab.pitcher.throws) : null;
+    // Plan 59 Round 5: the center-field shot replaces the front windup when its art exists (same timing).
+    const cf = art ? cfArt(m, ab.pitcher, { id: ab.batter.id, year: ab.batter.year, bats: hitsFrom(ab.batter.bats, ab.pitcher.throws) }, true) : null;
+    const wind = cf ? cf.back : art ? windupArt(m, ab.pitcher.id, eraOf(ab.pitcher.year), ab.pitcher.throws) : null;
     let ok = false, windOk = false;
     if (art) {
       this.loadingArt.set(true);
       const limit = new Promise<void>(res => setTimeout(res, 3000));
       const a = preloadImages([art.sheet]).then(r => { ok = r; });
-      const w = wind ? preloadImages([wind.sheet]).then(r => { windOk = r; }) : Promise.resolve();
+      const w = wind ? preloadImages(cf ? cf.urls : [wind.sheet]).then(r => { windOk = r; }) : Promise.resolve();
       await Promise.race([Promise.all([a, w]), limit]);
       this.loadingArt.set(false);
     }
@@ -707,7 +709,7 @@ export class ChallengeFlow {
     this.liveCount.set({ balls: 0, strikes: 0 });
     this.lastPlay.set(null);   // Plan 59 Round 2b: the held result keeps its lines until the next scene starts
     this.heldScene.set(null);
-    this.scene.set({ ab, art: ok ? art : null, windup: ok && windOk ? wind : null });
+    this.scene.set({ ab, art: ok ? art : null, windup: ok && windOk ? wind : null, cf: ok && windOk ? cf : null });
   }
 
   protected callOf(ab: CAtBat) {

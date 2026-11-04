@@ -3,7 +3,7 @@ import { vi } from 'vitest';
 import { fielderArt, SideLook } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, callFor, countFor, OutcomeKey, PlayFacts } from './logic';
-import { BASE1, BASE2, ballAt, buildPlay, cameraAt, dist, fielderAt, hasPark, MAX_TILT, MAX_TURN, ParkPlay, PLATE_MID, polar, project, projectF, RUBBER, SIDE_F, sideCamera, skyOnly, wallDist, WINDUP_F, WINDUP_FOOT, WINDUP_CAM, windupCamera, windupSpriteH, ZONE } from './park';
+import { BASE1, BASE2, ballAt, baseCameraAt, buildPlay, cameraAt, dist, fielderAt, hasPark, MAX_TILT, MAX_TURN, ParkPlay, PLATE_MID, polar, project, projectF, RUBBER, SIDE_F, sideCamera, skyOnly, wallDist, WINDUP_F, WINDUP_FOOT, WINDUP_CAM, windupCamera, windupSpriteH, ZONE } from './park';
 import { W, H } from './park-draw';
 import { backdropPlace, FINAL_TL, FOOT_Y, LEAD_TL, PANEL_W, PitchScene, planPitch, PLATE_X, SceneCue, motionFor, stageFit } from './pitch-scene';
 
@@ -310,7 +310,7 @@ describe('plan 59 r1b: camera unchanged at the 760:480 panel', () => {
     for (const c of ALL) {
       const p = build(c);
       for (let i = 0; i <= Math.round(p.len * 30); i++) {
-        const t = Math.min(p.len, i / 30), cam = cameraAt(p, t, W / H);
+        const t = Math.min(p.len, i / 30), cam = baseCameraAt(p, t, W / H);   // plan 59 r5: the base camera (the zoom sits on top, tested in r5-camera.spec.ts)
         n++;
         if (skyOnly(cam, W / H, p.look)) sky++;
         out.push(`${cam.yaw},${cam.pitch},${cam.fov}`);
