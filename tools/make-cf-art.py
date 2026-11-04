@@ -111,9 +111,37 @@ def back(src, era, tone):
     print('wrote', p, 'scale', round(want / have, 4))
 
 
+BATTER_SRC = 'art/source/batter-cf'   # gpt-image-2: the batter side-on as the CF camera sees him (stance, load)
+
+
+def side_on(src, sheet, tone):
+    """Stephen (Nov 4): the batter stands sideways to the pitcher (chest toward the plate). Two figures, left to right,
+    scaled so the stance is as tall as the front sprite's stance, feet on the baseline, mirrored so a righty faces
+    screen left (toward the plate as seen from center field)."""
+    a = np.asarray(Image.open(src).convert('RGB'))
+    fg = ~_outer_background(a)
+    lab, n = ndi.label(fg)
+    sizes = ndi.sum(np.ones_like(lab), lab, range(1, n + 1))
+    keep = [i + 1 for i in np.argsort(sizes)[::-1][:2]]
+    objs = sorted(((ndi.find_objects(lab)[k - 1], k) for k in keep), key=lambda o: o[0][1].start)
+    if len(objs) != 2: raise SystemExit(f'{src}: {len(objs)} figures')
+    rgba = slicer.defringe(a, fg)
+    want = heights(Image.open(f'art/sprites/batter/{sheet}-{tone}.png'))[0]
+    sc = want / (objs[0][0][0].stop - objs[0][0][0].start)
+    out = Image.new('RGBA', (CW * 2, CH), (0, 0, 0, 0))
+    for i, (sl, k) in enumerate(objs):
+        m = lab[sl] == k
+        img = rgba[sl].copy(); img[..., 3] = np.where(m, img[..., 3], 0)
+        im = Image.fromarray(img, 'RGBA').transpose(Image.FLIP_LEFT_RIGHT)
+        im = im.resize((max(1, round(im.width * sc)), max(1, round(im.height * sc))), Image.LANCZOS)
+        if im.width > CW: raise SystemExit(f'{src}: figure {i} too wide for the cell')
+        out.alpha_composite(im, (i * CW + (CW - im.width) // 2, BASE - im.height))
+    return out
+
+
 def strip(look, era, tone):
     src_tone = 'light' if tone == 'line' else tone
-    s = Image.open(f'art/sprites/batter/{FRONT_SHEET[look]}-{src_tone}.png').convert('RGBA').crop((0, 0, 2 * CW, CH))
+    s = side_on(f'{BATTER_SRC}/{FRONT_SHEET[look]}-{src_tone}.png', FRONT_SHEET[look], src_tone)
     rule = RECOLOR.get((look, era)) or RECOLOR.get((look, era, tone))
     if rule and tone != 'line': s = recolor(s, rule, era)
     if tone == 'line': s = line_art(s)
@@ -164,7 +192,7 @@ PAL = {'1946': {'body': (87, 2, 16), 'trim': (35, 47, 35)}, '1970': {'body': (89
        '1990': {'body': (15, 0, 2), 'pants': (78, 2, 10)}}
 # (look, era short, tone) -> what to recolour. 1920 look in 1946-55: gray flannel to cream, navy trim to red.
 # 1956 look in 1970-89: red trim to royal blue. 1990 darkbrown: cream jersey to black, cream pants to gray.
-RECOLOR = {('1920', '1946'): 'gray-navy', ('1956', '1970'): 'red', ('1990', '1990', 'darkbrown'): 'cream'}
+RECOLOR = {('1920', '1946'): 'gray-navy', ('1956', '1970'): 'red'}   # the side-on art (Nov 4) already wears the 1990 black
 
 
 def _lab(rgb):
