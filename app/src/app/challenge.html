@@ -8,7 +8,7 @@
     @case ('home') {
       <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex">
-        <h1 #stepTitle tabindex="-1">Play a game</h1>
+        <h1 #stepTitle tabindex="-1">Last Licks</h1>
         <p class="how">Pick a pitcher and a batting order from any season. One inning: your hitters bat until 3 outs, then theirs. Most runs wins.</p>
         <button type="button" class="link small how-link" (click)="openInfo('how')">How the sim works</button>
         @if (mine().length) {
@@ -35,7 +35,7 @@
       <main class="flex">
         <h1 #stepTitle tabindex="-1" class="call">{{ view()?.creatorName }} challenged you</h1>
         @if (inning()) {
-          <p class="how">Pick a pitcher and a batting order from any season. You won't see their team until the game.
+          <p class="how">Last Licks. Pick a pitcher and a batting order from any season. You won't see their team until the game.
             One inning: their hitters bat until 3 outs, then yours. Most runs wins.</p>
           <p class="note">{{ rulesLine() }}</p>
         } @else {
@@ -234,7 +234,7 @@
             @if (pbpRecap().length) { <p class="base-line">{{ pbpRecap().join(' ') }}</p> }
             @else if (baseText()) { <p class="base-line">{{ baseText() }}</p> }
             @if (halfCard()) { <p class="half-card">{{ halfCard() }}</p> }
-            @if (revealed() === 0) { <p class="note">Tap Pitch to see each at-bat.</p> }
+            @if (revealed() === 0) { <p class="note">@if (isInningGame()) { One inning. Most runs wins. }Tap Pitch to see each at-bat.</p> }
             @if (nextAtBat(); as n) {
               <p class="muted">{{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) + ' · ' + batsLine(n.battingSide) : roundLabel(n) + ' · ' + sideName(n.battingSide) + ' batting' }}</p>
               <p class="call">{{ n.batter.name }} <span class="muted">{{ n.batter.year }}</span></p>

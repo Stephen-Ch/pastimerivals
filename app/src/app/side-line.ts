@@ -11,3 +11,14 @@ export function sideLine(bats: string | null | undefined, throws: string | null 
   }
   return null;
 }
+
+/** Rename polish (PLAN-2026-11-04-rename-polish-v3): short side line with the batter's last name, shown while his at-bat plays.
+ *  Short on purpose: the long forms do not fit at 320 px or in the 200 px landscape column. Never null, so every batter is named. */
+export function sideNameLine(last: string, bats: string | null | undefined, throws: string | null | undefined): string {
+  const b = (bats ?? '').trim().toUpperCase(), t = (throws ?? '').trim().toUpperCase();
+  if (b === 'R') return `${last} bats right.`;
+  if (b === 'L') return `${last} bats left.`;
+  if ((b === 'B' || b === 'S') && t === 'R') return `${last}, switch, bats left.`;
+  if ((b === 'B' || b === 'S') && t === 'L') return `${last}, switch, bats right.`;
+  return `${last} batting.`;
+}

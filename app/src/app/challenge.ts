@@ -2,7 +2,7 @@ import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, DestroyRef, effect, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { api, PlayerHit, SeasonItem } from './api';
 import { ArtManifest, eraOf, fielderArt, ParkLook, parkLookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
-import { sideLine } from './side-line';
+import { sideLine, sideNameLine } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
 import { PitchScene, SceneCue } from './pitch-scene';
@@ -218,7 +218,9 @@ export class ChallengeFlow {
   protected readonly nextAtBat = computed(() => this.game()?.atBats[this.revealed()] ?? null);
   /** Plan 40 B: side of the plate for the batter now up (during the scene) or the next batter; none when the game is over. */
   protected readonly sideText = computed(() => {
-    const ab = this.scene()?.ab ?? this.nextAtBat();
+    const playing = this.scene()?.ab;
+    if (playing) return sideNameLine(lastName(playing.batter.name), playing.batter.bats, playing.pitcher.throws);
+    const ab = this.nextAtBat();
     return ab ? sideLine(ab.batter.bats, ab.pitcher.throws) : null;
   });
   protected readonly score = computed<[number, number]>(() => {

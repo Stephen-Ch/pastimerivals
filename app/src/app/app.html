@@ -68,7 +68,7 @@
         <button class="primary big pitch-btn" type="button" (click)="throwPitch()" [disabled]="busy() || !matchup() || !pitcherReport() || !batterReport()">{{ artWaiting() ? 'Loading art' : 'Pitch' }}</button>
         <button type="button" class="sim-btn" (click)="runSims()" [disabled]="busy() || !matchup()">Simulate 1,000</button>
         <button type="button" class="help-btn" aria-label="What does Simulate do?" (click)="openInfo('sim')">?</button>
-        @if (firstView()) { <p class="hint">Pick any pitcher and batter from history. Tap Pitch to play this at-bat.</p> }
+        @if (firstView()) { <p class="hint">The Duel: pick any pitcher and batter from history. Tap Pitch to play this at-bat.</p> }
         <div class="modes">
           <button type="button" (click)="openChallenge('cpu')">Play an inning</button>
           <button type="button" (click)="openChallenge('friend')">Challenge a friend</button>
