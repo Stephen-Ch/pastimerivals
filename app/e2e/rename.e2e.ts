@@ -1,5 +1,5 @@
 // PLAN-2026-11-04-rename-polish-v3 (amendment A1: home buttons unchanged): The Duel in the first-visit hint, "One inning" before the first Pitch, the batter's name in the
-// side line while his at-bat plays (short form, one line, never cut for a long last name), no page scroll.
+// side line while his at-bat plays (short form, one line, never cut for a long last name; unknown hand: no line, as before), no page scroll.
 import { expect, Page, test } from '@playwright/test';
 import { LL_CODE, serve } from './harness';
 
@@ -27,15 +27,15 @@ for (const [w, h] of SIZES) {
     await page.getByRole('button', { name: 'Pitch', exact: true }).click();
     await page.locator('pr-pitch-scene .stage').waitFor();
     const side = page.locator('.side-line');
-    await expect(side).toHaveText(/^[A-Z][\w'.-]* (bats (left|right)|batting)\.$|^[A-Z][\w'.-]*, switch, bats (left|right)\.$/);
-    // worst short form with a long last name: fits uncut on one line
+    await expect(side).toHaveText('Aaron bats right.');   // fixture at-bat 0: Aaron (R) vs Pedro (R)
+    // long last name (11 letters) fits uncut; longer ones (Saltalamacchia, 14) end in ... at 568x320, as planned
     const cut = await side.evaluate(e => { const c = e.cloneNode() as HTMLElement; c.textContent = 'Yastrzemski, switch, bats right.'; e.after(c); const d = c.scrollWidth - c.clientWidth; c.remove(); return d; });
     expect(cut, 'long name not cut').toBeLessThanOrEqual(0);
     expect(await pageScroll(page), 'page scroll playing').toBeLessThanOrEqual(1);
     await page.locator('pr-pitch-scene .stage[data-held="1"]').waitFor({ timeout: 20_000 });
     // held: back to the long form for the next hitter (same function as before the change)
-    await expect(side).not.toHaveText(/ bats (left|right)\.$| batting\.$|, switch, /);
-    expect(before === null || !/ batting\.$/.test(before)).toBe(true);
+    await expect(side).toHaveText('Bats left: other side of the plate.');   // next up: Ruth (L) vs Pedro (R)
+    expect(before).toBe('Bats right.');
     expect(hn.bad).toEqual([]);
   });
 }
