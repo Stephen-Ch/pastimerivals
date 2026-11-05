@@ -125,6 +125,9 @@ def side_on(src, sheet, tone):
     keep = [i + 1 for i in np.argsort(sizes)[::-1][:2]]
     objs = sorted(((ndi.find_objects(lab)[k - 1], k) for k in keep), key=lambda o: o[0][1].start)
     if len(objs) != 2: raise SystemExit(f'{src}: {len(objs)} figures')
+    third = np.sort(sizes)[::-1][2] if n > 2 else 0
+    if third > 0.01 * np.sort(sizes)[::-1][1]:   # a loose piece (e.g. a bat drawn apart from the hands) would be dropped
+        raise SystemExit(f'{src}: a third piece of {int(third)} px; redraw the source')
     rgba = slicer.defringe(a, fg)
     want = heights(Image.open(f'art/sprites/batter/{sheet}-{tone}.png'))[0]
     sc = want / (objs[0][0][0].stop - objs[0][0][0].start)
