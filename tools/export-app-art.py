@@ -141,8 +141,91 @@ def main():
     print(f"sheets {len(man['sheets'])}, cards {len(man['cards'])}, tones {len(man['tones'])}, art bytes {total}")
     if errors: print('ERRORS', errors); sys.exit(1)
 
+def recolor_only(keys):
+    """Plan 59 Round 4: patch named keys from art/sprites/recolor/out (or the base art when a key needs no recolor).
+    Keys: sheets 'pitcher/<era>/<tone>', side '<look>/<era short>/<tone>' (new; frames copied from '<look>/<tone>'),
+    fielder '<era>'. No deletes; nothing else in the manifest changes. Every file passes known_bad."""
+    path = 'app/public/art-manifest.json'
+    man = json.load(open(path)); rc = 'art/sprites/recolor/out'
+    for k in keys:
+        parts = k.split('/')
+        if parts[0] == 'pitcher' and len(parts) == 3:
+            _, era, tone = parts
+            if era not in SHORT_OF or tone not in SHEET_TONES: raise SystemExit(f'bad key {k}')
+            p = f'{rc}/pitcher-{SHORT_OF[era]}-{tone}.png'
+            src = Image.open(p).convert('RGBA'); known_bad.check_source(p)
+            if src.size != (CELL_W * 8, CELL_H): raise SystemExit(f'bad size {p} {src.size}')
+            sheet = Image.new('RGBA', ((CELL_W + 2 * PADX) * 8, CELL_H), (0, 0, 0, 0))
+            for i in range(8):
+                sheet.paste(src.crop((i * CELL_W, 0, (i + 1) * CELL_W, CELL_H)), (i * (CELL_W + 2 * PADX) + PADX, 0))
+            url, n = save_hashed(sheet, f'pitcher-{SHORT_OF[era]}-{tone}', 80)
+            if n >= 150_000:
+                os.remove(os.path.join(OUT, url.rsplit('/', 1)[1])); raise SystemExit(f'too big {url} {n}')
+            old = man['sheets'].get(k); man['sheets'][k] = url
+        elif len(parts) == 3 and parts[0] in ('1901', '1920', '1956', '1990'):
+            look, short, tone = parts
+            if short not in ERAS or tone not in SHEET_TONES: raise SystemExit(f'bad key {k}')
+            base = f'{look}/{tone}'
+            p = f'{rc}/side-{look}-{short}-{tone}.png'
+            if os.path.exists(p): known_bad.check_source(p)
+            if not os.path.exists(p):   # this look already wears the era palette (1990): same file as the base key
+                if look != '1990': raise SystemExit(f'missing {p}: only 1990 may reuse the base sheet')
+                url, n = man['side']['sheets'][base], 0
+            else:
+                for q in (80, 72, 64):
+                    url, n = save_hashed(Image.open(p).convert('RGBA'), f'side-{look}-{short}-{tone}', q)
+                    if n < 200_000: break
+                    os.remove(os.path.join(OUT, url.rsplit('/', 1)[1]))
+                if n >= 200_000: raise SystemExit(f'too big {p} {n}')
+            old = man['side']['sheets'].get(k)
+            man['side']['sheets'][k] = url; man['side']['frames'][k] = man['side']['frames'][base]
+        else:
+            raise SystemExit(f'bad key {k}')
+        print(f'{k} -> {url} ({n} bytes)' + (f' (was {old})' if old and old != url else ''))
+    json.dump(man, open(path, 'w'), separators=(',', ':'))
+
+def cf_only():
+    """Plan 59 Round 5: export every file in art/sprites/cf into the manifest's `cf` block (rebuilt from the folder; no other
+    key changes). back-<era>-<tone> -> back '<era>/<tone>'; front-<look>-<era short>-<tone> -> front '<look>/<era short>/<tone>';
+    front-<look>-line -> front '<look>/line'; cu-<era short> -> cu '<era>'. Cells padded 360 -> 364 like the windup sheets.
+    Limits: back 150 KB, front strip and cu 40 KB. Every file passes known_bad."""
+    path = 'app/public/art-manifest.json'
+    man = json.load(open(path)); src_dir = 'art/sprites/cf'
+    cf = {'cell': [CELL_W + 2 * PADX, CELL_H], 'back': {}, 'front': {}, 'cu': {}}
+    for f in sorted(os.listdir(src_dir)):
+        if not f.endswith('.png'): continue
+        p = f'{src_dir}/{f}'; known_bad.check_source(p)
+        src = Image.open(p).convert('RGBA'); n_fr = src.width // CELL_W
+        if src.height != CELL_H or src.width % CELL_W: raise SystemExit(f'bad size {p} {src.size}')
+        sheet = Image.new('RGBA', ((CELL_W + 2 * PADX) * n_fr, CELL_H), (0, 0, 0, 0))
+        for i in range(n_fr):
+            sheet.paste(src.crop((i * CELL_W, 0, (i + 1) * CELL_W, CELL_H)), (i * (CELL_W + 2 * PADX) + PADX, 0))
+        stem, parts = f[:-4], f[:-4].split('-')
+        if parts[0] == 'back' and len(parts) == 3 and parts[1] in ERAS and parts[2] in SHEET_TONES:
+            block, key, limit = 'back', f'{ERAS[parts[1]]}/{parts[2]}', 150_000
+        elif parts[0] == 'front' and len(parts) == 4 and parts[2] in ERAS and parts[3] in SHEET_TONES:
+            block, key, limit = 'front', f'{parts[1]}/{parts[2]}/{parts[3]}', 40_000
+        elif parts[0] == 'front' and len(parts) == 3 and parts[2] == 'line':
+            block, key, limit = 'front', f'{parts[1]}/line', 40_000
+        elif parts[0] == 'cu' and len(parts) == 2 and parts[1] in ERAS:
+            block, key, limit = 'cu', ERAS[parts[1]], 40_000
+        else: raise SystemExit(f'bad name {f}')
+        for q in (80, 72, 64):
+            url, n = save_hashed(sheet, f'cf-{stem}', q)
+            if n < limit: break
+            os.remove(os.path.join(OUT, url.rsplit('/', 1)[1]))
+        if n >= limit: raise SystemExit(f'too big {p} {n}')
+        cf[block][key] = url; print(f'{block} {key} -> {url} ({n} bytes)')
+    man['cf'] = cf
+    keep = {u.rsplit('/', 1)[1] for blk in ('back', 'front', 'cu') for u in cf[blk].values()}
+    for f in os.listdir(OUT):
+        if f.startswith('cf-') and f not in keep: os.remove(os.path.join(OUT, f)); print('removed old', f)
+    json.dump(man, open(path, 'w'), separators=(',', ':'))
+
 if __name__ == '__main__':
     if '--tones-only' in sys.argv: tones_only('--allow-changes' in sys.argv)
     elif '--cards-only' in sys.argv: cards_only(sys.argv[sys.argv.index('--cards-only') + 1:])
+    elif '--cf-only' in sys.argv: cf_only()
+    elif '--recolor-only' in sys.argv: recolor_only(sys.argv[sys.argv.index('--recolor-only') + 1:])
     elif '--full' in sys.argv: main()   # deletes every webp and rebuilds everything: banned until the fielder source is fixed (plan 52)
-    else: print('usage: export-app-art.py --cards-only <manifest key>... | --full'); sys.exit(2)
+    else: print('usage: export-app-art.py --cards-only <manifest key>... | --recolor-only <key>... | --full'); sys.exit(2)

@@ -7,14 +7,16 @@ import { ChallengeFlow } from './challenge';
 import { Feedback, feedbackDue } from './feedback';
 import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
+import { ERA_BOARD, lastName, Scoreboard, shortYear } from './scoreboard';
 import { sideLine } from './side-line';
 import { announcerOn } from './announcer-setting';
 import { intro, lineText, PbpLine, pitchLines, rawLead, resultLine } from './pbp';
 import { bedFor, reactionFor, voice, voiceFor } from './audio';
 import { voiceOn } from './voice-setting';
 import { VoiceButton } from './voice-button';
+import { PerfOverlay, perfFromSearch } from './perf-overlay';
 import { SceneCue } from './pitch-scene';
-import { ArtManifest, Era, eraOf, fielderArt, isFirstVisit, lookOf, PairArt, pairArt, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, SideLook, WindupArt, windupArt } from './art';
+import { ArtManifest, CfArt, cfArt, Era, eraOf, fielderArt, isFirstVisit, PairArt, pairArt, ParkLook, parkLookOf, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, WindupArt, windupArt } from './art';
 import { artNoteDue, artNoteShownThisVisit, markArtNoteShown } from './art-note';
 import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseOpen, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
@@ -63,7 +65,7 @@ function sessionId(): string {
 
 @Component({
   selector: 'app-root',
-  imports: [ReportView, PitchScene, ChallengeFlow, Feedback, HowSim, VoiceButton],
+  imports: [ReportView, PitchScene, Scoreboard, ChallengeFlow, Feedback, HowSim, VoiceButton, PerfOverlay],
   styleUrls: ['./app.css', './sims.css', './home.css'],
   templateUrl: './app.html',
 })
@@ -100,6 +102,28 @@ export class App {
   protected readonly pitcherReport = signal<Report | null>(null);
   protected readonly popup = signal<Report | null>(null);
   protected readonly pending = signal<PitchResult | null>(null);
+  /** Plan 59 Round 2b: one number per pitch thrown, so each pitch mounts its own scene (the finished one stays, held, until then). */
+  protected readonly sceneN = signal(0);
+  /** Plan 59 Round 2a: the count on the at-bat scoreboard (0-0 on Pitch, then each change the scene sends). */
+  protected readonly liveCount = signal<{ balls: number; strikes: number }>({ balls: 0, strikes: 0 });
+  /** Plan 59 Round 2a: scoreboard names (pitcher, batter); short = last names on phones (with 'yy years on the result screen, and when both last names match). */
+  protected readonly boardNames = computed<[string, string]>(() => [this.pitcher()?.name ?? '', this.batter()?.name ?? '']);
+  protected readonly boardShort = computed<[string, string]>(() => {
+    const p = lastName(this.pitcher()?.name ?? ''), b = lastName(this.batter()?.name ?? '');
+    return p === b ? [`${p} ${shortYear(this.pitcher()?.year)}`, `${b} ${shortYear(this.batter()?.year)}`] : [p, b];
+  });
+  protected readonly resultShort = computed<[string, string]>(() =>
+    [`${lastName(this.pitcher()?.name ?? '')} ${shortYear(this.pitcher()?.year)}`, `${lastName(this.batter()?.name ?? '')} ${shortYear(this.batter()?.year)}`]);
+  protected readonly resultNames = computed<[string, string]>(() => [`${this.pitcher()?.name ?? ''} ${this.pitcher()?.year ?? ''}`, `${this.batter()?.name ?? ''} ${this.batter()?.year ?? ''}`]);
+  /** Plan 59 Round 2b: the result word over the held stage wears the era board's colors (one graphics style per game). */
+  protected readonly wordColors = computed(() => ERA_BOARD[this.sceneLook() ?? '1990']);
+  /** The final count of the shown result (same numbers as countText()). */
+  protected readonly finalCount = computed(() => {
+    const r = this.result();
+    if (!r) return null;
+    const c = countFor(r.outcome, r.seed, this.deco());
+    return { balls: c.balls, strikes: c.strikes };
+  });
   protected readonly askFeedback = signal(false);
   /** Plan 32A: decoration version of the pitch on screen (a shared link keeps its own; new pitches use the newest). */
   protected readonly deco = signal<Deco>(DECORATION_VERSION);
@@ -112,6 +136,8 @@ export class App {
   private fallbackSent = '';       // plan 52: report pair the art_fallback event was sent for
 
   private readonly session = sessionId();
+  /** Plan 59 Round 1a: hidden frame-time readout, only with ?perf=1. */
+  protected readonly perf = perfFromSearch();
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
 
   protected readonly pick = computed<Pick | null>(() => {
@@ -288,9 +314,20 @@ export class App {
   /** Plan 36/40: pitcher windup before every pitch (both or neither with the batter's side art). */
   protected readonly sceneWindup = signal<WindupArt | null>(null);
   protected readonly windup = computed<WindupArt | null>(() => {
+    const c = this.cf();
+    if (c) return c.back;   // plan 59 r5: the CF shot replaces the front windup (same timing)
     const p = this.pitcherReport();
     return p ? windupArt(this.manifest(), p.id, eraOf(p.year), p.throws) : null;
   });
+  /** Plan 59 Round 5: the center-field windup shot (needs the side art too), or null for today's views. */
+  protected readonly cf = computed<CfArt | null>(() => {
+    const p = this.pitcherReport(), b = this.batterReport();
+    if (!p || !b) return null;
+    const r = cfArt(this.manifest(), p, { id: b.id, year: b.year, bats: hitsFrom(b.bats, p.throws) }, !!this.side());
+    return r && !this.cfFailed().has(r.urls.join('|')) ? r : null;   // CF art that failed to load: today's front windup instead
+  });
+  private readonly cfFailed = signal<ReadonlySet<string>>(new Set());
+  protected readonly sceneCf = signal<CfArt | null>(null);
   private readonly windupOk = signal(false);
   private windupReady: Promise<boolean> = Promise.resolve(false);
   /** Plan 36/39: first visit (hint line, art note, first_view event); the first result offers an inning. */
@@ -305,7 +342,7 @@ export class App {
   private readonly sideOk = signal(false);
   /** Plan 44: fielders in the pitcher's era uniform; park by the batter's look (practice: no play facts). */
   protected readonly sceneFielders = computed(() => fielderArt(this.manifest(), this.pitcherEra()));
-  protected readonly sceneLook = computed<SideLook | null>(() => { const y = this.batter()?.year; return y ? lookOf(y) : null; });
+  protected readonly sceneLook = computed<ParkLook | null>(() => { const y = this.batter()?.year; return y ? parkLookOf(y) : null; });   // plan 59 r1b: card eras
   private sideReady: Promise<boolean> = Promise.resolve(false);
 
   protected cardFor(r: { id: string; role: string }): PlayerArt | null {
@@ -369,10 +406,14 @@ export class App {
       this.sideReady = preloadImages([s.sheet]).then(ok => { if (this.side() === s) this.sideOk.set(ok); return ok; });
     });
     effect(() => {
-      const w = this.windup();
+      const w = this.windup(), c = this.cf();
       this.windupOk.set(false);
       if (!w) { this.windupReady = Promise.resolve(false); return; }
-      this.windupReady = preloadImages([w.sheet]).then(ok => { if (this.windup() === w) this.windupOk.set(ok); return ok; });
+      this.windupReady = preloadImages(c ? c.urls : [w.sheet]).then(ok => {
+        if (!ok && c) { this.cfFailed.update(f => new Set([...f, c.urls.join('|')])); return false; }   // the effect runs again with the front windup
+        if (this.windup() === w) this.windupOk.set(ok);
+        return ok;
+      });
     });
     api.event('open', this.session, sourceFromSearch());
     if (this.canHistory()) stampBase(this.challenge() !== undefined);   // plan 39: history depth
@@ -537,8 +578,8 @@ export class App {
     const key = this.matchKey();
     const intro = voiceOn() && !seed && !this.introduced.has(key) ? this.speakIntro() : null;   // a tap: ensure() above unlocked the audio
     try {
-      this.busy.set(true); this.result.set(null); this.shareNote.set(null);
-      if (!seed) this.deco.set(DECORATION_VERSION);
+      // Plan 59 Round 2b: the held result keeps its text (result, deco) until the new pitch is ready to play.
+      this.busy.set(true); this.shareNote.set(null);
       const r = await api.pitch(p, seed);
       if (!seed) api.event('pitch', this.session);
       const waits: Promise<unknown>[] = intro ? [intro] : [];
@@ -552,13 +593,18 @@ export class App {
       if (throwId !== this.throwToken || this.pick() !== p) return;
       this.sceneArt.set(this.sideOk() ? this.side() : null);
       this.sceneWindup.set(this.sideOk() && this.windupOk() ? this.windup() : null);   // both or neither
+      this.sceneCf.set(this.sceneWindup() ? this.cf() : null);
       if (!seed && this.firstView()) {
         try { this.storage()?.setItem(SEEN_KEY, '1'); } catch { /* private mode: fine */ }
         this.firstView.set(false); this.firstResult.set(true);
       } else this.firstResult.set(false);
       if (!seed) { this.lastPitcherShown.set(this.pitcher()?.id ?? null); }
       this.pbpLine.set(''); this.pbpResult.set(''); this.pbpTypeWord = false;
-      this.pending.set(r);   // the scene plays, then sceneDone() reveals the result
+      this.liveCount.set({ balls: 0, strikes: 0 });
+      this.result.set(null);
+      if (!seed) this.deco.set(DECORATION_VERSION);
+      this.sceneN.update(n => n + 1);   // a fresh scene for every pitch, even one with the same seed
+      this.pending.set(r);   // the scene plays, then sceneDone() reveals the result (the scene stays on screen, held)
       if (intro) this.introduced.add(key);
       this.voicePitch(r);
       if (!seed) this.practiceN.update(n => n + 1);
@@ -680,8 +726,7 @@ export class App {
     const r = this.pending();
     if (!r) return;
     if (this.announcer() && !this.pbpResult()) this.pbpResult.set(this.pbpResultText(r));
-    this.pending.set(null);
-    this.result.set(r);
+    this.result.set(r);   // Plan 59 Round 2b: pending stays set, so the finished scene stays on screen under the result
     this.askFeedback.set(feedbackDue('p' + Date.now(), 3));   // plan 30: from the 3rd practice pitch
     this.screen.set('result');
   }

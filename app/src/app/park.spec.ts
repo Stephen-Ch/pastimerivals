@@ -3,9 +3,9 @@ import { vi } from 'vitest';
 import { fielderArt, SideLook } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, callFor, countFor, OutcomeKey, PlayFacts } from './logic';
-import { BASE1, BASE2, ballAt, buildPlay, cameraAt, dist, fielderAt, hasPark, MAX_TILT, MAX_TURN, ParkPlay, polar, project, wallDist, ZONE } from './park';
+import { BASE1, BASE2, ballAt, baseCameraAt, buildPlay, cameraAt, dist, fielderAt, hasPark, MAX_TILT, MAX_TURN, ParkPlay, PLATE_MID, polar, project, projectF, RUBBER, SIDE_F, sideCamera, skyOnly, wallDist, WINDUP_F, WINDUP_FOOT, WINDUP_CAM, windupCamera, windupSpriteH, ZONE } from './park';
 import { W, H } from './park-draw';
-import { FINAL_TL, LEAD_TL, PitchScene, planPitch, SceneCue, motionFor } from './pitch-scene';
+import { backdropPlace, FINAL_TL, FOOT_Y, LEAD_TL, PANEL_W, PitchScene, planPitch, PLATE_X, SceneCue, motionFor, stageFit } from './pitch-scene';
 
 const LOOKS: SideLook[] = ['1901', '1920', '1956', '1990'];
 const OUTS: PlayFacts[] = [
@@ -174,6 +174,14 @@ describe('Plan 44: camera', () => {
     }
   });
 
+  it('plan 59 r1b test 3: fitScale is one uniform scale, painter height 480, width 480 x aspect', () => {
+    for (const a of [0.6, 0.77, 1, 1.58, 2.2]) {
+      const cssH = 400, cssW = cssH * a, f = BallparkView.fitScale(cssW, cssH);
+      expect(f.h).toBe(480); expect(f.w).toBeCloseTo(480 * a, 9);
+      expect(f.w * f.k).toBeCloseTo(cssW, 9); expect(f.h * f.k).toBeCloseTo(cssH, 9);
+    }
+  });
+
   it('canvas is never larger than the panel x 2 in each direction', () => {
     expect(BallparkView.canvasSize(560, 354, 3)).toEqual([1120, 708]);
     expect(BallparkView.canvasSize(320, 202, 1)).toEqual([320, 202]);
@@ -253,5 +261,170 @@ describe('Plan 44: art and scene', () => {
         f.destroy();
       }
     } finally { vi.useRealTimers(); }
+  });
+});
+
+// Plan 59 Round 1a: determinism golden. Same seed, same pitch plan and same park play (camera, fielders, ball path).
+// Later rounds may not add random draws to camera or backdrop code.
+describe('plan 59 determinism golden', () => {
+  const fnv = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); };
+  const ERAS = ['1901-1919', '1920-1945', '1946-1969', '1970-1989', '1990-2025'] as const;
+  const DECOS = ['1', '2', '3'] as const;
+  const TYPES = ['ground', 'fly', 'line', 'pop'] as const;
+
+  function determinismGolden(): { hash: string; plays: number } {
+    const out: string[] = [];
+    let plays = 0;
+    for (let i = 0; i < 2000; i++) {
+      const o: OutcomeKey = (['k', 'bb', 'hbp', 'single', 'double', 'triple', 'hr', 'oip'] as const)[i % 8];
+      const deco = DECOS[i % 3], seed = `d${i}`, bats: 'L' | 'R' = i % 2 ? 'L' : 'R';
+      const count = countFor(o, seed, deco);
+      const t = TYPES[(i >> 3) % 4];
+      const facts: PlayFacts | null = deco === '3' ? { outType: o === 'oip' ? t : null, doublePlay: i % 7 === 0 && t === 'ground', sacFly: false, forceRunner: null } : null;
+      const call = callFor(o, seed, count, 'Batter X', bats, 'R', deco, 1900 + (i % 125), facts);
+      const m = motionFor(o, count.finalKind);
+      const pl = planPitch({ m, kind: o === 'bb' ? 'ball' : null, isFinal: true, outcome: o, era: ERAS[i % 5], bats, call, contact: { x: 372, y: 200 }, seed, index: count.leadUp.length, windup: i % 2 === 0 });
+      out.push(JSON.stringify(pl));
+      if (hasPark(o, call)) { out.push(JSON.stringify(buildPlay({ outcome: o, call, play: facts, seed, look: LOOKS[i % 4] }))); plays++; }
+    }
+    return { hash: fnv(out.join('|')), plays };
+  }
+
+  it('planPitch and buildPlay over 2,000 seeds are unchanged', { timeout: 20_000 }, () => {
+    const t0 = performance.now();
+    const g = determinismGolden();
+    const ms = performance.now() - t0;
+    console.log(`plan 59 determinism golden: ${ms.toFixed(0)} ms`);
+    expect(g).toEqual({ hash: '45e17105', plays: 1250 });
+    expect(ms).toBeLessThan(5000);
+  });
+});
+
+// Plan 59 Round 1b test 1 (characterize): at today's 760:480 panel the camera is unchanged. The card allowed changes on
+// sky-only frames for a sky fix; none was needed (only pops and fouls go sky-only, and they are exempt), so every frame is hashed.
+describe('plan 59 r1b: camera unchanged at the 760:480 panel', () => {
+  const fnv = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); };
+  it('hash of cameraAt(p, t, 760/480) over every frame of the grid (no sky fix was built, so nothing may change)', () => {
+    const out: string[] = [];
+    let sky = 0, n = 0;
+    for (const c of ALL) {
+      const p = build(c);
+      for (let i = 0; i <= Math.round(p.len * 30); i++) {
+        const t = Math.min(p.len, i / 30), cam = baseCameraAt(p, t, W / H);   // plan 59 r5: the base camera (the zoom sits on top, tested in r5-camera.spec.ts)
+        n++;
+        if (skyOnly(cam, W / H, p.look)) sky++;
+        out.push(`${cam.yaw},${cam.pitch},${cam.fov}`);
+      }
+    }
+    console.log(`plan 59 r1b test 1: ${n} frames, ${sky} sky-only`);
+    expect({ hash: fnv(out.join('|')), kept: out.length }).toEqual({ hash: '1d9a19ad', kept: 114226 });   // hash taken on 72545a1's cameraAt
+  });
+});
+
+// Plan 59 Round 1b test 5: no frame run of only sky over 0.3 s (pops and high fouls exempt: the ball wins), at a portrait
+// stage (0.75) and today's panel (1.58), painter width 480 x aspect. Ball and fielder stay in frame at 0.75 too.
+describe('plan 59 r1b: camera at any stage shape', () => {
+  const MANY = cases(500).map(build);
+  const frames = (p: ParkPlay) => Array.from({ length: Math.round(p.len * 30) + 1 }, (_, i) => Math.min(p.len, i / 30));
+  it('no sky-only run over 0.3 s except pops and fouls, aspects 0.75 and 1.58', { timeout: 30_000 }, () => {
+    const bad: string[] = [];
+    for (const aspect of [0.75, 760 / 480]) for (const p of MANY) {
+      if (p.kind === 'pop' || p.kind === 'foul') continue;
+      let run = 0, worst = 0;
+      for (const t of frames(p)) { run = skyOnly(cameraAt(p, t, aspect), aspect, p.look) ? run + 1 : 0; worst = Math.max(worst, run); }
+      if (worst / 30 > 0.3) bad.push(`${aspect.toFixed(2)} ${p.kind} ${(worst / 30).toFixed(2)}s`);
+    }
+    expect(bad.length, bad.slice(0, 8).join('; ')).toBe(0);
+  });
+  it('the ball stays inside the frame at 0.75 (painter 360 x 480)', () => {
+    const w = 480 * 0.75;
+    for (const c of ALL) {
+      const p = build(c);
+      for (const t of frames(p)) {
+        const b = ballAt(p, t), s = project(cameraAt(p, t, 0.75), w, 480, b[0], b[1], b[2]);
+        expect(s, `${p.kind} t=${t}`).not.toBeNull();
+        expect(s![0], `${p.kind} ${c.call.text} t=${t}`).toBeGreaterThanOrEqual(0); expect(s![0], `${p.kind} t=${t}`).toBeLessThanOrEqual(w);
+        expect(s![1], `${p.kind} ${c.call.text} t=${t}`).toBeGreaterThanOrEqual(0); expect(s![1]).toBeLessThanOrEqual(480);
+      }
+    }
+  });
+  it('the fielder is in frame at the catch or pick-up at 0.75', () => {
+    const w = 480 * 0.75;
+    for (const c of ALL) {
+      const p = build(c);
+      if (!p.touch || !p.named || p.noTurn) continue;
+      const f = fielderAt(p.fielders.find(x => x.pos === p.named)!, p.touchT);
+      const s = project(cameraAt(p, p.touchT, 0.75), w, 480, f.at[0], f.at[1], 3);
+      expect(s, p.kind).not.toBeNull();
+      expect(s![0], `${p.kind} ${c.call.text}`).toBeGreaterThan(0); expect(s![0]).toBeLessThan(w);
+      expect(s![1], `${p.kind} ${c.call.text}`).toBeGreaterThan(0); expect(s![1]).toBeLessThan(480);
+    }
+  });
+});
+
+// Review fix (Part A): on narrow stages the lens never goes past 70 degrees vertical or 80 horizontal (no fisheye on pops
+// hit straight back); the camera turns a little instead, so the ball stays in frame (Stephen: on pops the ball wins).
+describe('plan 59 r1b: lens limits on narrow stages', () => {
+  const frames = (p: ParkPlay) => Array.from({ length: Math.round(p.len * 30) + 1 }, (_, i) => Math.min(p.len, i / 30));
+  const vdeg = (fov: number, a: number) => 2 * Math.atan(Math.tan((fov * Math.PI) / 360) / a) * 180 / Math.PI;
+  it('vertical at most 70, horizontal at most 80, ball in frame, at aspects 0.6, 0.75 and 1.5834', { timeout: 30_000 }, () => {
+    for (const a of [0.6, 0.75, 1.5834]) {
+      const w = 480 * a;
+      for (const c of ALL) {
+        const p = build(c);
+        for (const t of frames(p)) {
+          const cam = cameraAt(p, t, a), b = ballAt(p, t), s = project(cam, w, 480, b[0], b[1], b[2]);
+          expect(cam.fov, `${a} ${p.kind} t=${t}`).toBeLessThanOrEqual(80 + 1e-9);
+          expect(vdeg(cam.fov, a), `${a} ${p.kind} t=${t}`).toBeLessThanOrEqual(70 + 1e-9);
+          expect(s, `${a} ${p.kind} t=${t}`).not.toBeNull();
+          expect(s![0], `${a} ${p.kind} t=${t}`).toBeGreaterThanOrEqual(0); expect(s![0], `${a} ${p.kind} t=${t}`).toBeLessThanOrEqual(w);
+          expect(s![1], `${a} ${p.kind} t=${t}`).toBeGreaterThanOrEqual(0); expect(s![1], `${a} ${p.kind} t=${t}`).toBeLessThanOrEqual(480);
+        }
+      }
+    }
+  });
+});
+
+// Plan 59 Round 1b test 4: view cameras for the backdrops. Through stageFit the side camera puts the plate on the panel's
+// (PLATE_X, FOOT_Y), righty and lefty; the windup camera puts the rubber on the windup foot line; the side view's horizon
+// sits in the top third of the stage on phones. (The windup camera's horizon is set by its own numbers: 20 ft back,
+// 5.5 ft up, 6.5 degrees, sprite feet at 92%; it lands near 32% of the stage and is not part of the top-third check.)
+describe('plan 59 r1b test 4: view cameras', () => {
+  // the component's own placement (backdropPlace), checked against stageFit's panel
+  const sidePlace = (w: number, h: number, m: boolean) => {
+    const p = backdropPlace('side', m, w, h);
+    return { f: stageFit(w, h, m), cam: p.cam, F: p.f, cx: p.cx, cy: p.cy };
+  };
+  it('side camera: the plate within 2% of (PLATE_X, FOOT_Y) at 358x506, 288x341 and 900x540, righty and lefty', () => {
+    for (const [w, h] of [[358, 506], [288, 341], [900, 540]]) for (const m of [false, true]) {
+      const { f, cam, F, cx, cy } = sidePlace(w, h, m);
+      const p = projectF(cam, F, cx, cy, PLATE_MID.x, PLATE_MID.y, PLATE_MID.z)!;
+      const ex = f.left + (m ? PANEL_W - PLATE_X : PLATE_X) * f.s, ey = f.top + FOOT_Y * f.s;
+      expect(Math.abs(p[0] - ex), `${w}x${h} ${m} x`).toBeLessThanOrEqual(0.02 * w);
+      expect(Math.abs(p[1] - ey), `${w}x${h} ${m} y`).toBeLessThanOrEqual(0.02 * h);
+    }
+  });
+  it('lefties get the third-base-side view (a real view, not a mirror): the camera stands at x < 0', () => {
+    expect(sideCamera(false).pos!.x).toBeGreaterThan(30);
+    expect(sideCamera(true).pos!.x).toBeLessThan(-30);
+  });
+  it('view cameras report their real lens (review: the windup reported 177 degrees and lost every other crowd row)', () => {
+    expect(windupCamera().fov).toBeCloseTo(WINDUP_CAM.vfov, 6);
+    expect(sideCamera(false).fov).toBeLessThan(20);
+  });
+  it('windup camera: the rubber within 2% of the windup foot line, centered, at 358x506, 288x313 and 437x324', () => {
+    for (const [w, h] of [[358, 506], [288, 313], [437, 324]]) {
+      const q = backdropPlace('windup', false, w, h), p = projectF(q.cam, q.f, q.cx, q.cy, RUBBER.x, RUBBER.y, RUBBER.z)!;
+      expect(Math.abs(p[1] - WINDUP_FOOT * h), `${w}x${h}`).toBeLessThanOrEqual(0.02 * h);
+      expect(Math.abs(p[0] - w / 2)).toBeLessThanOrEqual(0.02 * w);
+    }
+    const body = windupSpriteH() * (468 - 61) / 480;   // standing pose: cell y 61 to 468
+    expect(body).toBeGreaterThanOrEqual(0.62); expect(body).toBeLessThanOrEqual(0.76);
+  });
+  it('side view horizon in the top third of the stage at 390x844 (stage 358x506) and 320x568 (stage 288x313)', () => {
+    for (const [w, h] of [[358, 506], [288, 313]]) for (const m of [false, true]) {
+      const { cam, F, cy } = sidePlace(w, h, m);
+      expect(cy + F * Math.tan((cam.pitch * Math.PI) / 180), `${w}x${h} ${m}`).toBeLessThan(h / 3);
+    }
   });
 });

@@ -1,9 +1,9 @@
-import { Component, computed, DestroyRef, inject, input, output, signal, viewChild } from '@angular/core';
-import { Era, FielderArt, SideArt, SideLook, WindupArt } from './art';
+import { afterRenderEffect, Component, computed, DestroyRef, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
+import { CfArt, Era, FielderArt, ParkLook, SideArt, WindupArt } from './art';
 import { BallparkView } from './ballpark-view';
 import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTION, PitchKind, PlayFacts, Trajectory } from './logic';
-import { buildPlay, hasPark, ParkPlay } from './park';
-import { FielderSheet } from './park-draw';
+import { buildPlay, CF_F, cfLayout, hasPark, ParkPlay, PITCHER_CELL_FOOT, SIDE_F, sideCamera, WINDUP_F, WINDUP_FOOT, windupCamera, windupSpriteH } from './park';
+import { backdropKey, BackdropPlace, BackdropView, FielderSheet, LOOKS, renderBackdrop } from './park-draw';
 import { parkOn } from './park-setting';
 
 // Plan 32C: side-on pitch scene. Batter only, seen from the first-base side (right-handed) or the third-base side
@@ -375,7 +375,7 @@ export function frameAt(pl: Plan, t: number): Frame {
   }
   const word = wordAt(pl, t, pl.tl.end);
   if (word) fx.word = word;
-  fx.shake = shakeAt(pl, t);
+  fx.shake = shakeWave(pl, t);   // Plan 59 Round 3: unitless; the template scales it to the stage
   return { ball, batter, fx };
 }
 
@@ -386,7 +386,7 @@ export function wordAt(pl: Plan, t: number, end: number): FxWord | undefined {
   const words = s.isFinal ? fxWord(s.outcome, s.m, tr, !!s.call?.insideTheParkHr) : null;
   const w0 = Math.max(p.tTarget + 0.2, pl.exitT + 0.02);
   if (!words || t < w0 || w0 >= end - 0.15) return undefined;
-  const u = (t - w0) / 0.15;
+  const u = (t - w0) / Math.min(0.2, end - w0);   // Plan 59 Round 3: arrival 200 ms where the window allows (was 150)
   const longest = Math.max(...words.map(x => x.length));
   const size = Math.min(s.outcome === 'hr' ? 72 : 62, 290 / (longest * 0.66));
   return {
@@ -396,7 +396,23 @@ export function wordAt(pl: Plan, t: number, end: number): FxWord | undefined {
   };
 }
 
-/** Home-run and hit-by-pitch shake (px) at time t. */
+/** Plan 59 Round 3: the shake's shape (-1..1, decaying), with no size and no rounding; shakeAt = 3 px of it. */
+export function shakeWave(pl: Plan, t: number): number {
+  const { p, s } = pl;
+  if (!s.isFinal || !((s.outcome === 'hr' && s.m === 'hit') || s.m === 'hbp')) return 0;
+  const u = (t - p.tTarget) / 0.2;
+  return u >= 0 && u < 1 ? Math.sin(u * Math.PI * 4) * (1 - u) : 0;
+}
+/** Plan 59 Round 3: shake size in px for a side panel scale s. Tuned at 3 px when the panel was the whole 228 px
+ *  stage (s 0.475), so it keeps that share of the panel; no scale known (jsdom, not measured): today's 3 px. */
+export function shakeUnit(s: number | null | undefined): number { return s == null ? 3 : (3 / 0.475) * s; }
+/** Plan 59 Round 3: px offset for a wave value, capped at 8 px, rounded to 0.01 after scaling. */
+export function shakePx(wave: number, unit: number): number {
+  const v = Math.round(Math.max(-8, Math.min(8, wave * unit)) * 100) / 100;
+  return v === 0 ? 0 : v;
+}
+/** Home-run and hit-by-pitch shake (px) at time t. Plan 59 Round 3: no longer used by the scene (see shakeWave);
+ *  kept as the reference that pitch-scene.spec test 3 compares shakeWave against. */
 export function shakeAt(pl: Plan, t: number): number {
   const { p, s } = pl;
   if (!s.isFinal || !((s.outcome === 'hr' && s.m === 'hit') || s.m === 'hbp')) return 0;
@@ -418,6 +434,33 @@ export function prefersReducedMotion(): boolean {
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
 
+/** Plan 59 Round 1b: how the 760 x 480 side panel sits in a stage of any size. One scale s (px per panel unit), the panel
+ *  box's left/top in stage px, and the visible panel range x0..x1. The batter's side is anchored (left edge for righties,
+ *  right edge for lefties, whose panel is mirrored); panel x 0-560 always shows; stages wider than the panel center it.
+ *  The foot line sits at 92% of the stage height. */
+export interface StageFit { s: number; left: number; top: number; x0: number; x1: number; }
+export const STAGE_MIN_X = 560, STAGE_FOOT = 0.92, STAGE_BODY = 0.8;
+/** Review fix: the stage is at most this wide for its height (CSS max-width), so the panel shows about x -25 to 785:
+ *  the pitch enters at the pitcher-side edge and an unhit pitch leaves at the catcher-side edge, never mid-stage. */
+export const STAGE_MAX_ASPECT = 1.35;
+export function stageFit(w: number, h: number, mirror: boolean): StageFit {
+  const s = Math.min((h * STAGE_BODY) / PANEL_H, w / STAGE_MIN_X);
+  const v = w / s;
+  const x0 = v >= PANEL_W ? -(v - PANEL_W) / 2 : 0;
+  const centered = (w - PANEL_W * s) / 2;
+  const left = v >= PANEL_W ? centered : mirror ? w - PANEL_W * s : 0;
+  return { s, left, top: STAGE_FOOT * h - FOOT_Y * s, x0, x1: x0 + v };
+}
+
+/** Plan 59 Round 1b: where a backdrop's camera sits on a stage of w x h CSS px: the side view's center on the side
+ *  panel's center through stageFit (so the plate lands on PLATE_X, FOOT_Y), the windup's on the stage's center. */
+export function backdropPlace(view: BackdropView, mirror: boolean, w: number, h: number): BackdropPlace {
+  if (view === 'windup') return { cam: windupCamera(), f: WINDUP_F * h, cx: w / 2, cy: h / 2 };
+  if (view === 'cf') return { cam: cfLayout(mirror ? 'L' : 'R').cam, f: CF_F * h, cx: w / 2, cy: h / 2 };   // plan 59 r5: mirror = lefty batter
+  const fit = stageFit(w, h, mirror);
+  return { cam: sideCamera(mirror), f: SIDE_F * fit.s, cx: fit.left + 380 * fit.s, cy: fit.top + 240 * fit.s };
+}
+
 /** Side-on view of the whole at-bat: a short count for show, then the real result. */
 /** Plan 42: index = pitch (leadUp.length = the final pitch). */
 export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'enter' | 'plate' | 'park' | 'end' | 'skipped'; }
@@ -427,12 +470,15 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
   imports: [BallparkView],
   template: `
     @if (side(); as a) {
-      <div class="stage">
-      <div class="side" [class.mirror]="bats() === 'L'" aria-hidden="true">
+      <div class="stage" #stage [attr.data-cue]="lastCue()" [attr.data-held]="held() ? '1' : null" [style.--sky]="tint().sky" [style.--grass]="tint().grass" [style.--hz]="sideHz()" [style.--whz]="windHz">
+      <canvas class="bg" #bgSide aria-hidden="true"></canvas>
+      <div class="side" [class.mirror]="bats() === 'L'" [class.fit]="!!fit()" aria-hidden="true"
+           [style.left.px]="fit()?.left" [style.top.px]="fit()?.top" [style.width.px]="fit() ? 760 * fit()!.s : null" [style.height.px]="fit() ? 480 * fit()!.s : null">
         <svg class="ground" viewBox="0 0 760 480" preserveAspectRatio="none">
+          <ellipse class="contact" cx="158" cy="469" rx="138" ry="9" fill="#000" opacity="0.2"/>
           <path d="M175 474 L305 474 L318 466 L188 466 Z" fill="#fbf8f1" stroke="#2b2a28" stroke-width="2"/>
         </svg>
-        <div class="shake" [style.transform]="frame().fx.shake ? 'translateX(' + frame().fx.shake + 'px)' : null">
+        <div class="shake" [style.transform]="sideShakePx() ? 'translateX(' + sideShakePx() + 'px)' : null">
           <div class="bat" [style.background-image]="'url(' + a.sheet + ')'" [style.--f]="frame().batter"></div>
           <svg class="fx" viewBox="0 0 760 480" preserveAspectRatio="none">
             @for (sm of frame().fx.smear ?? []; track $index) { <path [attr.d]="sm.d" [attr.opacity]="sm.o" fill="none" stroke="#1d1b19" stroke-width="3.5" stroke-linecap="round"/> }
@@ -453,7 +499,7 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
       </div>
       @if (park(); as pk) {
         <div class="park" aria-hidden="true" [style.opacity]="parkFade()" [style.transform]="parkShake() ? 'translateX(' + parkShake() + 'px)' : null">
-          <pr-ballpark-view [play]="pk.play" [sheet]="sheet()" />
+          <pr-ballpark-view [play]="pk.play" [sheet]="sheet()" [holdAt]="parkHold()" />
           @if (parkWord(); as w) {
             <svg class="words" viewBox="0 0 760 480" preserveAspectRatio="none">
               <g class="word" [attr.transform]="'translate(' + w.x + ' ' + w.y + ') rotate(' + w.rot + ') scale(' + w.scale + ')'" [attr.opacity]="w.o">
@@ -465,36 +511,76 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
           }
         </div>
       }
-      @if (windFrame() >= 0 && windup(); as w) {
+      @if (windFrame() >= 0 && windup() && cf(); as c) {
+        <div class="windup cf" aria-hidden="true" [style.--whz]="cfHz()">
+          <canvas class="bg" #bgWind></canvas>
+          @if (cfBox(); as b) {
+            @if (c.cu) {
+              <div class="cfs" [class.mirror]="c.bats === 'L'" [style.left.px]="b.ump.left" [style.top.px]="b.ump.top" [style.height.px]="b.ump.h" [style.background-image]="'url(' + c.cu + ')'" style="--n: 2; --f: 1"></div>
+              <div class="shadow" [style.left.px]="b.cat.cx" [style.top.px]="b.cat.foot" [style.width.px]="b.cat.h * 0.3" [style.height.px]="b.cat.h * 0.04"></div>
+              <div class="cfs" [class.mirror]="c.bats === 'L'" [style.left.px]="b.cat.left" [style.top.px]="b.cat.top" [style.height.px]="b.cat.h" [style.background-image]="'url(' + c.cu + ')'" style="--n: 2; --f: 0"></div>
+            }
+            <div class="shadow" [style.left.px]="b.bat.cx" [style.top.px]="b.bat.foot" [style.width.px]="b.bat.h * 0.32" [style.height.px]="b.bat.h * 0.04"></div>
+            <div class="cfs" [class.mirror]="c.front.mirror" [style.left.px]="b.bat.left" [style.top.px]="b.bat.top" [style.height.px]="b.bat.h" [style.background-image]="'url(' + c.front.sheet + ')'" style="--n: 2" [style.--f]="windFrame() >= 2 ? 1 : 0"></div>
+            <div class="shadow" [style.left.px]="b.pit.cx" [style.top.px]="b.pit.foot" [style.width.px]="b.pit.h * 0.32" [style.height.px]="b.pit.h * 0.04"></div>
+            <div class="cfs pitb" [class.mirror]="c.back.mirror" [style.left.px]="b.pit.left" [style.top.px]="b.pit.top" [style.height.px]="b.pit.h" [style.background-image]="'url(' + c.back.sheet + ')'" [style.--f]="windFrame()"></div>
+            @if (windBlend().next !== null) {
+              <div class="cfs pitb top" [class.mirror]="c.back.mirror" [style.left.px]="b.pit.left" [style.top.px]="b.pit.top" [style.height.px]="b.pit.h" [style.background-image]="'url(' + c.back.sheet + ')'" [style.--f]="windBlend().next" [style.opacity]="windBlend().top"></div>
+            }
+          }
+        </div>
+      } @else if (windFrame() >= 0 && windup(); as w) {
         <div class="windup" aria-hidden="true">
-          <div class="pit" [class.mirror]="w.mirror" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windFrame()"></div>
+          <canvas class="bg" #bgWind></canvas>
+          <div class="contact" [style.top.%]="100 * WINDUP_FOOT" [style.aspect-ratio]="pitBox.shadow"></div>
+          <div class="pit" [class.mirror]="w.mirror" [style.height.%]="pitBox.h" [style.top.%]="pitBox.top" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windFrame()"></div>
           @if (windBlend().next !== null) {
-            <div class="pit top" [class.mirror]="w.mirror" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windBlend().next" [style.opacity]="windBlend().top"></div>
+            <div class="pit top" [class.mirror]="w.mirror" [style.height.%]="pitBox.h" [style.top.%]="pitBox.top" [style.background-image]="'url(' + w.sheet + ')'" [style.--f]="windBlend().next" [style.opacity]="windBlend().top"></div>
           }
         </div>
       }
+      <div class="held-scrim" aria-hidden="true"></div>
+      <div class="held-band"><ng-content select="[sceneOver]" /></div>
       </div>
     }
     <div class="under">
-      <span class="caption" [attr.aria-live]="quietCaption() ? 'off' : 'polite'"><span class="count" aria-label="Balls and strikes">{{ board().balls }}-{{ board().strikes }}</span>@if (board().caption && !quietCaption()) { · {{ board().caption }} }</span>
-      <button type="button" class="skip" (click)="finish()">Skip to result</button>
+      @if (!held()) {
+        <span class="caption" [attr.aria-live]="quietCaption() ? 'off' : 'polite'"><span class="sr-count">{{ board().balls }}-{{ board().strikes }}@if (board().caption && !quietCaption()) { · }</span>@if (board().caption && !quietCaption()) {<span>{{ board().caption }}</span>}</span>
+        <button type="button" class="skip" (click)="finish()">Skip to result</button>
+      }
+      <ng-content select="[sceneBelow]" />
     </div>
   `,
   styles: `
-    :host { display: block; margin-top: 14px; }
-    .stage { position: relative; width: 100%; max-width: 560px; margin: 0 auto; }
-    .park { position: absolute; left: 0; top: 0; width: 100%; aspect-ratio: 760 / 480; z-index: 4; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: #5c8a44; }
+    :host { display: block; margin-top: 4px; }
+    /* Plan 59 Round 1b: a tall stage (62 px keeps the 4 px margin and the 52 px caption and Skip row, plus 6 spare); the side panel sits inside it by stageFit. */
+    /* max-width: 900 px, and never wider than STAGE_MAX_ASPECT (1.35) x the height. */
+    .stage { position: relative; isolation: isolate; width: 100%; max-width: min(900px, calc(min(100cqh - 62px, 60dvh) * 1.35)); margin: 0 auto; height: min(calc(100cqh - 62px), 60dvh);
+      overflow: hidden; border: 1px solid var(--border); border-radius: 14px; box-sizing: border-box;
+      background: linear-gradient(var(--sky, #d8e6f0) 0 var(--hz, 33%), var(--grass, #4f8f3f) var(--hz, 33%) 100%); }
+    /* Plan 59 Round 1b: the drawn park (cached per look, view, side and size); until it is drawn the flat silhouette above shows. */
+    .bg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: block; }
+    .park { position: absolute; inset: 0; z-index: 4; overflow: hidden; background: #5c8a44; }
     .park .words { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
-    .windup { position: absolute; inset: 0; z-index: 5; overflow: hidden; border: 1px solid var(--border); border-radius: 14px;
-      background: linear-gradient(#cfd9e3 0 58%, #7d9a5f 58% 100%); }
-    .windup::after { content: ''; position: absolute; left: 25%; right: 25%; bottom: 0; height: 12%; border-radius: 50% 50% 0 0; background: #b48a5a; }
-    .windup .pit { position: absolute; z-index: 1; height: 92%; aspect-ratio: 364 / 480; bottom: 4%; left: 50%; transform: translateX(-50%);
+    .windup { position: absolute; inset: 0; z-index: 5; overflow: hidden;
+      background: linear-gradient(var(--sky, #d8e6f0) 0 var(--whz, 32%), var(--grass, #4f8f3f) var(--whz, 32%) 100%); }
+    .windup .pit { position: absolute; z-index: 1; aspect-ratio: 364 / 480; left: 50%; transform: translateX(-50%);
       background-repeat: no-repeat; background-size: 800% 100%; background-position: calc(var(--f, 0) * 100% / 7) 0; }
     .windup .pit.mirror { transform: translateX(-50%) scaleX(-1); }
     .windup .pit.top { z-index: 2; }
-    .side { position: relative; isolation: isolate; width: 100%; aspect-ratio: 760 / 480; overflow: hidden;
-      border: 1px solid var(--border); border-radius: 14px; background: linear-gradient(#cfd9e3 0 52%, #7d9a5f 52% 92%, #b48a5a 92% 100%); }
-    @container (min-height: 1px) { .stage { max-width: min(560px, calc((100cqh - 64px) * 760 / 480)); } }
+    /* Plan 59 Round 5: center-field shot sprites (cells 364 x 480; --n frames per sheet, --f the frame). */
+    .windup .cfs { position: absolute; z-index: 1; aspect-ratio: 364 / 480; --n: 8;
+      background-repeat: no-repeat; background-size: calc(var(--n) * 100%) 100%; background-position: calc(var(--f, 0) * 100% / (var(--n) - 1)) 0; }
+    .windup .cfs.mirror { transform: scaleX(-1); }
+    .windup .cfs.pitb { z-index: 3; }
+    .windup .cfs.pitb.top { z-index: 4; }
+    .windup .shadow { position: absolute; z-index: 1; transform: translate(-50%, -50%); border-radius: 50%; background: #000; opacity: .2; }
+    /* Plan 59 Round 1b finish pass: contact shadow under the pitcher's feet; a light vignette over every view (12% at most). */
+    .windup .contact { position: absolute; left: 50%; height: 2.2%; transform: translate(-50%, -50%); border-radius: 50%; background: #000; opacity: .2; z-index: 1; }
+    .stage::after { content: ''; position: absolute; inset: 0; z-index: 6; pointer-events: none; border-radius: inherit;
+      background: radial-gradient(ellipse at 50% 45%, transparent 58%, rgba(0, 0, 0, .12) 100%); }
+    .side { position: absolute; left: 0; bottom: 0; width: 100%; aspect-ratio: 760 / 480; transform-origin: center; }
+    .side.fit { bottom: auto; aspect-ratio: auto; }
     .side.mirror { transform: scaleX(-1); }
     .side.mirror .words { transform: scaleX(-1); }
     .ground, .fx, .words { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -506,7 +592,14 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
       stroke: #1d1b19; stroke-linejoin: round; paint-order: stroke; }
     .under { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
     .caption { font-weight: 600; min-height: 1.2em; }
-    .count { font: 600 1rem/1.2 ui-monospace, monospace; }
+    /* Plan 59 Round 2a: the count is shown on the scoreboard; here it stays only as text for the caption's announcement. */
+    .sr-count { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+    /* Short landscape: the stage takes the full height on the left, caption and Skip in a 200 px column on the right. */
+    @media (orientation: landscape) and (max-height: 500px) {
+      :host { display: flex; justify-content: flex-end; gap: 14px; margin-top: 0; flex: 1 1 auto; min-height: 0; }
+      .stage { flex: 1 1 auto; height: auto; min-width: 0; max-width: calc(100cqh * 1.35); margin: 0; }
+      .under { flex: none; width: 200px; margin-top: 0; flex-direction: column; align-items: stretch; justify-content: flex-start; }
+    }
     .skip { font: inherit; font-size: .9rem; cursor: pointer; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary); padding: 10px 16px; min-height: 44px; }
   `,
 })
@@ -524,27 +617,125 @@ export class PitchScene {
   readonly side = input<SideArt | null>(null);
   /** Plan 36/40: the pitcher's windup sheet, played before every pitch (only when the batter's side art shows too). */
   readonly windup = input<WindupArt | null>(null);
+  /** Plan 59 Round 5: the center-field shot for the windup (back sheet, batter strip, catcher and umpire); null = the
+   *  front windup above. Same timing and cues: only the picture changes. */
+  readonly cf = input<CfArt | null>(null);
+  /** Where each CF sprite sits on this stage (CSS px), from the CF layout in units of stage height. */
+  protected readonly cfBox = computed(() => {
+    const z = this.stageSize(), c = this.cf();
+    if (!z || !c || z[0] <= 0 || z[1] <= 0) return null;
+    const L = cfLayout(c.bats), [w, h] = z, foot = 468 / 480;
+    const box = (sp: { x: number; y: number; h: number }) => {
+      const hh = sp.h * h, cx = w / 2 + sp.x * h, fy = h / 2 + sp.y * h;
+      return { h: hh, left: cx - (hh * 364) / 480 / 2, top: fy - hh * foot, cx, foot: fy };
+    };
+    return { pit: box(L.pitcher), bat: box(L.batter), cat: box(L.catcher), ump: box(L.umpire) };
+  });
+  protected readonly cfHz = computed(() => { const c = this.cf(); if (!c) return null; const cam = cfLayout(c.bats).cam; return (50 + 100 * CF_F * Math.tan((cam.pitch * Math.PI) / 180)) + '%'; });
   protected readonly windFrame = signal(-1);
   /** Plan 39: the fading-in next pose over the current one (the bottom pose stays fully visible). */
   protected readonly windBlend = signal<WindupBlend>({ base: 0, next: null, top: 0 });
   /** Plan 21: the announcer call for the final pitch (trajectory and field). */
   readonly call = input<Call | null>(null);
   readonly done = output<void>();
+  /** Plan 59 Round 2a: the count for the shared scoreboard, sent once per change at plate moments (never on Skip). */
+  readonly boardChange = output<{ balls: number; strikes: number }>();
   /** Plan 42: moments the announcer follows (fired in the same tick as the board update). */
   readonly cue = output<SceneCue>();
+  /** Plan 59 Round 1b: the last cue's moment on the stage (data-cue), so browser tests can sample at each cue. No visible change. */
+  protected readonly lastCue = signal<SceneCue['moment'] | null>(null);
+  private emitCue(c: SceneCue) { this.lastCue.set(c.moment); this.cue.emit(c); }
   /** Plan 42: the announcer line replaces the short caption (count stays; caption no longer read aloud). */
   readonly quietCaption = input(false);
+  /** Plan 59 Round 2b: the scene has ended and stays on screen (dimmed) under the result; the parent projects the
+   *  result into [sceneOver] (a band over the stage) and [sceneBelow] (the row under it, in place of Skip). */
+  readonly held = input(false);
+  /** Plan 59 Round 2b: the park play's end time when the scene was ended early (Skip, reduced motion), for the park view. */
+  protected readonly parkHold = signal<number | null>(null);
   /** Plan 44: fielder sheet for the pitcher's era (null = no park view). */
   readonly fielders = input<FielderArt | null>(null);
-  /** Plan 44: the batter's look (park walls, crowd, signs). */
-  readonly look = input<SideLook | null>(null);
+  /** Plan 44: the park look (walls, crowd, signs). Plan 59 Round 1b: one per game, by the card eras (parkLookOf). */
+  readonly look = input<ParkLook | null>(null);
   /** Plan 44: what the server decided about the play (inning and friend games; practice passes null). */
   readonly play = input<PlayFacts | null>(null);
   protected readonly park = signal<ParkTiming | null>(null);
   protected readonly parkFade = signal(0);
   protected readonly parkWord = signal<FxWord | null>(null);
   protected readonly parkShake = signal(0);
+  /** Plan 59 Round 3: the side view's shake in px, scaled to the side panel. */
+  protected readonly sideShakePx = computed(() => shakePx(this.frame().fx.shake, shakeUnit(this.fit()?.s)));
   private readonly parkView = viewChild(BallparkView);
+  /** Plan 59 Round 1b: the stage's size (CSS px) from a ResizeObserver; null until measured (and in jsdom). */
+  private readonly stageEl = viewChild<ElementRef<HTMLElement>>('stage');
+  private readonly stageSize = signal<[number, number] | null>(null);
+  protected readonly fit = computed<StageFit | null>(() => {
+    const z = this.stageSize();
+    return z && z[0] > 0 && z[1] > 0 ? stageFit(z[0], z[1], this.bats() === 'L') : null;
+  });
+  /** Plan 59 Round 1b: the look's flat colors for the silhouette (no look: the 1956 park's). */
+  protected readonly tint = computed(() => { const L = LOOKS[this.look() ?? '1956']; return { sky: L.sky[1], grass: L.grass }; });
+  /** The side backdrop's horizon on the stage (silhouette line), from the side camera. */
+  protected readonly sideHz = computed(() => {
+    const p = this.place('side');
+    return p ? p.cy + p.f * Math.tan((p.cam.pitch * Math.PI) / 180) + 'px' : null;
+  });
+  /** The windup camera is the same at every stage size (units of stage height): horizon and sprite box in %. */
+  protected readonly windHz = (50 + 100 * WINDUP_F * Math.tan((windupCamera().pitch * Math.PI) / 180)) + '%';
+  protected readonly WINDUP_FOOT = WINDUP_FOOT;
+  /** Sprite height and top (% of stage height); the contact shadow is 2.2% of the stage height tall and 42% of the
+   *  sprite cell wide, so its width/height ratio is fixed (sized in height units, never by the stage's width). */
+  protected readonly pitBox = { h: 100 * windupSpriteH(), top: 100 * (WINDUP_FOOT - PITCHER_CELL_FOOT * windupSpriteH()),
+    shadow: String((windupSpriteH() * (364 / 480) * 0.42) / 0.022) };
+  /** Where a backdrop's camera sits on this stage (CSS px), or null before the stage is measured. */
+  private place(view: BackdropView): BackdropPlace | null {
+    const z = this.stageSize();
+    return z && z[0] > 0 && z[1] > 0 ? backdropPlace(view, this.bats() === 'L', z[0], z[1]) : null;
+  }
+  private readonly bgSide = viewChild<ElementRef<HTMLCanvasElement>>('bgSide');
+  private readonly bgWind = viewChild<ElementRef<HTMLCanvasElement>>('bgWind');
+  /** Draws (or takes from the cache) each view's backdrop and copies it into that view's canvas, once per look, side and
+   *  stage size. The windup is drawn at once (it shows first, and from its first frame); the side view on the next task.
+   *  A size change clears the canvas first, so the silhouette shows until the new picture is in: never a stretched one. */
+  private paintBackdrops() {
+    const z = this.stageSize(), look = this.look() ?? '1956', side = this.bats() === 'L' ? 'L' : 'R';
+    if (!z) return;
+    const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
+    const wv: BackdropView = this.cf() ? 'cf' : 'windup';   // plan 59 r5: the CF shot has its own backdrop
+    for (const [view, ref] of [[wv, this.bgWind()], ['side', this.bgSide()]] as [BackdropView, ElementRef<HTMLCanvasElement> | undefined][]) {
+      if (view !== 'side' && !this.windup()) continue;
+      // Plan 59 Round 2b: a held stage under the field view needs no side backdrop; a held stage keeps its old picture until the new one is in.
+      const held = untracked(() => this.held());
+      if (held && (view !== 'side' || untracked(() => !!this.park() && this.parkFade() >= 1))) continue;   // the windup layer is gone once held
+      const place = this.place(view), key = backdropKey(look, view, side, z[0], z[1], dpr);
+      if (!place) continue;
+      const draw = () => {
+        const src = renderBackdrop(look, view, side, z[0], z[1], dpr, place), cv = ref?.nativeElement;
+        if (!src || !cv || cv.dataset['key'] === key) return;
+        let g: CanvasRenderingContext2D | null = null;
+        try { g = cv.getContext('2d'); } catch { g = null; }
+        if (!g) return;
+        cv.width = src.width; cv.height = src.height;
+        g.drawImage(src, 0, 0);
+        cv.dataset['key'] = key;
+      };
+      const cv = ref?.nativeElement;
+      if (cv && cv.dataset['key'] && cv.dataset['key'] !== key && !held) { cv.width = 0; delete cv.dataset['key']; }
+      if (view !== 'side') draw();
+      else setTimeout(() => { if (this.stageSize() === z) draw(); }, 0);
+    }
+  }
+  private observed: HTMLElement | null = null;
+  private ro: ResizeObserver | null = null;
+  private watchStage() {
+    const el = this.stageEl()?.nativeElement ?? null;
+    if (el === this.observed) return;
+    this.ro?.disconnect();
+    this.observed = el;
+    if (!el) return;
+    const measure = () => { const w = el.clientWidth, h = el.clientHeight; const z = this.stageSize(); if (!z || z[0] !== w || z[1] !== h) this.stageSize.set([w, h]); };
+    measure();
+    if (typeof ResizeObserver === 'function') { this.ro = new ResizeObserver(measure); this.ro.observe(el); }
+  }
   private sheetImg: HTMLImageElement | null = null;
   protected readonly sheet = computed<FielderSheet>(() => {
     const f = this.fielders();
@@ -584,7 +775,9 @@ export class PitchScene {
   private finished = false;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => { clearTimeout(this.timer); this.clearFrames(); });
+    inject(DestroyRef).onDestroy(() => { clearTimeout(this.timer); this.clearFrames(); this.ro?.disconnect(); });
+    afterRenderEffect(() => this.watchStage());
+    afterRenderEffect(() => this.paintBackdrops());
     this.timer = setTimeout(() => (prefersReducedMotion() ? this.finish() : this.next()), 0);
   }
 
@@ -606,11 +799,7 @@ export class PitchScene {
     this.clearFrames();
     const final = this.isFinal(), m = this.motion();
     const lead = final ? null : this.count().leadUp[this.step()];
-    const kind: 'ball' | 'strike' | null = lead ? (lead.kind === 'ball' ? 'ball' : 'strike') : this.outcome() === 'bb' ? 'ball' : null;
-    const bats = this.bats() === 'L' ? 'L' : 'R';
-    const plan = planPitch({ m, kind, isFinal: final, outcome: this.outcome(), era: this.era(), bats,
-      call: final ? this.call() : null, contact: this.contactPoint(), seed: this.seed(), index: this.step(),
-      windup: !!this.windup() && !!this.side(), tip: this.batTip() });
+    const plan = this.planFor(this.step());
     const fin = final ? finalCaption(this.outcome(), this.count().finalKind, this.deco()) : '';
     const pk = final ? parkTiming(plan, this.parkPlayFor(m)) : null;
     if (pk) { this.sheet(); this.park.set(pk); }
@@ -619,7 +808,7 @@ export class PitchScene {
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: FrameRequestCallback) => setTimeout(() => fn(performance.now()), 16) as unknown as number;
     const lead0 = plan.s.windup ? WINDUP_S : 0;
     const idx = this.step();
-    if (plan.s.windup) this.cue.emit({ index: idx, final, moment: 'windup' });
+    if (plan.s.windup) this.emitCue({ index: idx, final, moment: 'windup' });
     const start = performance.now();
     const tick = () => {
       const el = (performance.now() - start) / 1000;
@@ -627,25 +816,55 @@ export class PitchScene {
       this.windFrame.set(-1);
       const t = Math.min(end, el - lead0);
       if (this.side() && (!pk || t < pk.tPark)) this.frame.set(frameAt(plan, Math.min(plan.tl.end, t)));   // the side view holds its last frame under the park
-      if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); this.cue.emit({ index: idx, final, moment: 'enter' }); }
+      else if (pk && t >= pk.tPark && this.frame().fx.shake) this.frame.update(f => ({ ...f, fx: { ...f.fx, shake: 0 } }));   // Plan 59 Round 3: no frozen shake under the park
+      if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); this.emitCue({ index: idx, final, moment: 'enter' }); }
       if (!called && t >= plan.p.tPlate) {
         called = true;
-        if (lead) this.board.set({ balls: lead.balls, strikes: lead.strikes, caption: PITCH_CAPTION[lead.kind] });
+        if (lead) this.setBoard(lead.balls, lead.strikes, PITCH_CAPTION[lead.kind]);
         else if (fin) this.board.update(b => ({ ...b, caption: fin }));
-        this.cue.emit({ index: idx, final, moment: 'plate' });
+        this.emitCue({ index: idx, final, moment: 'plate' });
       }
       if (pk && t >= pk.tPark) {
-        if (!parked) { parked = true; this.cue.emit({ index: idx, final, moment: 'park' }); }
+        if (!parked) { parked = true; this.emitCue({ index: idx, final, moment: 'park' }); }
         const pt = t - pk.tPark;
         this.parkFade.set(Math.min(1, pt / PARK_FADE));
         this.parkView()?.draw(Math.min(pk.play.len, pt));
         this.parkWord.set(wordAt(plan, t, end) ?? null);
-        this.parkShake.set(shakeAt(plan, t));
+        this.parkShake.set(shakePx(shakeWave(plan, t), shakeUnit(this.fit()?.s)));
       }
       if (!this.finished && t < end) this.raf = raf(tick);
     };
     tick();
     return { plan, end };
+  }
+
+  /** The plan for pitch `step` (lead-up index, or leadUp.length for the final pitch); pure in the scene's inputs. */
+  private planFor(step: number): Plan {
+    const c = this.count(), final = step >= c.leadUp.length, lead = final ? null : c.leadUp[step];
+    const m = final ? motionFor(this.outcome(), c.finalKind) : leadMotion(lead!.kind);
+    const kind: 'ball' | 'strike' | null = lead ? (lead.kind === 'ball' ? 'ball' : 'strike') : this.outcome() === 'bb' ? 'ball' : null;
+    return planPitch({ m, kind, isFinal: final, outcome: this.outcome(), era: this.era(), bats: this.bats() === 'L' ? 'L' : 'R',
+      call: final ? this.call() : null, contact: this.contactPoint(), seed: this.seed(), index: step,
+      windup: !!this.windup() && !!this.side(), tip: this.batTip() });
+  }
+
+  /** Plan 59 Round 2b: the final pitch's plan (the held picture after an early end). */
+  protected finalPlan(): Plan { return this.planFor(this.count().leadUp.length); }
+
+  /** Plan 59 Round 2b: an early end (Skip, reduced motion) shows the final pitch's last frame, and the park at the play's end. */
+  private showFinal() {
+    if (!this.side()) return;
+    this.loadSheet();   // before sheet() is read: the computed would keep a missing image
+    const pl = this.finalPlan(), c = this.count();
+    this.windFrame.set(-1);
+    this.frame.set(frameAt(pl, pl.tl.end));
+    const pk = parkTiming(pl, this.parkPlayFor(motionFor(this.outcome(), c.finalKind)));
+    if (!pk) return;
+    this.park.set(pk);
+    this.parkFade.set(1);
+    this.parkWord.set(null);
+    this.parkShake.set(0);
+    this.parkHold.set(pk.play.len);
   }
 
   private next() {
@@ -662,14 +881,22 @@ export class PitchScene {
     }, ms);
   }
 
+  /** Plan 59 Round 2a: the plate-moment count update; tells the scoreboard only when the count changed. */
+  setBoard(balls: number, strikes: number, caption: string) {
+    const b = this.board();
+    this.board.set({ balls, strikes, caption });
+    if (b.balls !== balls || b.strikes !== strikes) this.boardChange.emit({ balls, strikes });
+  }
+
   /** Ends the scene once, whether by timer or the Skip button (or reduced motion: skipped). */
   finish(skipped = true) {
     if (this.finished) return;
     this.finished = true;
     clearTimeout(this.timer);
     this.clearFrames();
+    if (skipped) this.showFinal();
     const c = this.count();
-    this.cue.emit({ index: c.leadUp.length, final: true, moment: skipped ? 'skipped' : 'end' });
+    this.emitCue({ index: c.leadUp.length, final: true, moment: skipped ? 'skipped' : 'end' });
     this.done.emit();
   }
 }

@@ -1,5 +1,5 @@
-import { SideLook } from './art';
-import { ballAt, Camera, edgeDist, fielderAt, FR, ParkPlay, pol, project, toCam, NEAR, wallDist } from './park';
+import { ParkLook } from './art';
+import { ballAt, CAM, Camera, edgeDist, fielderAt, FR, ParkPlay, pol, NEAR, wallDist } from './park';
 
 // Plan 44: draws the park at field level on a 2D canvas, in W x H panel units (760 x 480), from the approved prototype
 // (planning/44-park-prototype.html). Everything is placed in feet and drawn live with one camera, so the wall base meets the grass.
@@ -11,17 +11,21 @@ const ease = (u: number) => { u = Math.max(0, Math.min(1, u)); return u * u * (3
 type V3 = [number, number, number];
 
 interface Look { wall: string; wallTop: string; track: boolean; markers: number[]; stands: [string, string]; board: 'hand' | 'lit'; grass: string; sky: [string, string]; }
-export const LOOKS: Record<SideLook, Look> = {
+export const LOOKS: Record<ParkLook, Look> = {
   '1901': { wall: '#7a5532', wallTop: '#4f341d', track: false, markers: [], stands: ['#6d5a44', '#5d4c39'], board: 'hand', grass: '#5f8a45', sky: ['#9fb8cf', '#dfe6e6'] },
   '1920': { wall: '#6e4a2c', wallTop: '#4f341d', track: false, markers: [], stands: ['#655443', '#544535'], board: 'hand', grass: '#5c8a44', sky: ['#8fb0d0', '#dde6ea'] },
   '1956': { wall: '#9a9a92', wallTop: '#77776f', track: true, markers: [-45, 45], stands: ['#7d7f86', '#6b6d74'], board: 'hand', grass: '#4f8f3f', sky: ['#6fa0d8', '#d8e6f0'] },
+  // Plan 59 Round 1b: 1970-1989 park: dark green outfield wall, mustard and brown seats of the multipurpose-stadium years,
+  // lit board, warning track, distance markers on the lines and in center.
+  '1970': { wall: '#2f5a3e', wallTop: '#22432d', track: true, markers: [-45, 0, 45], stands: ['#9a7a3c', '#866932'], board: 'lit', grass: '#4a8c3c', sky: ['#6a9ed6', '#d6e4ee'] },
   '1990': { wall: '#1f4f8a', wallTop: '#163a66', track: true, markers: [-45, -22, 0, 22, 45], stands: ['#3a5577', '#30496a'], board: 'lit', grass: '#3f8f3a', sky: ['#5a95dc', '#d5e5f4'] },
 };
 /** Stephen's own products by their real names, plus period concessions. No real sponsors, teams or league marks. */
-export const SIGNS: Record<SideLook, [string, number][]> = {
+export const SIGNS: Record<ParkLook, [string, number][]> = {
   '1901': [['Hot Dogs 10¢', -30], ['Scorecards', -10], ['DailyInventory', 12], ['Rawls Game', 32]],
   '1920': [['Mortality', -32], ['Hot Dogs 10¢', -12], ['Scorecards', 10], ['NYC Explorer', 32]],
   '1956': [['BlackJack Sensei', -31], ['Hot Dogs 25¢', -11], ['Dealer’s Choice', 11], ['DailyInventory', 31]],
+  '1970': [['Mortality', -31], ['Hot Dogs 50¢', -11], ['Rawls Game', 11], ['NYC Explorer', 31]],
   '1990': [['NYC Explorer', -32], ['DailyInventory', -12], ['BlackJack Sensei', 11], ['Rawls Game', 32]],
 };
 /** Fallback silhouette color per fielder sheet (the uniform's accent), if the sheet is not loaded by contact. */
@@ -29,12 +33,12 @@ export const ACCENT: Record<string, string> = { '1901-1919': '#24365c', '1920-19
 
 /** Rows of stands at an angle. 1901 (expert): a grandstand behind home and down the lines, low bleachers in the corners,
  *  and an open outfield where overflow fans stand on the grass behind a rope. */
-export function standRows(look: SideLook, a: number): number {
+export function standRows(look: ParkLook, a: number): number {
   if (look !== '1901') return 10;
   const t = Math.abs(a);
   return t >= 55 ? 10 : t >= 35 ? 3 : 0;
 }
-const STAND_RANGES = (look: SideLook): [number, number, number][] =>
+const STAND_RANGES = (look: ParkLook): [number, number, number][] =>
   look === '1901' ? [[-115, -55, 10], [-55, -35, 3], [35, 55, 3], [55, 115, 10]] : [[-115, 115, 10]];
 const range = (a0: number, a1: number, step: number) => { const o: number[] = []; for (let a = a0; a <= a1 + 1e-9; a += step) o.push(a); if (o[o.length - 1] < a1) o.push(a1); return o; };
 
@@ -43,24 +47,26 @@ const SKIN = ['#f1c9a5', '#e0ac85', '#c68a62', '#a86e4a', '#7d4f33', '#5a3825'];
 
 // ---- crowd: about 40 dressed figures per look, drawn once per look into a small sheet ----
 const FW = 16, FH = 30, NV = 40;
-export interface Crowd { img: HTMLCanvasElement; seats: [number, number, number, number, number][]; }
-const crowds = new Map<SideLook, Crowd>();
-export function crowdFor(look: SideLook): Crowd | null {
-  const have = crowds.get(look);
-  if (have) return have;
-  if (typeof document === 'undefined') return null;
-  const s = document.createElement('canvas'); s.width = FW * NV * 2; s.height = FH * 2;
-  const g = s.getContext('2d');
+export interface Crowd { img: HTMLCanvasElement; seats: [number, number, number, number, number][];
+  /** Plan 59 Round 1b: the same seats grouped by row (index row + 1; row -1 = the 1901 standing fans), same order. */
+  byRow: [number, number, number, number, number][][]; }
+const crowds = new Map<ParkLook, Crowd>();
+/** The crowd figure sheet at k x (2 for the field view; Round 5: 4 for the fans behind home). Same figures at any k. */
+function crowdSheet(look: ParkLook, k0: number): HTMLCanvasElement | null {
+  const s = document.createElement('canvas'); s.width = FW * NV * k0; s.height = FH * k0;
+  let g: CanvasRenderingContext2D | null = null;
+  try { g = s.getContext('2d'); } catch { g = null; }
   if (!g) return null;
-  g.scale(2, 2);
+  g.scale(k0, k0);
   const L = +look, r = rng(L * 13 + 5);
   for (let i = 0; i < NV; i++) {
     const X = i * FW + FW / 2, Y = FH, k = 2.2;
-    const woman = L === 1990 ? r() < 0.45 : L === 1956 ? r() < 0.3 : r() < 0.12;
+    const woman = L >= 1990 ? r() < 0.45 : L >= 1956 ? r() < 0.3 : r() < 0.12;   // 1970: as 1956
     const pick = <T,>(a: T[]) => a[Math.floor(r() * a.length)];
     let body: string;
     if (L <= 1920) body = woman ? pick(['#5b4a6b', '#3d4a5c', '#6b4f3a']) : pick(['#2b2b2e', '#3a3530', '#25303b', '#4a3f35']);
     else if (L === 1956) body = woman ? pick(['#c7564a', '#4f7fb5', '#e3c25a', '#7aa36b']) : pick(['#3b3f4a', '#e8e4da', '#6a5a48', '#2f3e57']);
+    else if (L === 1970) body = pick(['#b5652b', '#d9a441', '#6b4a2b', '#3f6e8c', '#8c3b3b', '#e8dcc0', '#4f6b3a']);   // earth tones
     else body = pick(['#d64545', '#2f6fd1', '#f2f2f2', '#2b2b2b', '#f0b429', '#3aa36b', '#7b4fc2']);
     g.fillStyle = body;
     if (woman && L <= 1956) { g.beginPath(); g.moveTo(X - 2.6 * k, Y); g.lineTo(X + 2.6 * k, Y); g.lineTo(X + 1.5 * k, Y - 5.5 * k); g.lineTo(X - 1.5 * k, Y - 5.5 * k); g.fill(); }
@@ -78,11 +84,24 @@ export function crowdFor(look: SideLook): Crowd | null {
     } else if (L === 1956) {
       if (woman) { if (h < 0.4) ell(X, hy - 1.1 * k, 1.8 * k, 0.6 * k, '#f5f5f0'); else { g.fillStyle = '#3b2a1d'; g.beginPath(); g.arc(X, hy - 0.3 * k, 1.6 * k, Math.PI, 0); g.fill(); } }
       else if (h < 0.9) { ell(X, hy - 1 * k, 2.2 * k, 0.55 * k, '#3c3a36'); g.fillStyle = '#3c3a36'; g.fillRect(X - 1.25 * k, hy - 2.4 * k, 2.5 * k, 1.5 * k); }
+    } else if (L === 1970) {   // few hats: a ball cap now and then, long hair and afros
+      if (h < 0.22) ell(X + 0.6 * k, hy - 0.9 * k, 2 * k, 0.75 * k, pick(['#b5652b', '#1f3b73', '#d9a441']));
+      else if (h < 0.5) { g.fillStyle = pick(['#1a120c', '#2b1d14']); g.beginPath(); g.arc(X, hy - 0.2 * k, 2.1 * k, Math.PI * 0.95, Math.PI * 2.05); g.fill(); }
+      else { g.fillStyle = pick(['#2b1d14', '#5a3b22', '#c9a15a', '#7a4a22']); g.fillRect(X - 1.6 * k, hy - 1.2 * k, 3.2 * k, 2.6 * k); }
     } else {
       if (h < 0.4) ell(X + 0.6 * k, hy - 0.9 * k, 2 * k, 0.75 * k, pick(['#1f3b73', '#b02a2a', '#222', '#f2f2f2']));
       else { g.fillStyle = pick(['#2b1d14', '#5a3b22', '#c9a15a', '#111']); g.beginPath(); g.arc(X, hy - 0.3 * k, 1.5 * k, Math.PI, 0); g.fill(); }
     }
   }
+  return s;
+}
+export function crowdFor(look: ParkLook): Crowd | null {
+  const have = crowds.get(look);
+  if (have) return have;
+  if (typeof document === 'undefined') return null;
+  const s = crowdSheet(look, 2);
+  if (!s) return null;
+  const L = +look;
   const seats: Crowd['seats'] = [], rr = rng(L * 3 + 1);
   for (let row = 0; row < 10; row++) {
     for (let a = -112; a <= 112; a += 0.9) {
@@ -102,9 +121,90 @@ export function crowdFor(look: SideLook): Crowd | null {
       seats.push([x, y, 0, Math.floor(rr() * NV), -1]);
     }
   }
-  const c: Crowd = { img: s, seats };
+  const byRow: Crowd['byRow'] = Array.from({ length: 11 }, () => []);
+  for (const st of seats) byRow[st[4] + 1].push(st);
+  const c: Crowd = { img: s, seats, byRow };
   crowds.set(look, c);
   return c;
+}
+
+// ---- Plan 59 Round 5: what stands behind home plate (center-field view only) ----
+/** d: distance behind the plate (ft), h: wall height, net: top of the screen, boards: draw board or pad seams. */
+export const BACKSTOP: Record<ParkLook, { d: number; h: number; net: number; wall: string; cap: string; boards: boolean }> = {
+  '1901': { d: 58, h: 4, net: 22, wall: '#7a5532', cap: '#4f341d', boards: true },    // wood fence, wire screen
+  '1920': { d: 60, h: 4, net: 24, wall: '#6e4a2c', cap: '#4f341d', boards: true },
+  '1956': { d: 60, h: 4, net: 26, wall: '#8a4a3a', cap: '#5e3125', boards: false },   // brick
+  '1970': { d: 60, h: 4.5, net: 30, wall: '#2f5a3e', cap: '#22432d', boards: true },    // padded, the outfield wall's green
+  '1990': { d: 60, h: 4.5, net: 30, wall: '#1f4f8a', cap: '#163a66', boards: true },    // padded, plain panels (no logos)
+};
+const HOME_ROWS = 10, BIG = 4;
+const bigCrowds = new Map<ParkLook, { img: HTMLCanvasElement } | null>();
+/** The crowd figures drawn at 4x (the center-field lens makes the fans behind home big); same figures as crowdFor. */
+function bigCrowdFor(look: ParkLook): { img: HTMLCanvasElement } | null {
+  if (bigCrowds.has(look)) return bigCrowds.get(look)!;
+  if (typeof document === 'undefined') return null;
+  const img = crowdSheet(look, BIG);
+  const v = img ? { img } : null;
+  bigCrowds.set(look, v);
+  return v;
+}
+
+// ---- Plan 59 Round 1b finish pass: everything static is worked out once per look; no random streams (fixed hash noise) ----
+/** Sprites' ink, for park outlines. */
+export const INK = '#1d1b19';
+const hex = (c: string): [number, number, number] => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)) as [number, number, number];
+/** a mixed u of the way toward b (hex colors). */
+export function mix(a: string, b: string, u: number): string {
+  const p = hex(a), q = hex(b);
+  return '#' + p.map((v, i) => Math.round(v + (q[i] - v) * u).toString(16).padStart(2, '0')).join('');
+}
+/** Faces turned away from the light (upper left: the left-field side) are 8% darker. */
+export const shade = (c: string) => mix(c, '#000000', 0.08);
+export interface Finish { rows: string[]; base: string; wall: [string, string]; foul: [string, string]; }
+const finishes = new Map<ParkLook, Finish>();
+/** Per-look colors: stand rows hazed 10% (front) to 20% (back) toward the sky; lit and turned-away wall faces
+ *  (light from the upper left: walls on the left-field side face away from it). */
+export function finishFor(look: ParkLook): Finish {
+  const have = finishes.get(look);
+  if (have) return have;
+  const L = LOOKS[look], haze = (c: string, row: number) => mix(c, L.sky[1], 0.1 + (0.1 * row) / 9);
+  const rows = Array.from({ length: 10 }, (_, r) => haze(L.stands[r % 2], r));
+  const f: Finish = { rows, base: haze(L.stands[1], 0), wall: [L.wall, shade(L.wall)], foul: ['#5b4a3a', shade('#5b4a3a')] };
+  finishes.set(look, f);
+  return f;
+}
+/** Fixed integer hash in [0, 1) (no random stream). */
+const hash01 = (i: number) => { let x = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+const DIRT = '#b58a5c';
+const dirtTiles = new Map<ParkLook, HTMLCanvasElement | null>();
+/** The dirt grain tile for a look (made once): the dirt color with fixed-hash specks, lighter and darker. */
+function dirtTile(look: ParkLook): HTMLCanvasElement | null {
+  if (dirtTiles.has(look)) return dirtTiles.get(look)!;
+  let t: HTMLCanvasElement | null = null;
+  if (typeof document !== 'undefined') {
+    t = document.createElement('canvas'); t.width = t.height = 48;
+    let g: CanvasRenderingContext2D | null = null;
+    try { g = t.getContext('2d'); } catch { g = null; }
+    if (g) {
+      g.fillStyle = DIRT; g.fillRect(0, 0, 48, 48);
+      const seed = +look * 977;
+      for (let i = 0; i < 160; i++) {
+        const x = Math.floor(hash01(seed + i * 3) * 48), y = Math.floor(hash01(seed + i * 3 + 1) * 48), v = hash01(seed + i * 3 + 2);
+        g.fillStyle = v < 0.5 ? '#9a7048' : '#c99d6e'; g.globalAlpha = 0.35 + 0.4 * hash01(seed + i * 7);
+        g.fillRect(x, y, v < 0.8 ? 1 : 2, 1);
+      }
+    } else t = null;
+  }
+  dirtTiles.set(look, t);
+  return t;
+}
+const dirtPatterns = new WeakMap<CanvasRenderingContext2D, Map<ParkLook, CanvasPattern | string>>();
+function dirtFill(c: CanvasRenderingContext2D, look: ParkLook): CanvasPattern | string {
+  let m = dirtPatterns.get(c);
+  if (!m) { m = new Map(); dirtPatterns.set(c, m); }
+  let p = m.get(look);
+  if (!p) { const t = dirtTile(look); p = (t && c.createPattern(t, 'repeat')) || DIRT; m.set(look, p); }
+  return p;
 }
 
 export interface FielderSheet { img: HTMLImageElement | null; cell: [number, number]; footY: number; era: string; }
@@ -113,11 +213,40 @@ export class ParkPainter {
   constructor(private c: CanvasRenderingContext2D) {}
   private cam!: Camera;
   private f = 1;
+  /** Plan 59 Round 1b: painter units of this frame (height 480, width 480 x aspect). */
+  private w = W;
+  private h = H;
+  /** Plan 59 Round 1b: where the camera's center lands (the field view: the canvas center; backdrops: set per view). */
+  private cx = W / 2;
+  private cy = H / 2;
+  /** Backdrops (tele lenses close to the lines): chalk lines at their real 4 inches instead of the field view's 1.2 ft. */
+  private thin = false;
+  /** Plan 59 Round 5: the center-field view stands inside the park, so ring-shaped shapes (stands, their front wall) are
+   *  drawn in short pieces and pieces behind the camera are left out (a clipped ring would cover the frame). */
+  private inside = false;
+  /** Plan 59 Round 1b: the camera's position and turn/tilt sines and cosines, worked out once per frame (park.toCam's
+   *  math, same numbers). One plain-number shape for every view keeps the hot path fast: reading cameras of two
+   *  shapes (with and without a position) slowed the field view after a backdrop was drawn (measured, test 11). */
+  private ox = 0; private oy = 0; private oz = 0; private sy = 0; private cy0 = 1; private sp = 0; private cp = 1;
+  private setCam(cam: Camera) {
+    const o = cam.pos ?? CAM, yw = rad(cam.yaw), pt = rad(cam.pitch);
+    this.cam = cam; this.ox = o.x; this.oy = o.y; this.oz = o.z;
+    this.sy = Math.sin(yw); this.cy0 = Math.cos(yw); this.sp = Math.sin(pt); this.cp = Math.cos(pt);
+  }
+  /** Camera-space point [right, forward, up] (as park.toCam). */
+  private tc(x: number, y: number, z: number): V3 {
+    const rx = x - this.ox, ry = y - this.oy, rz = z - this.oz;
+    const dx = rx * this.cy0 - ry * this.sy, dy = rx * this.sy + ry * this.cy0;
+    return [dx, this.cp * dy + this.sp * rz, -this.sp * dy + this.cp * rz];
+  }
 
-  private scr(v: V3): [number, number] { return [W / 2 + (v[0] / v[1]) * this.f, H / 2 - (v[2] / v[1]) * this.f]; }
-  private proj(x: number, y: number, z = 0) { return project(this.cam, W, H, x, y, z); }
-  private poly(pts: V3[], fill?: string, stroke?: string, lw = 1) {
-    const ps = pts.map(p => toCam(this.cam, p[0], p[1], p[2]));
+  private scr(v: V3): [number, number] { return [this.cx + (v[0] / v[1]) * this.f, this.cy - (v[2] / v[1]) * this.f]; }
+  private proj(x: number, y: number, z = 0): [number, number, number] | null {
+    const v = this.tc(x, y, z);
+    return v[1] < NEAR ? null : [...this.scr(v), v[1]];
+  }
+  private poly(pts: V3[], fill?: string | CanvasPattern, stroke?: string, lw = 1) {
+    const ps = pts.map(p => this.tc(p[0], p[1], p[2]));
     const out: V3[] = [];
     for (let i = 0; i < ps.length; i++) {
       const a = ps[i], b = ps[(i + 1) % ps.length], ai = a[1] >= NEAR, bi = b[1] >= NEAR;
@@ -131,11 +260,33 @@ export class ParkPainter {
     if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); }
   }
 
-  /** One frame of the park view at scene time t. */
-  draw(play: ParkPlay, cam: Camera, t: number, sheet: FielderSheet) {
-    this.cam = cam; this.f = W / 2 / Math.tan(rad(cam.fov) / 2);
+  /** Adds a 3D segment to the current path (skipped when either end is behind the camera). */
+  private seg(a: V3, b: V3) {
+    const p = this.proj(a[0], a[1], a[2]), q = this.proj(b[0], b[1], b[2]);
+    if (!p || !q) return;
+    this.c.moveTo(p[0], p[1]); this.c.lineTo(q[0], q[1]);
+  }
+  private ink(draw: () => void) {
     const c = this.c;
-    c.clearRect(0, 0, W, H);
+    c.beginPath(); draw(); c.strokeStyle = INK; c.lineWidth = 2; c.lineCap = 'round'; c.stroke();
+  }
+
+  /** Plan 59 Round 5: the angles as one run (every view but center field), or, inside the park, as runs of 2 that are
+   *  wholly in front of the camera (pts: the points to test at an angle). */
+  private pieces(as: number[], pts: (a: number) => V3[]): number[][] {
+    if (!this.inside) return [as];
+    const ok = (a: number) => pts(a).every(p => this.tc(p[0], p[1], p[2])[1] >= NEAR);
+    const out: number[][] = [];
+    for (let i = 0; i + 1 < as.length; i++) if (ok(as[i]) && ok(as[i + 1])) out.push([as[i], as[i + 1]]);
+    return out;
+  }
+
+  /** One frame of the park view at scene time t. */
+  draw(play: ParkPlay, cam: Camera, t: number, sheet: FielderSheet, w = W, h = H) {
+    this.w = w; this.h = h; this.cx = w / 2; this.cy = h / 2; this.thin = false;
+    this.setCam(cam); this.f = w / 2 / Math.tan(rad(cam.fov) / 2);
+    const c = this.c;
+    c.clearRect(0, 0, w, h);
     this.park(play.look);
     if (play.mark) { const m: V3[] = []; for (let a = 0; a < 360; a += 30) m.push([play.mark[0] + Math.sin(rad(a)) * 3, play.mark[1] + Math.cos(rad(a)) * 3, 0.05]); this.poly(m, '#ffffff22', '#ffffff66', 1); }
     const b = ballAt(play, t);
@@ -145,6 +296,73 @@ export class ParkPainter {
     for (const f of fs) this.fielder(f.at, f.frame, f.moving, t, sheet);
     const bp = this.proj(b[0], b[1], b[2]);
     if (bp) { const r = Math.max(4, (0.6 * this.f) / bp[2]); c.fillStyle = '#fbf8f1'; c.strokeStyle = '#2b2a28'; c.lineWidth = 1.4; c.beginPath(); c.arc(bp[0], bp[1], r, 0, 7); c.fill(); c.stroke(); }
+  }
+
+  /** Plan 59 Round 1b: the static park (no ball, no fielders) for a backdrop, with an explicit focal length f and the
+   *  camera's center at (cx, cy), all in the canvas's units. plate = false leaves the plate out (the side view's SVG plate stays). */
+  backdrop(look: ParkLook, cam: Camera, w: number, h: number, f: number, cx: number, cy: number, plate: boolean, home = false) {
+    this.w = w; this.h = h; this.cx = cx; this.cy = cy; this.setCam(cam); this.f = f; this.thin = true; this.inside = home;
+    this.c.clearRect(0, 0, w, h);
+    this.park(look, plate);
+    if (home) this.home(look);
+    this.inside = false;   // plan 59 r5: only the center-field view looks back at home plate
+  }
+
+  /** Plan 59 Round 5: what stands behind home plate, seen from center field: the home grandstand (rows from the ends of
+   *  the stands at +-115 degrees round to 180), its front wall, a backstop per look and the screen above it. Fixed shapes,
+   *  no random streams (fans from a fixed hash). Drawn after the park: from center field it sits beyond everything else. */
+  private home(look: ParkLook) {
+    const F = finishFor(look), c = this.c, B = BACKSTOP[look];
+    // radius from home round the back: 75 ft at +-115 (where edgeDist ends) in to B.d straight behind the plate
+    const r = (a: number) => lerp(B.d, edgeDist(115), ease(Math.min(1, Math.abs(a - 180) / 65)));
+    const as = range(115, 245, 2.5);
+    const ring = (dd: number, z: number, a: number): V3 => [...pol(r(a) + dd, a), z];
+    const big = bigCrowdFor(look);
+    // rows rise steeply right behind a low backstop (seats close to the field), 3 ft deep and 2.8 ft up per row
+    const rd = (row: number) => 2 + row * 3, rz = (row: number) => B.h + 0.5 + row * 2.8;
+    // the long lens is focused on the batter: the stands behind him are soft (canvas filter; browsers without it stay sharp)
+    c.save();
+    try { c.filter = `blur(${Math.max(1, this.h * 0.005).toFixed(1)}px)`; } catch { /* no canvas filter */ }
+    for (let row = HOME_ROWS - 1; row >= 0; row--) {
+      const band: V3[] = [], face: V3[] = [];
+      for (const a of as) band.push(ring(rd(row), rz(row), a));
+      for (const a of [...as].reverse()) band.push(ring(rd(row) + 3, rz(row), a));
+      this.poly(band, F.rows[row]);
+      for (const a of as) face.push(ring(rd(row), rz(row), a));
+      for (const a of [...as].reverse()) face.push(ring(rd(row), rz(row) - 2.8, a));
+      this.poly(face, mix(F.rows[row], '#000000', 0.25));
+      if (!big) continue;
+      for (let a = 116, i = 0; a <= 244; a += 1.9, i++) {   // fans: fixed hash per seat (about 1 in 7 empty), seated (3.6 ft showing)
+        const hsh = hash01(row * 1000 + i);
+        if (hsh < 0.14) continue;
+        const aa = a + (hash01(row * 1000 + i + 500) - 0.5) * 0.3;
+        const b = this.proj(...ring(rd(row) + 1.5, rz(row), aa));
+        if (!b || b[0] < -40 || b[0] > this.w + 40 || b[1] < -40 || b[1] > this.h + 80) continue;
+        const hgt = (3.6 * this.f) / b[2]; if (hgt < 3) continue;
+        const wdt = (hgt * FW) / (FH * 0.6), v = Math.floor(hash01(row * 1000 + i + 900) * NV);
+        c.drawImage(big.img, v * FW * BIG, 0, FW * BIG, FH * 0.6 * BIG, b[0] - wdt / 2, b[1] - hgt, wdt, hgt);   // top 60% of the figure: seated
+      }
+    }
+    c.restore();
+    // the backstop wall (in front of the stands), its cap, then the screen above it
+    const wall: V3[] = [], top: V3[] = [];
+    for (const a of as) wall.push(ring(0, 0, a));
+    for (const a of [...as].reverse()) wall.push(ring(0, B.h, a));
+    this.poly(wall, B.wall);
+    for (const a of as) top.push(ring(0, B.h, a));
+    for (const a of [...as].reverse()) top.push(ring(0, B.h + 0.5, a));
+    this.poly(top, B.cap);
+    if (B.boards) this.ink(() => { for (let a = 120; a <= 240; a += 4) this.seg(ring(-0.05, 0, a), ring(-0.05, B.h, a)); });   // wood boards or pad seams
+    const sa = range(150, 210, 2.5), net: V3[] = [];
+    for (const a of sa) net.push(ring(0, B.h + 0.5, a));
+    for (const a of [...sa].reverse()) net.push(ring(0, B.net, a));
+    this.poly(net, '#20202030');
+    c.beginPath();
+    for (let z = B.h + 2; z < B.net; z += 2) for (let i = 0; i + 1 < sa.length; i++) this.seg(ring(0, z, sa[i]), ring(0, z, sa[i + 1]));
+    for (let a = 150; a <= 210; a += 1.5) this.seg(ring(0, B.h + 0.5, a), ring(0, B.net, a));
+    c.strokeStyle = '#2a2a2a70'; c.lineWidth = 0.7; c.stroke();
+    this.ink(() => { for (const a of [150, 210]) this.seg(ring(0, 0, a), ring(0, B.net + 1, a)); for (let i = 0; i + 1 < sa.length; i++) this.seg(ring(0, B.net, sa[i]), ring(0, B.net, sa[i + 1])); });
+    this.ink(() => { for (let i = 0; i + 1 < as.length; i++) this.seg(ring(0, B.h + 0.5, as[i]), ring(0, B.h + 0.5, as[i + 1])); });
   }
 
   private fielder(at: [number, number], frame: number, moving: boolean, t: number, sheet: FielderSheet) {
@@ -169,9 +387,10 @@ export class ParkPainter {
     if (frame === FR.high) c.fillRect(X - 2.6 * u, Y - 16 * u, 1.2 * u, 6 * u);
   }
 
-  private park(look: SideLook) {
+  private park(look: ParkLook, plate = true) {
     const L = LOOKS[look], c = this.c, cam = this.cam;
-    const hz = H * 0.5 + Math.tan(rad(cam.pitch)) * this.f;
+    const W = this.w, H = this.h;
+    const hz = this.cy + Math.tan(rad(cam.pitch)) * this.f;
     const gr = c.createLinearGradient(0, hz - 400, 0, hz);
     gr.addColorStop(0, L.sky[0]); gr.addColorStop(1, L.sky[1]);
     c.fillStyle = gr; c.fillRect(0, 0, W, H);
@@ -181,35 +400,50 @@ export class ParkPainter {
     if (look === '1990') for (let d = 160; d < 400; d += 40) { const st: V3[] = []; for (let a = -45; a <= 45; a += 3) st.push([...pol(Math.min(d, wallDist(a)), a), 0]); for (let a = 45; a >= -45; a -= 3) st.push([...pol(Math.min(d + 20, wallDist(a)), a), 0]); this.poly(st, '#ffffff12'); }
     if (L.track) { const tr: V3[] = []; for (let a = -45; a <= 45; a += 2) tr.push([...pol(wallDist(a), a), 0]); for (let a = 45; a >= -45; a -= 2) tr.push([...pol(wallDist(a) - 15, a), 0]); this.poly(tr, '#a07a52'); }
     const dirt: V3[] = []; for (let a = -46; a <= 46; a += 3) dirt.push([...pol(155, a), 0]);
-    this.poly([[0, -12, 0], ...dirt], '#b58a5c');
+    // grain in the still backdrops only: on the moving field view a screen-fixed grain would swim over the dirt
+    const dirtF = this.thin ? dirtFill(c, look) : DIRT;
+    this.poly([[0, -12, 0], ...dirt], dirtF);
     this.poly([[0, 12, 0], [52, 52, 0], [0, 104, 0], [-52, 52, 0]], L.grass);
-    { const m: V3[] = []; for (let a = 0; a < 360; a += 20) m.push([Math.sin(rad(a)) * 9, 60.5 + Math.cos(rad(a)) * 9, 0]); this.poly(m, '#b58a5c'); }
-    for (const a of [-45, 45]) { const e = pol(wallDist(a), a), n = [Math.cos(rad(a)) * 0.6, -Math.sin(rad(a)) * 0.6]; this.poly([[n[0], n[1], 0], [e[0] + n[0], e[1] + n[1], 0], [e[0] - n[0], e[1] - n[1], 0], [-n[0], -n[1], 0]], '#fff'); }
+    { const m: V3[] = []; for (let a = 0; a < 360; a += 20) m.push([Math.sin(rad(a)) * 9, 60.5 + Math.cos(rad(a)) * 9, 0]); this.poly(m, dirtF); }
+    for (const a of [-45, 45]) { const lw = this.thin ? 0.17 : 0.6, e = pol(wallDist(a), a), n = [Math.cos(rad(a)) * lw, -Math.sin(rad(a)) * lw]; this.poly([[n[0], n[1], 0], [e[0] + n[0], e[1] + n[1], 0], [e[0] - n[0], e[1] - n[1], 0], [-n[0], -n[1], 0]], '#fff'); }
     for (const [x, y] of [[63.6, 63.6], [0, 127.3], [-63.6, 63.6]]) this.poly([[x - 1.5, y - 1.5, 0.1], [x + 1.5, y - 1.5, 0.1], [x + 1.5, y + 1.5, 0.1], [x - 1.5, y + 1.5, 0.1]], '#fff');
-    this.poly([[-0.7, 0, 0.1], [0.7, 0, 0.1], [0.7, 0.7, 0.1], [0, 1.4, 0.1], [-0.7, 0.7, 0.1]], '#fff');
-    const cs = crowdFor(look);
+    if (plate) this.poly([[-0.7, 0, 0.1], [0.7, 0, 0.1], [0.7, 0.7, 0.1], [0, 1.4, 0.1], [-0.7, 0.7, 0.1]], '#fff');
+    const cs = crowdFor(look), F = finishFor(look);
+    const ranges = STAND_RANGES(look);
+    // the stands' front wall under the first row (the low fence is 5-10 ft, the first row starts 8 ft up): no sky shows through
+    for (const [a0, a1] of ranges) {
+      for (const as of this.pieces(range(a0, a1, 2.5), a => [[...pol(edgeDist(a) + 6, a), 0]])) {
+        const base: V3[] = [];
+        for (const a of as) base.push([...pol(edgeDist(a) + 6, a), 0]);
+        for (const a of [...as].reverse()) base.push([...pol(edgeDist(a) + 6, a), 8]);
+        this.poly(base, F.base);
+        this.poly(base, '#00000040');
+      }
+    }
     for (let row = 9; row >= 0; row--) {
-      for (const [a0, a1, rows] of STAND_RANGES(look)) {
+      for (const [a0, a1, rows] of ranges) {
         if (row >= rows) continue;
-        const as = range(a0, a1, 2.5);
+        for (const as of this.pieces(range(a0, a1, 2.5), a => [[...pol(edgeDist(a) + 6 + row * 7, a), 0], [...pol(edgeDist(a) + 13 + row * 7, a), 0]])) {
         const band: V3[] = [], face: V3[] = [];
         for (const a of as) band.push([...pol(edgeDist(a) + 6 + row * 7, a), 8 + row * 4.2]);
         for (const a of [...as].reverse()) band.push([...pol(edgeDist(a) + 13 + row * 7, a), 12 + row * 4.2]);
-        this.poly(band, L.stands[row % 2]);
+        this.poly(band, F.rows[row]);
         for (const a of as) face.push([...pol(edgeDist(a) + 6 + row * 7, a), 8 + row * 4.2]);
         for (const a of [...as].reverse()) face.push([...pol(edgeDist(a) + 6 + row * 7, a), 4 + row * 4.2]);
         this.poly(face, '#00000030');
+        }
       }
       // only the figures inside the view are drawn; in wide shots every other row and nothing too small to see (plan 44 budget)
-      if (!cs || (cam.fov > 45 && row % 2)) continue;
-      for (const s of cs.seats) {
-        if (s[4] !== row) continue;
+      if (!cs || (!this.thin && cam.fov > 45 && row % 2)) continue;   // backdrops are drawn once: every row
+      for (const s of cs.byRow[row + 1]) {
         const b = this.proj(s[0], s[1], s[2]); if (!b || b[0] < -20 || b[0] > W + 20 || b[1] < -20 || b[1] > H + 40) continue;
         const hgt = (6 * this.f) / b[2]; if (hgt < 3) continue;
         const wdt = (hgt * FW) / FH;
         c.drawImage(cs.img, s[3] * FW * 2, 0, FW * 2, FH * 2, b[0] - wdt / 2, b[1] - hgt, wdt, hgt);
       }
     }
+    // ink outline along the front edge of the first row
+    this.ink(() => { for (const [a0, a1, n] of ranges) { if (!n) continue; const as = range(a0, a1, 2.5); for (let i = 0; i + 1 < as.length; i++) this.seg([...pol(edgeDist(as[i]) + 6, as[i]), 8], [...pol(edgeDist(as[i + 1]) + 6, as[i + 1]), 8]); } });
     // scoreboard: high above the center-field stands; in 1901 a small hand board standing on the right-center fence
     const sb: [number, number, number, number] = look === '1901' ? [...pol(wallDist(18) + 1, 18), 11, 24] as never : [0, wallDist(0) + 90, 52, 82];
     const sw = look === '1901' ? 16 : 35, rot = look === '1901' ? 18 : 0;
@@ -222,13 +456,16 @@ export class ParkPainter {
         for (let i = 0; i < 9; i++) for (let j = 0; j < 2; j++) { const cx = tl[0] + w * (0.08 + i * 0.105), cy = tl[1] + h * (0.38 + j * 0.38);
           if (L.board === 'lit') c.fillStyle = '#ffb33a'; else { c.fillStyle = '#f4f0e6'; c.fillRect(cx - w * 0.035, cy - h * 0.2, w * 0.07, h * 0.27); c.fillStyle = '#111'; }
           c.fillText((i * 3 + j) % 4 === 0 ? '1' : '0', cx, cy); } } }
+    const edges: [V3, V3][] = [];
     for (let a = -115; a < 115; a += 2.5) {
       const d0 = edgeDist(a), d1 = edgeDist(a + 2.5), p0 = pol(d0, a), p1 = pol(d1, a + 2.5);
-      const fair = Math.abs(a + 1.25) <= 45, h = fair ? 10 : 5;
-      this.poly([[...p0, 0], [...p1, 0], [...p1, h], [...p0, h]], fair ? L.wall : '#5b4a3a');
+      const fair = Math.abs(a + 1.25) <= 45, h = fair ? 10 : 5, away = a + 1.25 < 0 ? 1 : 0;
+      this.poly([[...p0, 0], [...p1, 0], [...p1, h], [...p0, h]], fair ? F.wall[away] : F.foul[away]);
+      edges.push([[...p0, h + 0.6], [...p1, h + 0.6]]);
       this.poly([[...p0, h], [...p1, h], [...p1, h + 0.6], [...p0, h + 0.6]], L.wallTop);
       if (+look <= 1920 && fair) for (let k = 0; k < 2; k++) { const pp = pol(lerp(d0, d1, k / 2), a + k * 1.25); this.poly([[pp[0] - 0.15, pp[1], 0], [pp[0] + 0.15, pp[1], 0], [pp[0] + 0.15, pp[1], h], [pp[0] - 0.15, pp[1], h]], '#00000040'); }
     }
+    this.ink(() => { for (const [p, q] of edges) this.seg(p, q); });
     c.textAlign = 'center';
     const lift = look === '1901' ? 2 : 0;   // 1901: signs sit higher so the standing fans do not hide them
     for (const [t, a] of SIGNS[look]) {
@@ -240,13 +477,48 @@ export class ParkPainter {
     if (look === '1901' && cs) {   // the rope, then the standing fans in front of the fence
       const rope = range(-34, 34, 2).map(a => pol(wallDist(a) - 14, a));
       for (let i = 0; i + 1 < rope.length; i++) this.poly([[...rope[i], 3], [...rope[i + 1], 3], [...rope[i + 1], 3.25], [...rope[i], 3.25]], '#d9cfb8');
-      for (const s of cs.seats) {
-        if (s[4] !== -1) continue;
+      for (const s of cs.byRow[0]) {
         const b = this.proj(s[0], s[1], 0); if (!b || b[0] < -20 || b[0] > W + 20 || b[1] < -20 || b[1] > H + 40) continue;
         const hgt = (5.6 * this.f) / b[2]; if (hgt < 3) continue;
         c.drawImage(cs.img, s[3] * FW * 2, 0, FW * 2, FH * 2, b[0] - (hgt * FW) / FH / 2, b[1] - hgt, (hgt * FW) / FH, hgt);
       }
     }
-    for (const a of L.markers) { const d = Math.round(wallDist(a)); const m = this.proj(...pol(d - 0.3, a), 4); if (m) { const sz = (5 * this.f) / m[2]; if (sz < 5) continue; c.font = `700 ${sz}px Arial, sans-serif`; c.fillStyle = '#fff'; c.fillText(String(d), m[0], m[1]); } }
+    // windup backdrop: no number right behind the pitcher's head (the center marker sits dead behind him on the tele lens)
+    for (const a of L.markers) { if (this.thin && a === 0) continue; const d = Math.round(wallDist(a)); const m = this.proj(...pol(d - 0.3, a), 4); if (m) { const sz = (5 * this.f) / m[2]; if (sz < 5) continue; c.font = `700 ${sz}px Arial, sans-serif`; c.fillStyle = '#fff'; c.fillText(String(d), m[0], m[1]); } }
   }
+}
+
+// ---- Plan 59 Round 1b: backdrops behind the windup and the side view, drawn once and cached ----
+export type BackdropView = 'side' | 'windup' | 'cf';
+/** Where a backdrop's camera sits on the stage: camera, focal length and center, in CSS px of the stage. */
+export interface BackdropPlace { cam: Camera; f: number; cx: number; cy: number; }
+/** The static park for one view drawn into an offscreen canvas at the stage's size x density (capped at 2), cached by
+ *  look, view, side, size and density (Last Licks reuses it across at-bats). Null when there is no canvas (jsdom). */
+const backdrops = new Map<string, HTMLCanvasElement>();
+const BACKDROP_KEEP = 5;   // plan 59 r5: side L/R, cf L/R, one fallback windup
+export function backdropKey(look: ParkLook, view: BackdropView, side: 'L' | 'R', cssW: number, cssH: number, dpr: number): string {
+  return `${look}|${view}|${view === 'windup' ? '-' : side}|${cssW}x${cssH}|${Math.min(2, Math.max(1, dpr || 1))}`;   // the windup is the same for both sides (cf is not)
+}
+export function renderBackdrop(look: ParkLook, view: BackdropView, side: 'L' | 'R', cssW: number, cssH: number, dpr: number, place: BackdropPlace): HTMLCanvasElement | null {
+  const key = backdropKey(look, view, side, cssW, cssH, dpr);
+  const have = backdrops.get(key);
+  if (have) { backdrops.delete(key); backdrops.set(key, have); return have; }
+  if (typeof document === 'undefined' || cssW <= 0 || cssH <= 0) return null;
+  const k = Math.min(2, Math.max(1, dpr || 1));
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(cssW * k)); cv.height = Math.max(1, Math.round(cssH * k));
+  let g: CanvasRenderingContext2D | null = null;
+  try { g = cv.getContext('2d'); } catch { g = null; }
+  if (!g) return null;
+  g.setTransform(k, 0, 0, k, 0, 0);
+  new ParkPainter(g).backdrop(look, place.cam, cssW, cssH, place.f, place.cx, place.cy, view !== 'side', view === 'cf');
+  try { performance.measure(`pr-backdrop-${view}`, { start: t0 }); } catch { /* perf log only (test 11) */ }
+  backdrops.set(key, cv);
+  while (backdrops.size > BACKDROP_KEEP) {
+    const old = backdrops.keys().next().value!;
+    const c = backdrops.get(old)!; c.width = c.height = 0;   // give the memory back now (iOS Safari is slow to)
+    backdrops.delete(old);
+  }
+  return cv;
 }

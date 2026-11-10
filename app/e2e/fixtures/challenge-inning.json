@@ -1,0 +1,335 @@
+{
+ "code": "E2eLastLicksGame000001",
+ "status": "resolved",
+ "you": "creator",
+ "creatorName": "Tester",
+ "opponentName": "Computer",
+ "expiresUtc": "2030-01-01T00:00:00Z",
+ "canClaim": false,
+ "rematchOf": null,
+ "yourPicks": null,
+ "vsCpu": true,
+ "cpuLevel": 1,
+ "deco": 3,
+ "mode": "inning",
+ "era": {
+  "dh": true,
+  "runnerOnSecond": false,
+  "season": 1999,
+  "batters": 9
+ },
+ "game": {
+  "lineups": [
+   [
+    {
+     "id": "martp001",
+     "year": 1999,
+     "name": "Pedro Martinez",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "homeb001",
+     "year": 1955,
+     "name": "Home Batter 1",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "homeb002",
+     "year": 1960,
+     "name": "Home Batter 2",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "homeb003",
+     "year": 1965,
+     "name": "Home Batter 3",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "homeb004",
+     "year": 1970,
+     "name": "Home Batter 4",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "homeb005",
+     "year": 1975,
+     "name": "Home Batter 5",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "homeb006",
+     "year": 1980,
+     "name": "Home Batter 6",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "homeb007",
+     "year": 1985,
+     "name": "Home Batter 7",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "homeb008",
+     "year": 1990,
+     "name": "Home Batter 8",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "homeb009",
+     "year": 1995,
+     "name": "Home Batter 9",
+     "bats": "R",
+     "throws": "R"
+    }
+   ],
+   [
+    {
+     "id": "gibsb001",
+     "year": 1968,
+     "name": "Bob Gibson",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "aaroh101",
+     "year": 1957,
+     "name": "Hank Aaron",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "ruthb101",
+     "year": 1927,
+     "name": "Babe Ruth",
+     "bats": "L",
+     "throws": "L"
+    },
+    {
+     "id": "visb003",
+     "year": 1993,
+     "name": "Visitor Batter 3",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "visb004",
+     "year": 1994,
+     "name": "Visitor Batter 4",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "visb005",
+     "year": 1995,
+     "name": "Visitor Batter 5",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "visb006",
+     "year": 1996,
+     "name": "Visitor Batter 6",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "visb007",
+     "year": 1997,
+     "name": "Visitor Batter 7",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "visb008",
+     "year": 1998,
+     "name": "Visitor Batter 8",
+     "bats": "R",
+     "throws": "R"
+    },
+    {
+     "id": "visb009",
+     "year": 1999,
+     "name": "Visitor Batter 9",
+     "bats": "R",
+     "throws": "R"
+    }
+   ]
+  ],
+  "atBats": [
+   {
+    "index": 0,
+    "round": 0,
+    "battingSide": 1,
+    "pitcher": {
+     "id": "martp001",
+     "year": 1999,
+     "name": "Pedro Martinez",
+     "bats": "R",
+     "throws": "R"
+    },
+    "batter": {
+     "id": "aaroh101",
+     "year": 1957,
+     "name": "Hank Aaron",
+     "bats": "R",
+     "throws": "R"
+    },
+    "seed": "e2e0",
+    "outcome": "double",
+    "points": 0,
+    "inning": 1,
+    "spot": 0,
+    "outsBefore": 0,
+    "outsAfter": 0,
+    "basesBefore": [
+     null,
+     null,
+     null
+    ],
+    "basesAfter": [
+     null,
+     "aaroh101",
+     null
+    ],
+    "outType": null,
+    "scored": [],
+    "runnersOut": [],
+    "doublePlay": false,
+    "sacFly": false
+   },
+   {
+    "index": 1,
+    "round": 0,
+    "battingSide": 1,
+    "pitcher": {
+     "id": "martp001",
+     "year": 1999,
+     "name": "Pedro Martinez",
+     "bats": "R",
+     "throws": "R"
+    },
+    "batter": {
+     "id": "ruthb101",
+     "year": 1927,
+     "name": "Babe Ruth",
+     "bats": "L",
+     "throws": "L"
+    },
+    "seed": "e2e1",
+    "outcome": "k",
+    "points": 0,
+    "inning": 1,
+    "spot": 1,
+    "outsBefore": 0,
+    "outsAfter": 1,
+    "basesBefore": [
+     null,
+     "aaroh101",
+     null
+    ],
+    "basesAfter": [
+     null,
+     "aaroh101",
+     null
+    ],
+    "outType": null,
+    "scored": [],
+    "runnersOut": [],
+    "doublePlay": false,
+    "sacFly": false
+   },
+   {
+    "index": 2,
+    "round": 0,
+    "battingSide": 1,
+    "pitcher": {
+     "id": "martp001",
+     "year": 1999,
+     "name": "Pedro Martinez",
+     "bats": "R",
+     "throws": "R"
+    },
+    "batter": {
+     "id": "visb003",
+     "year": 1993,
+     "name": "Visitor Batter 3",
+     "bats": "R",
+     "throws": "R"
+    },
+    "seed": "e2e2",
+    "outcome": "oip",
+    "points": 0,
+    "inning": 1,
+    "spot": 2,
+    "outsBefore": 1,
+    "outsAfter": 2,
+    "basesBefore": [
+     null,
+     "aaroh101",
+     null
+    ],
+    "basesAfter": [
+     null,
+     null,
+     "aaroh101"
+    ],
+    "outType": "ground",
+    "scored": [],
+    "runnersOut": [],
+    "doublePlay": false,
+    "sacFly": false
+   }
+  ],
+  "totals": [
+   0,
+   0
+  ],
+  "winner": -1,
+  "notes": [],
+  "lineScore": [
+   [
+    0
+   ],
+   [
+    0
+   ]
+  ],
+  "innings": 1,
+  "lineupSources": [
+   [
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick"
+   ],
+   [
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick",
+    "pick"
+   ]
+  ]
+ }
+}

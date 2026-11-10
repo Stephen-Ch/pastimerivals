@@ -1,11 +1,12 @@
 import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, DestroyRef, effect, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { api, PlayerHit, SeasonItem } from './api';
-import { ArtManifest, eraOf, fielderArt, lookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
-import { sideLine } from './side-line';
+import { ArtManifest, CfArt, cfArt, eraOf, fielderArt, ParkLook, parkLookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
+import { sideLine, sideNameLine } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
 import { PitchScene, SceneCue } from './pitch-scene';
+import { ERA_BOARD, lastName, Scoreboard } from './scoreboard';
 import { announcerOn } from './announcer-setting';
 import { intro, IntroCtx, lineText, PbpLine, pitchLines, rawLead, recapLines, RecapAb, resultLine } from './pbp';
 import { bedFor, reactionFor, voice, voiceFor } from './audio';
@@ -15,6 +16,7 @@ import { outAt } from './inning';
 import { artNoteDue, markArtNoteShown } from './art-note';
 import { HowSim, InfoKind } from './how-sim';
 import { pushEntry } from './nav';
+import { awayHome, boardOrder, firstWord, headerParts, ownTag, sideColor, TEAM_BLUE } from './team';
 import {
   CAtBat, capi, CEra, ChallengeError, CClash, CMine, CPlayer, CSlot, CView, GameMode, keyFor, links, saveKey, setWatched, takeKeyFromHash, toBody, watched,
 } from './challenge-api';
@@ -42,9 +44,18 @@ function savedLevel(): number {
 }
 function saveLevel(n: number) { try { localStorage.setItem(LEVEL_KEY, String(n)); } catch { /* fine */ } }
 
+/** Plan 59 Round 1b: one park for a whole game. Inning games: the era season; classic games (no era): the home side's
+ *  pitcher (side 0, slot 0). Null without a game. */
+export function parkLookForView(v: CView | null): ParkLook | null {
+  const g = v?.game;
+  if (!g) return null;
+  const year = v.era?.season ?? g.lineups[0]?.[0]?.year;
+  return year ? parkLookOf(year) : null;
+}
+
 @Component({
   selector: 'pr-challenge',
-  imports: [PitchScene, Feedback, HowSim, VoiceButton],
+  imports: [PitchScene, Scoreboard, Feedback, HowSim, VoiceButton],
   templateUrl: './challenge.html',
   styleUrls: ['./app.css', './challenge.css'],
 })
@@ -145,14 +156,71 @@ export class ChallengeFlow {
 
   // Playing out a resolved game, one tap per at-bat.
   protected readonly revealed = signal(0);
-  protected readonly scene = signal<{ ab: CAtBat; art: SideArt | null; windup: WindupArt | null } | null>(null);
+  protected readonly scene = signal<{ ab: CAtBat; art: SideArt | null; windup: WindupArt | null; cf?: CfArt | null } | null>(null);
+  /** Plan 59 Round 2b: the finished at-bat's scene, kept on screen (held) until the next Pitch; scene() is null meanwhile,
+   *  so everything that reads scene() behaves as between at-bats (Pitch enabled, no live count, next batter's side and intro). */
+  protected readonly heldScene = signal<{ ab: CAtBat; art: SideArt | null; windup: WindupArt | null; cf?: CfArt | null } | null>(null);
+  /** Plan 59 Round 2b: the result word wears the game's era board colors. */
+  protected readonly wordColors = computed(() => ERA_BOARD[this.parkLook() ?? '1990']);
+  protected readonly lastName = lastName;
+  /** Plan 59 Round 2b: recap lines, then the next batter's intro: shown over or beside the held stage where there is room (CSS). */
+  protected readonly heldExtras = computed(() => [...this.pbpRecap(), ...this.pbpIntro()]);
+  /** Plan 59 Round 2a: the count on the scoreboard while a scene plays (0-0 at its start); none between at-bats. */
+  protected readonly liveCount = signal<{ balls: number; strikes: number }>({ balls: 0, strikes: 0 });
+  protected readonly boardCount = computed(() => this.scene() ? this.liveCount() : null);
+  /** Team identity (plan 2026-11-04): Last Licks boards show AWAY left, HOME right; names, scores and pills follow the same order. */
+  protected readonly boardSides = computed(() => boardOrder(this.isInningGame()));
+  protected readonly boardNames = computed<[string, string]>(() => { const [l, r] = this.boardSides(); return [this.sideName(l), this.sideName(r)]; });
+  /** Phones: "You" for your side, the nickname's first word for the other ("Bleacher"); null keeps the full names (The Duel). */
+  protected readonly boardShort = computed<[string, string] | null>(() => {
+    if (!this.isInningGame()) return null;
+    const [l, r] = this.boardSides(), you = this.yourSide();
+    const one = (s: number) => (s === you ? 'You' : firstWord(this.plainName(s).replace(/^The /, '')));
+    return [one(l), one(r)];
+  });
+  protected readonly boardPills = computed<[string, string] | null>(() => {
+    if (!this.isInningGame()) return null;
+    const [l, r] = this.boardSides(), you = this.yourSide();
+    return [sideColor(l, you), sideColor(r, you)];
+  });
+  /** Board position of the team at bat (the at-bat playing, else the next one); none once the game is over. */
+  protected readonly boardBatting = computed<0 | 1 | null>(() => {
+    if (!this.isInningGame()) return null;
+    const ab = this.scene()?.ab ?? this.nextAtBat();
+    return ab ? (this.boardSides().indexOf(ab.battingSide) as 0 | 1) : null;
+  });
+  protected boardScores(t: [number, number] | null | undefined): [number, number] | null {
+    if (!t) return null;
+    const [l, r] = this.boardSides();
+    return [t[l], t[r]];
+  }
+  protected readonly sideColor = (side: number) => sideColor(side, this.yourSide());
+  protected readonly ownTag = (side: number) => ownTag(side, this.yourSide());
+  /** Chip text: white on blue (6.5:1), near-black on orange (9:1). */
+  protected readonly chipInk = (side: number) => (sideColor(side, this.yourSide()) === TEAM_BLUE ? '#fff' : '#111');
+  protected readonly awayHome = awayHome;
+  /** The side's name without " (you)". */
+  protected readonly plainName = (side: number) => this.sideName(side).replace(' (you)', '');
+  /** "You" for your own side in Last Licks, else the plain name (half change line, half headings, line score). */
+  protected readonly teamWord = (side: number) => (this.isInningGame() && side === this.yourSide() ? 'You' : this.plainName(side));
+  /** Fallback card: "Your team bats (away)" / "Their team bats (home)"; spectators keep "<name> batting". */
+  protected readonly batsLine = (side: number) => {
+    const you = this.yourSide();
+    if (you === null) return `${this.sideName(side)} batting`;
+    return `${side === you ? 'Your' : 'Their'} team bats (${awayHome(side)})`;
+  };
+  /** The play just finished (held scene or last play shown), for the result chip. */
+  protected readonly lastSide = computed(() => (this.heldScene()?.ab ?? this.lastPlay())?.battingSide ?? null);
+  protected readonly boardBases = computed<[boolean, boolean, boolean]>(() => { const b = this.diamond().bases; return [!!b[0], !!b[1], !!b[2]]; });
   protected readonly lastCall = signal<string | null>(null);
 
   protected readonly game = computed(() => this.view()?.game ?? null);
   protected readonly nextAtBat = computed(() => this.game()?.atBats[this.revealed()] ?? null);
   /** Plan 40 B: side of the plate for the batter now up (during the scene) or the next batter; none when the game is over. */
   protected readonly sideText = computed(() => {
-    const ab = this.scene()?.ab ?? this.nextAtBat();
+    const playing = this.scene()?.ab;
+    if (playing) return sideNameLine(lastName(playing.batter.name), playing.batter.bats, playing.pitcher.throws);
+    const ab = this.nextAtBat();
     return ab ? sideLine(ab.batter.bats, ab.pitcher.throws) : null;
   });
   protected readonly score = computed<[number, number]>(() => {
@@ -268,7 +336,7 @@ export class ChallengeFlow {
       this.privateLink.set(v.you === 'visitor' ? null : l.private);
       if (v.status === 'resolved') {
         this.revealed.set(Math.min(watched(code), v.game?.atBats.length ?? 0));
-        this.lastCall.set(null); this.lastPlay.set(null);
+        this.lastCall.set(null); this.lastPlay.set(null); this.heldScene.set(null);
         this.step.set(this.revealed() >= (v.game?.atBats.length ?? 0) ? 'final' : 'play');
       } else if (v.you === 'creator') {
         this.step.set(v.status === 'expired' ? 'closed' : 'waiting');
@@ -483,7 +551,7 @@ export class ChallengeFlow {
         saveKey(code, r.key);
         this.privateLink.set(links(location.origin, code, r.key).private);
         this.view.set(r.view);
-        this.revealed.set(0); setWatched(code, 0); this.lastCall.set(null); this.lastPlay.set(null);
+        this.revealed.set(0); setWatched(code, 0); this.lastCall.set(null); this.lastPlay.set(null); this.heldScene.set(null);
         this.step.set('play');
       } else {
         const r = this.mode() === 'rematch' ? await capi.rematch(this.current()!, body) : await capi.create(body);
@@ -532,7 +600,7 @@ export class ChallengeFlow {
     this.view.set(r.view);
     this.shareLink.set(links(location.origin, r.code, null).share);
     this.privateLink.set(null);
-    this.revealed.set(0); setWatched(r.code, 0); this.lastCall.set(null); this.lastPlay.set(null);
+    this.revealed.set(0); setWatched(r.code, 0); this.lastCall.set(null); this.lastPlay.set(null); this.heldScene.set(null);
     pushEntry('challenge', `/c/${r.code}`);
     this.mode.set('cpu');
     this.step.set('play');
@@ -619,25 +687,33 @@ export class ChallengeFlow {
     }
     if (voiceOn()) { voice.ensure(); voice.stop(); voice.bedStart(bedFor(this.newestYear())); this.windupSeen = new Set(); }   // plan 50: before any await
     this.pbpLine.set('');
-    this.lastPlay.set(null);
     const token = ++this.pitchToken;
     const m = this.manifest();
     const art = sideArt(m, ab.batter.id, ab.batter.year);
     // Plan 40 A: the pitcher's windup before every pitch, loaded on its own so a failed pitcher sheet never drops the batter art.
-    const wind = art ? windupArt(m, ab.pitcher.id, eraOf(ab.pitcher.year), ab.pitcher.throws) : null;
+    // Plan 59 Round 5: the center-field shot replaces the front windup when its art exists (same timing).
+    const cf = art ? cfArt(m, ab.pitcher, { id: ab.batter.id, year: ab.batter.year, bats: hitsFrom(ab.batter.bats, ab.pitcher.throws) }, true) : null;
+    const front = art ? windupArt(m, ab.pitcher.id, eraOf(ab.pitcher.year), ab.pitcher.throws) : null;
+    let wind = cf ? cf.back : front, useCf = !!cf;
     let ok = false, windOk = false;
     if (art) {
       this.loadingArt.set(true);
       const limit = new Promise<void>(res => setTimeout(res, 3000));
       const a = preloadImages([art.sheet]).then(r => { ok = r; });
-      const w = wind ? preloadImages([wind.sheet]).then(r => { windOk = r; }) : Promise.resolve();
+      const w = wind ? preloadImages(cf ? cf.urls : [wind.sheet]).then(async r => {
+        windOk = r;
+        if (!r && cf && front) { useCf = false; wind = front; windOk = await preloadImages([front.sheet]); }   // CF art failed: today's front windup
+      }) : Promise.resolve();
       await Promise.race([Promise.all([a, w]), limit]);
       this.loadingArt.set(false);
     }
     // Skip, Watch again or leaving during the wait cancels this pitch.
     if (token !== this.pitchToken || this.step() !== 'play' || this.nextAtBat() !== ab) return;
     this.pbpLine.set(''); this.pbpResultShown = false; this.pbpTypeWord = false;
-    this.scene.set({ ab, art: ok ? art : null, windup: ok && windOk ? wind : null });
+    this.liveCount.set({ balls: 0, strikes: 0 });
+    this.lastPlay.set(null);   // Plan 59 Round 2b: the held result keeps its lines until the next scene starts
+    this.heldScene.set(null);
+    this.scene.set({ ab, art: ok ? art : null, windup: ok && windOk ? wind : null, cf: ok && windOk && useCf ? cf : null });
   }
 
   protected callOf(ab: CAtBat) {
@@ -782,6 +858,7 @@ export class ChallengeFlow {
     const s = this.scene();
     if (!s) return;
     if (this.announcer() && !this.pbpResultShown) { this.pbpResultShown = true; this.pbpLine.set(this.pbpResultFor(s.ab)); }
+    this.heldScene.set(s);   // Plan 59 Round 2b: the finished scene stays on screen, held
     this.scene.set(null);
     const inn = this.view()?.mode === 'inning';
     this.lastCall.set(`${this.callOf(s.ab).text}${!inn && s.ab.points ? ` +${s.ab.points}` : ''}`);
@@ -810,14 +887,14 @@ export class ChallengeFlow {
     const lp = this.lastPlay(), g = this.game();
     if (!lp || !g) return null;
     const capped = (g.notes ?? []).includes(CAP_NOTE);
-    return halfChange(lp, this.nextAtBat(), this.score(), s => this.sideName(s).replace(' (you)', ''), capped);
+    return halfChange(lp, this.nextAtBat(), this.score(), this.teamWord, capped);
   });
-  /** "Top 1 · Batter 4": the half of the next plate appearance (or the last one shown) and its number in that half. */
-  protected readonly inningProgress = computed(() => {
+  /** Team identity: header parts, "Top 1 · You bat (away) · Batter 4" for players (who/where empty for spectators). */
+  protected readonly inningHead = computed(() => {
     const g = this.game(), a = this.nextAtBat() ?? this.lastPlay();
-    if (!g || !a) return '';
+    if (!g || !a) return null;
     const n = g.atBats.filter(x => x.inning === a.inning && x.battingSide === a.battingSide && x.index <= a.index).length;
-    return `${halfLabel(a.inning ?? 1, a.battingSide)} · Batter ${n}`;
+    return headerParts(halfLabel(a.inning ?? 1, a.battingSide), a.battingSide, this.yourSide(), n);
   });
   protected readonly halvesList = computed(() => { const g = this.game(); return g ? halves(g) : []; });
   protected readonly lineInnings = computed(() => {
@@ -838,16 +915,16 @@ export class ChallengeFlow {
     if (this.revealed() >= total) this.step.set('final');
   }
 
-  protected skipToFinal() { voice.stop(); this.pitchToken++; this.scene.set(null); this.pbpLine.set(''); this.lastPlay.set(null); this.advance(this.game()?.atBats.length ?? 0); }
+  protected skipToFinal() { voice.stop(); this.pitchToken++; this.scene.set(null); this.heldScene.set(null); this.pbpLine.set(''); this.lastPlay.set(null); this.advance(this.game()?.atBats.length ?? 0); }
 
-  protected watchAgain() { voice.stop(); this.spokenIntro = -1; this.spokenRecap = -1; this.pitchToken++; this.scene.set(null); this.pbpLine.set(''); this.revealed.set(0); this.lastCall.set(null); this.lastPlay.set(null); if (this.current()) setWatched(this.current()!, 0); this.step.set('play'); }
+  protected watchAgain() { voice.stop(); this.spokenIntro = -1; this.spokenRecap = -1; this.pitchToken++; this.scene.set(null); this.heldScene.set(null); this.pbpLine.set(''); this.revealed.set(0); this.lastCall.set(null); this.lastPlay.set(null); if (this.current()) setWatched(this.current()!, 0); this.step.set('play'); }
 
   protected eraOf = eraOf;
 
   protected artFor(s: { ab: CAtBat; art: SideArt | null }) { return s.art; }
-  /** Plan 44: fielders wear the pitcher's era uniform; the park follows the batter's look. */
+  /** Plan 44: fielders wear the pitcher's era uniform. Plan 59 Round 1b: one park for the whole game. */
   protected fieldersFor(ab: CAtBat) { return fielderArt(this.manifest(), eraOf(ab.pitcher.year)); }
-  protected readonly lookOf = lookOf;
+  protected readonly parkLook = computed(() => parkLookForView(this.view()));
   protected playOf(ab: CAtBat) { return this.deco().deco === '3' ? playFacts(ab, this.names()) : null; }
 
   /** "2 of 6" during the regular at-bats; "Extra round 1" after, so the counter never hints at a tie. */

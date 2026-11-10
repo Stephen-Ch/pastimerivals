@@ -175,4 +175,67 @@ describe('App', () => {
     expect(sourceFromSearch('?utm_source=<script>')).toBeNull();
     expect(sourceFromSearch('')).toBeNull();
   });
+
+  // ---- Plan 59 Round 2b: the result over the held last frame ----
+  const SIDE = { sheet: '/s.webp', frames: Array.from({ length: 8 }, () => ({})), lineArt: false };
+  async function held() {
+    history.replaceState(null, '', '/');   // an earlier test may have left a game link in the address
+    const fixture = TestBed.createComponent(App);
+    await new Promise(r => setTimeout(r, 0)); await fixture.whenStable();
+    await new Promise(r => setTimeout(r, 0)); fixture.detectChanges(); await fixture.whenStable();
+    const app = fixture.componentInstance as any, el = fixture.nativeElement as HTMLElement;
+    app.sceneArt.set(SIDE);
+    app.pending.set({ outcome: 'k', seed: 'held1', engineVersion: '0.1.0' });
+    app['enterPlay']();
+    await new Promise(r => setTimeout(r, 0)); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const scene = el.querySelector('pr-pitch-scene');
+    app.sceneDone();
+    fixture.detectChanges(); await fixture.whenStable();
+    await new Promise(r => setTimeout(r, 5));
+    return { fixture, app, el, scene };
+  }
+
+  it('r2b test 5: the result shows over the held scene; one title, connected and focused; the result is a polite live region', async () => {
+    const { app, el, scene } = await held();
+    expect(app.screen()).toBe('result');
+    expect(scene).not.toBeNull();
+    expect(el.querySelector('pr-pitch-scene')).toBe(scene);
+    expect(el.querySelector('pr-pitch-scene .stage')?.getAttribute('data-held')).toBe('1');
+    const h1s = el.querySelectorAll('h1');
+    expect(h1s.length).toBe(1);
+    expect(h1s[0].isConnected).toBe(true);
+    expect(h1s[0].closest('.held-band')).not.toBeNull();
+    expect(document.activeElement).toBe(h1s[0]);
+    expect(h1s[0].closest('.result')?.getAttribute('aria-live')).toBe('polite');
+    expect(el.querySelector('.result-links')?.textContent).toContain('Why this result');
+    expect(el.textContent).toContain('20 Sunset Rd., Newark, DE 19711');
+  });
+
+  it('r2b test 6: Pitch again keeps the old result text until the new pitch is in, then a new scene; leaving clears the held stage', async () => {
+    const { fixture, app, el, scene } = await held();
+    const word = el.querySelector('h1')!.textContent, count = app.countText();
+    expect(word).toBeTruthy();
+    let release!: () => void;
+    const gate = new Promise<void>(r => (release = r));
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (String(url).includes('/api/pitch')) { await gate; return new Response(JSON.stringify({ outcome: 'single', seed: 'held2', engineVersion: '0.1.0' }), { status: 200 }); }
+      return orig(url, init);
+    }) as typeof fetch;
+    const p = app.throwPitch();
+    fixture.detectChanges(); await new Promise(r => setTimeout(r, 0));
+    expect(el.querySelector('h1')?.textContent).toBe(word);
+    expect(app.countText()).toBe(count);
+    expect(el.querySelector('pr-pitch-scene')).toBe(scene);
+    release(); await p;
+    fixture.detectChanges(); await fixture.whenStable();
+    expect(app.screen()).toBe('atbat');
+    const next = el.querySelector('pr-pitch-scene');
+    expect(next).not.toBeNull();
+    expect(next).not.toBe(scene);
+    app['toMatchup']();
+    fixture.detectChanges(); await fixture.whenStable();
+    expect(el.querySelector('pr-pitch-scene')).toBeNull();
+    globalThis.fetch = orig;
+  });
 });

@@ -1,0 +1,8 @@
+{
+ "_note": "Plan 59 Round 4 palette draft v1 (CIELAB D65). Taken from the masked card cluster medians; 1990 follows the 5 of 8 cards that are black.",
+ "1901-1919": {"body": [73, 2, 11], "trim": [23, 1, -11], "trim_parts": "undersleeves, cap, socks"},
+ "1920-1945": {"body": [73, 2, 11], "trim": [23, 1, -11], "trim_parts": "undersleeves, cap, socks"},
+ "1946-1969": {"body": [87, 2, 16], "trim": [35, 47, 35], "trim_parts": "undersleeves, cap or helmet, socks, piping"},
+ "1970-1989": {"body": [89, 0, 10], "trim": [26, 8, -34], "trim_parts": "undersleeves, cap or helmet, socks, belt, V-neck, pant stripe"},
+ "1990-2025": {"body": [15, 0, 2], "pants": [78, 2, 10], "trim": [65, 11, 51], "trim_parts": "piping"}
+}

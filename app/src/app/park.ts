@@ -1,4 +1,4 @@
-import { SideLook } from './art';
+import { ParkLook } from './art';
 import { Call, OutcomeKey, PlayFacts } from './logic';
 
 // Plan 44 (v4.2): follow the ball at field level. Pure logic, no Angular, no canvas.
@@ -11,6 +11,8 @@ export type XY = [number, number];
 export const FR = { ready: 0, run: 1, high: 2, scoop: 3, throw: 4, stretch: 5, catcherUp: 6, catcherCatch: 7 } as const;
 
 export const CAM = { x: 0, y: -20, z: 10 };
+/** The side panel's shape (760 x 480): the camera's reference aspect. */
+export const PANEL_ASPECT = 760 / 480;
 export const MAX_TURN = 100, MAX_TILT = 75, MIN_FOV = 22, START_FOV = 70;
 
 const rad = (d: number) => (d * Math.PI) / 180, deg = (r: number) => (r * 180) / Math.PI;
@@ -36,7 +38,7 @@ export function edgeDist(a: number): number {
 export const BASE1: XY = [63.6, 63.6], BASE2: XY = [0, 127.3], BASE3: XY = [-63.6, 63.6];
 
 /** Starting spots (distance, angle). 1901 and 1920 looks: outfielders 40 ft shallower. */
-export function startOf(p: Pos, look: SideLook): XY {
+export function startOf(p: Pos, look: ParkLook): XY {
   const of = look === '1901' || look === '1920' ? 40 : 0;
   switch (p) {
     case 'P': return [0, 60];
@@ -76,7 +78,7 @@ export interface Move { t0: number; t1: number; to: XY; frame: number; after: nu
 export interface FielderPlan { pos: Pos; start: XY; frame: number; moves: Move[]; }
 export type PlayKind = 'hr' | 'itp' | 'xbh' | 'single' | 'fly' | 'line' | 'pop' | 'foul' | 'ground' | 'dp' | 'force' | 'error';
 export interface ParkPlay {
-  kind: PlayKind; look: SideLook; len: number; segs: Seg[]; fielders: FielderPlan[];
+  kind: PlayKind; look: ParkLook; len: number; segs: Seg[]; fielders: FielderPlan[];
   /** Where a fly ball will come down (faint mark on the grass), or null. */
   mark: XY | null;
   /** Pops and fouls straight back: the camera does not turn. */
@@ -88,7 +90,7 @@ export interface ParkPlay {
   /** Real seconds per scene second (never below 1). */
   speed: number;
 }
-export interface ParkInput { outcome: OutcomeKey; call: Call; play: PlayFacts | null; seed: string; look: SideLook; }
+export interface ParkInput { outcome: OutcomeKey; call: Call; play: PlayFacts | null; seed: string; look: ParkLook; }
 
 /** Fixed scene lengths (s) by play [H-nit, Y1, Z3]. */
 export const LEN = { groundSingle: 1.6, ground: 2.0, dp: 2.4, lineOF: 1.6, lineIF: 1.0, fly: 2.2, pop: 2.6, xbh: 2.2, hr: 2.4, itp: 2.2 };
@@ -339,19 +341,38 @@ export function fielderAt(f: FielderPlan, t: number): { at: XY; frame: number; m
 }
 
 /** Camera like a TV operator: turn to the ball's bearing, tilt to its height, zoom with distance. fov = horizontal degrees. */
-export interface Camera { yaw: number; pitch: number; fov: number; }
+export interface Camera { yaw: number; pitch: number; fov: number;
+  /** Plan 59 Round 1b: where the camera stands (feet). Default CAM, so every existing camera is unchanged. */
+  pos?: { x: number; y: number; z: number }; }
+/** Plan 59 Round 5: the field camera with the fielder zoom on top of the base camera below. */
 export function cameraAt(p: ParkPlay, t: number, aspect: number): Camera {
+  return zoomCamera(p, t, aspect, baseCameraAt(p, t, aspect));
+}
+/** The TV-operator camera before Round 5 (unchanged): turn to the ball, tilt to its height, zoom with distance. */
+export function baseCameraAt(p: ParkPlay, t: number, aspect: number): Camera {
   const b = ballAt(p, t);
   const bx = b[0] - CAM.x, by = b[1] - CAM.y, d = Math.hypot(bx, by);
   const bearing = deg(Math.atan2(bx, by)), elev = deg(Math.atan2(b[2] - CAM.z, Math.max(0.5, d)));
   const k = ease(t / 0.2);
   let fov = lerp(START_FOV, Math.max(MIN_FOV, lerp(START_FOV, MIN_FOV, cl((d - 40) / 360))), ease(t / 0.6));   // gentler zoom: shallow plays keep grass in front of the wall
   fov = Math.min(80, Math.max(fov, (Math.max(elev, 0) + 9) / 0.6));
-  const hHalf = fov / 2, vHalf = deg(Math.atan(Math.tan(rad(fov / 2)) / aspect));
+  // Plan 59 Round 1b: the vertical field of view is the one the 760:480 panel has; other shapes derive the horizontal one.
+  // At 760:480 itself nothing is recomputed, so today's camera is unchanged bit for bit.
+  let hHalf = fov / 2, vHalf = deg(Math.atan(Math.tan(rad(fov / 2)) / PANEL_ASPECT));
+  const other = aspect !== PANEL_ASPECT;
+  /** Plan 59 Round 1b lens limits on other shapes: at most 80 degrees across and 70 up and down (no fisheye). */
+  const maxH = other ? Math.min(40, deg(Math.atan(Math.tan(rad(35)) * aspect))) : 90;
+  if (other) { hHalf = Math.min(maxH, deg(Math.atan(Math.tan(rad(vHalf)) * aspect))); vHalf = deg(Math.atan(Math.tan(rad(hHalf)) / aspect)); fov = hHalf * 2; }
   // turn smoothly toward the ball, but never let it get closer than 30% of the half-frame to the edge
   let yaw = lerp(0, bearing, k);
   yaw = Math.max(bearing - hHalf * 0.7, Math.min(bearing + hHalf * 0.7, yaw));
   yaw = p.noTurn ? 0 : Math.max(-MAX_TURN, Math.min(MAX_TURN, yaw));
+  // Plan 59 Round 1b: on other shapes a narrower frame can lose a ball that the turn limit (or a straight-back pop's
+  // no-turn rule) holds back. The ball wins (Stephen): widen up to the lens limits, then turn just enough.
+  if (other && Math.abs(bearing - yaw) > hHalf * 0.7) {
+    hHalf = Math.min(maxH, Math.abs(bearing - yaw) / 0.7); fov = hHalf * 2; vHalf = deg(Math.atan(Math.tan(rad(hHalf)) / aspect));
+    if (Math.abs(bearing - yaw) > hHalf * 0.7) yaw = Math.max(bearing - hHalf * 0.7, Math.min(bearing + hHalf * 0.7, yaw));
+  }
   // aim between the ball and the top of the wall; on high balls keep the ball well inside the top of the frame
   const want = Math.max(Math.max(elev, 0) * 0.58 - 1, elev - vHalf * 0.6);
   let pitch = lerp(-3, want, k);
@@ -360,9 +381,32 @@ export function cameraAt(p: ParkPlay, t: number, aspect: number): Camera {
   return { yaw, pitch, fov };
 }
 
+/** Plan 59 Round 1b: what stands at the camera's bearing (degrees, as yaw): the back row of the stands, or the wall
+ *  where there are no stands (1901 outfield). Returns its elevation in degrees seen from the camera. */
+export function structureElev(yaw: number, look: ParkLook | null = null): number {
+  // rows of stands at an angle (same rule as park-draw standRows: 1901 open outfield, low corner bleachers)
+  const rows = (a: number) => look !== '1901' ? 10 : Math.abs(a) >= 55 ? 10 : Math.abs(a) >= 35 ? 3 : 0;
+  const sy = Math.sin(rad(yaw)), cy = Math.cos(rad(yaw));
+  let r = 300, a = yaw;
+  for (let i = 0; i < 4; i++) {   // walk the ray from the camera out to the structure at its own angle from home
+    const x = CAM.x + r * sy, y = CAM.y + r * cy;
+    a = Math.max(-115, Math.min(115, deg(Math.atan2(x, y))));
+    const n = rows(a), want = edgeDist(a) + (n ? 13 + (n - 1) * 7 : 0);
+    r = Math.max(1, want - Math.hypot(x, y) + r);
+  }
+  const n = rows(a), h = n ? 12 + (n - 1) * 4.2 : 10.6;   // back of the top row, or the fair wall with its cap
+  return deg(Math.atan2(h - CAM.z, r));
+}
+/** Plan 59 Round 1b: true when the frame's bottom edge is above the stands (or the wall where there are none): only sky shows. */
+export function skyOnly(cam: Camera, aspect: number, look: ParkLook | null = null): boolean {
+  const vHalf = deg(Math.atan(Math.tan(rad(cam.fov / 2)) / aspect));
+  return cam.pitch - vHalf > structureElev(cam.yaw, look) + 1e-9;
+}
+
 /** Camera-space point: [right, forward, up]. */
 export function toCam(cam: Camera, x: number, y: number, z: number): [number, number, number] {
-  const rx = x - CAM.x, ry = y - CAM.y, rz = z - CAM.z;
+  const o = cam.pos ?? CAM;
+  const rx = x - o.x, ry = y - o.y, rz = z - o.z;
   const yw = rad(cam.yaw), sy = Math.sin(yw), cy = Math.cos(yw);
   const dx = rx * cy - ry * sy, dy = rx * sy + ry * cy;
   const pt = rad(cam.pitch), sp = Math.sin(pt), cp = Math.cos(pt);
@@ -375,4 +419,135 @@ export function project(cam: Camera, W: number, H: number, x: number, y: number,
   if (v[1] < NEAR) return null;
   const f = W / 2 / Math.tan(rad(cam.fov) / 2);
   return [W / 2 + (v[0] / v[1]) * f, H / 2 - (v[2] / v[1]) * f, v[1]];
+}
+
+/** Plan 59 Round 1b: screen point for a camera with focal length f (screen units) and center (cx, cy), or null behind it. */
+export function projectF(cam: Camera, f: number, cx: number, cy: number, x: number, y: number, z = 0): [number, number, number] | null {
+  const v = toCam(cam, x, y, z);
+  if (v[1] < NEAR) return null;
+  return [cx + (v[0] / v[1]) * f, cy - (v[2] / v[1]) * f, v[1]];
+}
+
+// ---- Plan 59 Round 1b: view cameras for the backdrops behind the side view and the windup ----
+/** The plate's middle (feet): the side view's plate SVG sits at panel (PLATE_X, FOOT_Y). */
+export const PLATE_MID = { x: 0, y: 0.7, z: 0 };
+/** The pitcher's rubber on the (flat) painted mound: the windup sprite's feet stand here. */
+export const RUBBER = { x: 0, y: 60.5, z: 0 };
+/** Side camera: on the first-base side (righty) or third-base side (lefty), 45 ft from the plate, 7 ft up. */
+export const SIDE_CAM = { dist: 45, z: 7 };
+/** The side batter is 440 panel units for about 6.2 ft, standing about 3 ft beyond the plate: focal length in panel units. */
+export const SIDE_F = (440 * (SIDE_CAM.dist + 3)) / 6.2;
+/** Where the plate sits in the side panel (panel units; panel center is 380, 240). */
+const SIDE_PLATE: [number, number] = [240, 470];
+/** Windup camera: behind the plate 20 ft back, 5.5 ft up, 6.5 degrees top to bottom (focal length per unit of stage height). */
+export const WINDUP_CAM = { back: 20, z: 5.5, vfov: 6.5 };
+export const WINDUP_F = 0.5 / Math.tan(rad(WINDUP_CAM.vfov / 2));
+/** Windup foot line (share of stage height); a windup cell is 480 units for about 7.3 ft (feet at cell y 468). */
+export const WINDUP_FOOT = 0.92, PITCHER_CELL_FT = 7.3, PITCHER_CELL_FOOT = 468 / 480;
+
+/** Aims a camera standing at pos with yaw so the point q lands (dx, dy) screen units off center (dy + = down), focal f.
+ *  Exact: pitch from the point's elevation in the camera's vertical plane, then the camera slides sideways along its
+ *  right-hand direction until q sits dx off center. */
+function aimed(pos: { x: number; y: number; z: number }, yaw: number, q: { x: number; y: number; z: number }, f: number, dx: number, dy: number, halfW: number): Camera {
+  const sy = Math.sin(rad(yaw)), cy = Math.cos(rad(yaw));
+  const rx = q.x - pos.x, ry = q.y - pos.y, rz = q.z - pos.z;
+  const fwd = rx * sy + ry * cy;
+  const phi = deg(Math.atan2(rz, fwd)), pitch = phi + deg(Math.atan(dy / f));
+  const fwd2 = Math.hypot(fwd, rz) * Math.cos(rad(phi - pitch));
+  const want = (fwd2 * dx) / f, have = rx * cy - ry * sy;   // camera-right offset of q
+  const k = have - want;   // slide the camera k feet along its right-hand direction (cy, -sy)
+  return { yaw, pitch, fov: 2 * deg(Math.atan(halfW / f)), pos: { x: pos.x + k * cy, y: pos.y - k * sy, z: pos.z } };
+}
+/** Side view camera in panel units: center maps to panel (380, 240), focal SIDE_F; the plate lands on (PLATE_X, FOOT_Y)
+ *  of the (mirrored, for lefties) panel. Lefties get the real third-base-side view, so nothing reads backwards. */
+export function sideCamera(mirror: boolean): Camera {
+  const sx = mirror ? -1 : 1;
+  return aimed({ x: sx * SIDE_CAM.dist, y: 0, z: SIDE_CAM.z }, mirror ? 90 : -90, PLATE_MID, SIDE_F, sx * (SIDE_PLATE[0] - 380), SIDE_PLATE[1] - 240, 380);
+}
+/** Windup camera in units of stage height: center maps to the stage center, focal WINDUP_F; the rubber lands on the foot line. */
+export function windupCamera(): Camera {
+  return aimed({ x: 0, y: -WINDUP_CAM.back, z: WINDUP_CAM.z }, 0, RUBBER, WINDUP_F, 0, WINDUP_FOOT - 0.5, 0.5);   // fov: as on a square stage
+}
+/** The windup sprite's height as a share of the stage height (the cell's 7.3 ft at the rubber's distance). */
+export function windupSpriteH(): number {
+  const cam = windupCamera(), d = toCam(cam, RUBBER.x, RUBBER.y, RUBBER.z)[1];
+  return (PITCHER_CELL_FT * WINDUP_F) / d;
+}
+
+// ---- Plan 59 Round 5: fielder zoom ----
+/** Zoom window: eases in over ZOOM_IN s ending ZOOM_LEAD s before the touch, holds to the touch, eases out over ZOOM_OUT s. */
+export const ZOOM_IN = 0.3, ZOOM_LEAD = 0.2, ZOOM_OUT = 0.3;
+/** Narrowest zoom: 3 degrees each side of center; the fielder (6 ft) at most a quarter of the frame height. */
+const ZOOM_MIN_H = 3, ZOOM_MAN = 0.25;
+export function zoomAmount(p: ParkPlay, t: number): number {
+  if (!p.named || p.named === 'C' || !p.touch || p.noTurn) return 0;   // the catcher plays next to the camera: no close-up
+  const t0 = p.touchT - ZOOM_LEAD - ZOOM_IN, t1 = p.touchT - ZOOM_LEAD, t2 = p.touchT, t3 = p.touchT + ZOOM_OUT;
+  if (t <= t0 || t >= t3) return 0;
+  if (t < t1) return ease((t - t0) / ZOOM_IN);
+  if (t <= t2) return 1;
+  return 1 - ease((t - t2) / ZOOM_OUT);
+}
+function zoomCamera(p: ParkPlay, t: number, aspect: number, base: Camera): Camera {
+  const z = zoomAmount(p, t);
+  if (z <= 0) return base;
+  const fp = p.fielders.find(f => f.pos === p.named);
+  if (!fp) return base;
+  const at = fielderAt(fp, t).at, b = ballAt(p, t);
+  const look = (x: number, y: number, h: number): [number, number, number] => {
+    const dx = x - CAM.x, dy = y - CAM.y, d = Math.hypot(dx, dy);
+    return [deg(Math.atan2(dx, dy)), deg(Math.atan2(h - CAM.z, Math.max(0.5, d))), d];
+  };
+  const [fy, fe, fd] = look(at[0], at[1], 3), [by, be] = look(b[0], b[1], b[2]);
+  const tH = (hh: number) => Math.tan(rad(hh)), hOf = (vv: number) => deg(Math.atan(Math.tan(rad(vv)) * aspect));
+  // the zoomed frame: centered on the fielder; wide enough for the ball inside 70% of each half and the man at most ZOOM_MAN
+  const hb = base.fov / 2;
+  const man = Math.min(Math.max(ZOOM_MIN_H, hOf(deg(Math.atan(6 / fd)) / (2 * ZOOM_MAN))), hb);   // never wider than the base for the man alone
+  const need = (d: number) => deg(Math.atan(Math.tan(rad(Math.min(80, Math.abs(d)))) / 0.6));   // the ball inside 60% of the half frame
+  const lens = Math.min(40, hOf(35));   // the Round 1b lens limits: at most 80 degrees across and 70 up and down
+  const hz = Math.min(lens, Math.max(man, need(by - fy), hOf(need(be - fe))));
+  // blend from the base camera (angles and the half-width in tangent space, so the frame grows and shrinks smoothly)
+  // a ball still outside 60% at the lens limit (a pop caught near the camera): aim part of the way toward it, keeping the
+  // fielder inside the middle third (at most 30% of each half frame off center)
+  const vz = deg(Math.atan(tH(hz) / aspect));
+  const off = (d: number, half: number) => { const lim = deg(Math.atan(Math.tan(rad(half)) * 0.6)); return Math.abs(d) <= lim ? 0 : Math.sign(d) * Math.min(Math.abs(d) - lim, deg(Math.atan(Math.tan(rad(half)) * 0.3))); };
+  const ay = fy + off(by - fy, hz), ap = fe + off(be - fe, vz);
+  const yaw = lerp(base.yaw, ay, z), pitch = lerp(base.pitch, ap, z);
+  const hh = deg(Math.atan(lerp(tH(hb), tH(hz), z)));
+  return { yaw, pitch, fov: hh * 2 };
+}
+
+// ---- Plan 59 Round 5: center-field windup shot ----
+/** CF camera: 110 ft behind the rubber (shallow center field), 14 ft up, long lens; units of stage height (as the windup). */
+export const CF_CAM = { back: 110, z: 14 };
+/** Focal length per unit of stage height: the 7.3 ft pitcher cell fills 0.62 of the stage at the rubber. */
+export const CF_F = (0.62 * CF_CAM.back) / PITCHER_CELL_FT;
+/** Where the feet land: pitcher at CF_PITCH (x share of stage height, + = right; y below center), batter at CF_BAT_X. */
+export const CF_PITCH = { x: -0.12, y: 0.45 }, CF_BAT_X = 0.11;
+/** The front batter cell is 480 px for the same 7.3 ft as the pitcher cell (tools/make-cf-art.py PX_PER_FT). */
+export const CF_BATTER_FT = PITCHER_CELL_FT;
+/** Batter's feet, catcher and umpire (feet; righty batter, third-base side = negative x). */
+export const CF_SPOT = { batter: { x: -2.6, y: 0.9 }, catcher: { x: 0, y: -2.6 }, umpire: { x: -0.9, y: -5.6 } };
+export interface CfSprite { x: number; y: number; h: number; }
+export interface CfLayout { cam: Camera; f: number; pitcher: CfSprite; batter: CfSprite; catcher: CfSprite; umpire: CfSprite; spot: typeof CF_SPOT; }
+const cfMemo = new Map<string, CfLayout>();
+/** The CF camera and where each sprite stands (x from the stage center, y from the stage center, + = down; h = cell
+ *  height), all in units of stage height. A lefty batter mirrors the whole layout. Pure; worked out once per side. */
+export function cfLayout(bats: 'L' | 'R'): CfLayout {
+  const have = cfMemo.get(bats);
+  if (have) return have;
+  const s = bats === 'L' ? -1 : 1;
+  const spot = { batter: { x: s * CF_SPOT.batter.x, y: CF_SPOT.batter.y }, catcher: { ...CF_SPOT.catcher, x: s * CF_SPOT.catcher.x }, umpire: { x: s * CF_SPOT.umpire.x, y: CF_SPOT.umpire.y } } as typeof CF_SPOT;
+  const pos = { x: 0, y: RUBBER.y + CF_CAM.back, z: CF_CAM.z };
+  const scr = (cam: Camera, x: number, y: number) => { const v = toCam(cam, x, y, 0); return [(v[0] / v[1]) * CF_F, -(v[2] / v[1]) * CF_F, v[1]] as const; };
+  const at = (yaw: number) => aimed(pos, yaw, RUBBER, CF_F, s * CF_PITCH.x, CF_PITCH.y, 0.5);
+  // the pitcher lands at CF_PITCH for any yaw (aimed slides the camera); turn until the batter lands at CF_BAT_X
+  let lo = 160, hi = 200;
+  const bx = (yaw: number) => scr(at(yaw), spot.batter.x, spot.batter.y)[0] - s * CF_BAT_X;
+  for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (Math.sign(bx(mid)) === Math.sign(bx(lo))) lo = mid; else hi = mid; }
+  const cam = at((lo + hi) / 2);
+  const sprite = (x: number, y: number): CfSprite => { const [sx, sy, d] = scr(cam, x, y); return { x: sx, y: sy, h: (PITCHER_CELL_FT * CF_F) / d }; };
+  const L: CfLayout = { cam, f: CF_F, pitcher: sprite(RUBBER.x, RUBBER.y), batter: sprite(spot.batter.x, spot.batter.y),
+    catcher: sprite(spot.catcher.x, spot.catcher.y), umpire: sprite(spot.umpire.x, spot.umpire.y), spot };
+  cfMemo.set(bats, L);
+  return L;
 }
