@@ -218,6 +218,7 @@
                 <div sceneBelow class="ll-below">
                   @if (baseText()) { <p class="ll-base" aria-hidden="true">{{ baseText() }}</p> }
                   @if (halfCard()) { <p class="ll-half">{{ halfCard() }}</p> }
+                  @if (extraNote(); as x) { <p class="ll-extra" role="status">{{ x }}</p> }
                   @if (nextAtBat(); as n) {
                     @let tag = isInningGame() ? ownTag(n.battingSide) : '';
                     <p class="ll-next" [class.team-edge]="isInningGame()" [style.border-left-color]="isInningGame() ? sideColor(n.battingSide) : null">Next: {{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) : roundLabel(n) }} ·

@@ -84,6 +84,7 @@ pr-challenge .scene-wrap { container-name: ll-scene; }
 .ll-below { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; flex: 1 1 auto; min-height: 44px; }   /* the Skip row's height: the stage keeps its place */
 .ll-below > p { margin: 0; font-size: .8rem; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ll-half { font-weight: 600; }
+.ll-below > p.ll-extra { font-weight: 600; white-space: normal; }   /* Plan 71: the extra-inning runner note, its own line at every size; wraps, never cut off */
 .ll-next .short { display: none; }
 @media (max-width: 439px) { .ll-next .full { display: none; } .ll-next .short { display: inline; } }
 @container ll-scene (min-height: 420px) {

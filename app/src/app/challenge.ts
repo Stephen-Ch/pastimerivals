@@ -8,7 +8,7 @@ import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClas
 import { PitchScene, SceneCue } from './pitch-scene';
 import { ERA_BOARD, lastName, Scoreboard } from './scoreboard';
 import { announcerOn } from './announcer-setting';
-import { extraStart, intro, IntroCtx, lineText, PbpLine, pitchLines, rawLead, recapLines, RecapAb, resultLine } from './pbp';
+import { extraStart, intro, isExtraLine, IntroCtx, lineText, PbpLine, pitchLines, rawLead, recapLines, RecapAb, resultLine } from './pbp';
 import { bedFor, reactionFor, voice, voiceFor } from './audio';
 import { voiceOn } from './voice-setting';
 import { VoiceButton } from './voice-button';
@@ -164,7 +164,7 @@ export class ChallengeFlow {
   protected readonly wordColors = computed(() => ERA_BOARD[this.parkLook() ?? '1990']);
   protected readonly lastName = lastName;
   /** Plan 59 Round 2b: recap lines, then the next batter's intro: shown over or beside the held stage where there is room (CSS). */
-  protected readonly heldExtras = computed(() => { const x = this.extraNote(); return [...this.pbpRecap(), ...(x ? [x] : []), ...this.pbpIntro()]; });
+  protected readonly heldExtras = computed(() => [...this.pbpRecap(), ...this.pbpIntro()]);
   /** Plan 59 Round 2a: the count on the scoreboard while a scene plays (0-0 at its start); none between at-bats. */
   protected readonly liveCount = signal<{ balls: number; strikes: number }>({ balls: 0, strikes: 0 });
   protected readonly boardCount = computed(() => this.scene() ? this.liveCount() : null);
@@ -752,10 +752,11 @@ export class ChallengeFlow {
     const x = intro(ctx, prevCtx ? rawLead(prevCtx) : null);
     return [x.extra, x.pitcher, x.batter].filter((l): l is PbpLine => !!l);
   }
-  /** Plan 71: with the announcer off, a written note explains the extra-inning runner on second (the spoken line covers it when on). */
+  /** Plan 71: a written note explains the extra-inning runner on second, on its own line so it is seen at every size.
+   *  With the announcer on, the spoken lead.extra line says it too; its text stays out of the intro text so it is never shown twice. */
   protected readonly extraNote = computed(() => {
     const n = this.nextAtBat();
-    if (this.announcer() || !n) return null;
+    if (!n) return null;
     const ctx = this.introCtxFor(n.index);
     if (!ctx || !extraStart(ctx.situation)) return null;
     const name = this.names().get(ctx.situation!.bases[1]!);
@@ -765,7 +766,7 @@ export class ChallengeFlow {
   protected readonly pbpIntro = computed(() => {
     const n = this.nextAtBat();
     if (!this.announcer() || !n) return [] as string[];
-    return this.introLinesFor(n.index).map(lineText);
+    return this.introLinesFor(n.index).filter(l => !isExtraLine(l)).map(lineText);
   });
 
   private pbpCtxFor(ab: CAtBat) {

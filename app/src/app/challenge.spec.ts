@@ -145,6 +145,7 @@ describe('team identity (plan 2026-11-04)', () => {
 
 // ---- Plan 71: the extra-inning runner on second is explained ----
 import { announcerOn } from './announcer-setting';
+import { lineText } from './pbp';
 
 describe('plan 71: extra-inning runner note', () => {
   const base = LL_VIEW.game.atBats[0];
@@ -178,7 +179,7 @@ describe('plan 71: extra-inning runner note', () => {
       m.c.advance(2); m.c.lastPlay.set(m.c.game().atBats[1]);
       m.f.detectChanges(); await m.f.whenStable();
       expect(m.c.extraNote()).toBe('Extra innings: Aaron starts on second.');
-      expect(m.c.heldExtras()).toContain('Extra innings: Aaron starts on second.');
+      expect(m.c.heldExtras().join(' ')).not.toContain('Extra innings');
       m.c.lastPlay.set(null); m.f.detectChanges(); await m.f.whenStable();
       expect(m.el.querySelector('.result')?.textContent).toContain('Extra innings: Aaron starts on second.');
       m.c.advance(3); m.f.detectChanges(); await m.f.whenStable();
@@ -188,17 +189,16 @@ describe('plan 71: extra-inning runner note', () => {
     } finally { announcerOn.set(wasOn); m.restore(); }
   });
 
-  it('announcer on: the spoken line leads the intro and the written note is not shown too', async () => {
+  it('announcer on: the spoken line leads the spoken intro; the screen shows only the written note', async () => {
     const wasOn = announcerOn();
     const m = await mount(view('aaroh101'));
     try {
       announcerOn.set(true);
       m.c.advance(2); m.f.detectChanges(); await m.f.whenStable();
-      expect(m.c.extraNote()).toBeNull();
-      expect(m.c.pbpIntro()[0]).toBe('Extra innings, and a runner starts on second.');
+      expect(m.c.extraNote()).toBe('Extra innings: Aaron starts on second.');
+      expect(lineText(m.c.introLinesFor(2)[0])).toBe('Extra innings, and a runner starts on second.');
+      expect(m.c.pbpIntro().join(' ')).not.toContain('Extra innings');
       const text = m.el.querySelector('.result')?.textContent ?? '';
-      expect(text).toContain('Extra innings, and a runner starts on second.');
-      expect(text).not.toContain('starts on second. Extra innings:');
       expect(text.match(/Extra innings/g)?.length).toBe(1);
     } finally { announcerOn.set(wasOn); m.restore(); }
   });
