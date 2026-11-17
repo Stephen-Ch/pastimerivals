@@ -4,6 +4,21 @@ import { expect, Page, test } from '@playwright/test';
 import { LL_CODE, serve } from './harness';
 
 const SIZES: [number, number][] = [[320, 568], [390, 844], [568, 320]];
+// any two visible text lines overlapping (the right column in short landscape is tight)
+const overlaps = (page: Page, only = '') => page.evaluate(only => {
+  const els = Array.from(document.querySelectorAll('main p, p.side-line, p.pbp-row')).filter(el => {
+    const b = el.getBoundingClientRect(), cs = getComputedStyle(el);
+    return b.width > 1 && b.height > 1 && cs.visibility !== 'hidden' && (el as HTMLElement).offsetParent !== null && !el.closest('.held-band');
+  });
+  const out: string[] = [];
+  els.forEach((x, i) => els.slice(i + 1).forEach(y => {
+    if (x.contains(y) || y.contains(x)) return;
+    if (only && !(x.textContent ?? '').includes(only) && !(y.textContent ?? '').includes(only)) return;
+    const a = x.getBoundingClientRect(), b = y.getBoundingClientRect();
+    if (b.left < a.right - 1 && a.left < b.right - 1 && b.top < a.bottom - 1 && a.top < b.bottom - 1) out.push(`${x.className}/${y.className}`);
+  }));
+  return out.join(',');
+}, only);
 const pageScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight);
 // seen = a real box (not the 1x1 screen-reader copy), inside the viewport, no hidden ancestor, and not cut off (clamp or ellipsis)
 const visibleText = (page: Page, re: RegExp) => page.evaluate(src => {
@@ -28,12 +43,15 @@ for (const [w, h] of SIZES) {
       await page.locator('pr-pitch-scene .stage[data-held="1"]').waitFor({ timeout: 20_000 });
       expect(await visibleText(page, want), 'held: shown once').toBe(1);
       expect(await pageScroll(page), 'page scroll held').toBeLessThanOrEqual(1);
+      expect(await overlaps(page), 'nothing overlaps the note (held)').toBe('');
       expect(await visibleText(page, /Extra innings, and/), 'the spoken line is not shown as text too').toBe(0);
       await page.reload();
       // watched is now 10: the panel before the first extra-inning pitch
       await expect(page.getByRole('button', { name: 'Pitch', exact: true })).toBeEnabled();
       expect(await visibleText(page, want), 'panel: shown once').toBe(1);
       expect(await pageScroll(page), 'page scroll panel').toBeLessThanOrEqual(1);
+      // the panel's intro line already overlaps the side line in short landscape on main (logged separately): only the note is checked here
+      expect(await overlaps(page, 'Extra innings:'), 'nothing overlaps the note (panel)').toBe('');
       expect(hn.bad).toEqual([]);
     });
   }
