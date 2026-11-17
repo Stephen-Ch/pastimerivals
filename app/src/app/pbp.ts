@@ -39,6 +39,8 @@ const LEAD = {
   oneOut: [def('lead.b.oneout', "With one out, here's...")],
   twoOut: [def('lead.b.twodown', "With two down, here's...")],
 };
+/** Plan 71: said first at an extra-inning start, so the rule's runner on second never appears from nowhere. */
+const EXTRA = def('lead.extra', 'Extra innings, and a runner starts on second.');
 
 // Counts: "two and one." (after a comma) / "full count."
 for (let b = 0; b <= 3; b++) for (let s = 0; s <= 2; s++) def(`count.${b}.${s}`, b === 3 && s === 2 ? 'full count.' : `${CW[b]} and ${CW[s]}.`);
@@ -230,7 +232,12 @@ const PAUSE_NAME = 350;
 export interface Person { id: string; name: string; }
 export interface Situation { outs: number; bases: (string | null)[]; inning: number; battingSide: number; firstOfHalf: boolean; deficit: number; lastScheduledInning: number; }
 export interface IntroCtx { key: string; index: number; batter: Person; pitcher: Person; showPitcher: boolean; pitchingSide: number | null; situation: Situation | null; }
-export interface Intro { pitcher: PbpLine | null; batter: PbpLine; lead: string; }
+export interface Intro { extra: PbpLine | null; pitcher: PbpLine | null; batter: PbpLine; lead: string; }
+
+/** Plan 71: the first at-bat of an extra half that starts with the rule's runner on second (the server places him in bases[1]). */
+export function extraStart(sit: Situation | null): boolean {
+  return !!sit && sit.firstOfHalf && sit.inning > sit.lastScheduledInning && !!sit.bases[1];
+}
 
 function batterGroup(sit: Situation | null): string[] {
   if (!sit) return LEAD.plain;
@@ -263,7 +270,8 @@ export function intro(ctx: IntroCtx, prevLead: string | null): Intro {
     const pg = ctx.pitchingSide === null ? LEAD.pitcherPractice : ctx.pitchingSide === 0 ? LEAD.pitcherHome : LEAD.pitcherVis;
     pitcher = line([P(pick(rnd(`${ctx.key}:pintro:${ctx.index}`), pg)), { pause: PAUSE_NAME }, { name: ctx.pitcher.name, id: ctx.pitcher.id }]);
   }
-  return { pitcher, batter: line([P(lead), { pause: PAUSE_NAME }, { name: ctx.batter.name, id: ctx.batter.id }]), lead };
+  const extra = extraStart(ctx.situation) ? line([P(EXTRA)]) : null;
+  return { extra, pitcher, batter: line([P(lead), { pause: PAUSE_NAME }, { name: ctx.batter.name, id: ctx.batter.id }]), lead };
 }
 
 // ---------------- Pitches ----------------

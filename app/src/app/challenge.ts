@@ -8,7 +8,7 @@ import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClas
 import { PitchScene, SceneCue } from './pitch-scene';
 import { ERA_BOARD, lastName, Scoreboard } from './scoreboard';
 import { announcerOn } from './announcer-setting';
-import { intro, IntroCtx, lineText, PbpLine, pitchLines, rawLead, recapLines, RecapAb, resultLine } from './pbp';
+import { extraStart, intro, IntroCtx, lineText, PbpLine, pitchLines, rawLead, recapLines, RecapAb, resultLine } from './pbp';
 import { bedFor, reactionFor, voice, voiceFor } from './audio';
 import { voiceOn } from './voice-setting';
 import { VoiceButton } from './voice-button';
@@ -164,7 +164,7 @@ export class ChallengeFlow {
   protected readonly wordColors = computed(() => ERA_BOARD[this.parkLook() ?? '1990']);
   protected readonly lastName = lastName;
   /** Plan 59 Round 2b: recap lines, then the next batter's intro: shown over or beside the held stage where there is room (CSS). */
-  protected readonly heldExtras = computed(() => [...this.pbpRecap(), ...this.pbpIntro()]);
+  protected readonly heldExtras = computed(() => { const x = this.extraNote(); return [...this.pbpRecap(), ...(x ? [x] : []), ...this.pbpIntro()]; });
   /** Plan 59 Round 2a: the count on the scoreboard while a scene plays (0-0 at its start); none between at-bats. */
   protected readonly liveCount = signal<{ balls: number; strikes: number }>({ balls: 0, strikes: 0 });
   protected readonly boardCount = computed(() => this.scene() ? this.liveCount() : null);
@@ -750,8 +750,17 @@ export class ChallengeFlow {
     if (!ctx) return [];
     const prevCtx = i > 0 ? this.introCtxFor(i - 1) : null;
     const x = intro(ctx, prevCtx ? rawLead(prevCtx) : null);
-    return [x.pitcher, x.batter].filter((l): l is PbpLine => !!l);
+    return [x.extra, x.pitcher, x.batter].filter((l): l is PbpLine => !!l);
   }
+  /** Plan 71: with the announcer off, a written note explains the extra-inning runner on second (the spoken line covers it when on). */
+  protected readonly extraNote = computed(() => {
+    const n = this.nextAtBat();
+    if (this.announcer() || !n) return null;
+    const ctx = this.introCtxFor(n.index);
+    if (!ctx || !extraStart(ctx.situation)) return null;
+    const name = this.names().get(ctx.situation!.bases[1]!);
+    return `Extra innings: ${name ? this.lastName(name) : 'a runner'} starts on second.`;
+  });
   /** Intro lines for the next at-bat, shown in the next-batter panel before the Pitch tap. */
   protected readonly pbpIntro = computed(() => {
     const n = this.nextAtBat();

@@ -142,3 +142,74 @@ describe('team identity (plan 2026-11-04)', () => {
     } finally { voiceOn.set(wasOn); globalThis.fetch = origFetch; vi.restoreAllMocks(); history.replaceState(null, '', '/'); }
   });
 });
+
+// ---- Plan 71: the extra-inning runner on second is explained ----
+import { announcerOn } from './announcer-setting';
+
+describe('plan 71: extra-inning runner note', () => {
+  const base = LL_VIEW.game.atBats[0];
+  const ab = (index: number, inning: number, side: number, bases: (string | null)[], outsBefore = 0) => ({ ...base, index, inning, battingSide: side, outsBefore,
+    outsAfter: outsBefore + 1, basesBefore: bases, basesAfter: bases, outcome: 'k', scored: [], seed: `x${index}`,
+    batter: side ? LL_VIEW.game.lineups[1][1 + (index % 9)] : LL_VIEW.game.lineups[0][1 + (index % 9)], pitcher: side ? LL_VIEW.game.lineups[0][0] : LL_VIEW.game.lineups[1][0] });
+  const view = (runner: string) => ({ ...LL_VIEW, era: { ...LL_VIEW.era, season: 2024, runnerOnSecond: true },
+    game: { ...LL_VIEW.game, innings: 2, lineScore: [[0, 0], [0, 0]],
+      atBats: [ab(0, 1, 1, [null, null, null]), ab(1, 1, 0, [null, null, null]), ab(2, 2, 1, [null, runner, null]), ab(3, 2, 1, [null, runner, null], 1)] } });
+
+  async function mount(v: unknown) {
+    const origFetch = globalThis.fetch;
+    history.replaceState(null, '', '/c/' + LL_VIEW.code);
+    globalThis.fetch = (async (url: string) => new Response(String(url).includes('/api/challenges/' + LL_VIEW.code) ? JSON.stringify(v) : '[]',
+      { status: 200, headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
+    vi.spyOn(voice, 'say').mockResolvedValue(undefined as never);
+    vi.spyOn(voice, 'running').mockReturnValue(false);
+    vi.spyOn(voice, 'prefetch').mockImplementation(() => undefined as never);
+    vi.spyOn(voice, 'enable').mockResolvedValue(undefined as never);
+    const f = TestBed.createComponent(ChallengeFlow);
+    f.componentRef.setInput('code', LL_VIEW.code);
+    for (let i = 0; i < 5; i++) { await new Promise(r => setTimeout(r, 0)); f.detectChanges(); await f.whenStable(); }
+    return { f, c: f.componentInstance as any, el: f.nativeElement as HTMLElement, restore: () => { globalThis.fetch = origFetch; vi.restoreAllMocks(); history.replaceState(null, '', '/'); } };
+  }
+
+  it('announcer off: a written note names the runner, only before the first batter of the extra half', async () => {
+    const wasOn = announcerOn();
+    const m = await mount(view('aaroh101'));
+    try {
+      announcerOn.set(false);
+      m.c.advance(2); m.c.lastPlay.set(m.c.game().atBats[1]);
+      m.f.detectChanges(); await m.f.whenStable();
+      expect(m.c.extraNote()).toBe('Extra innings: Aaron starts on second.');
+      expect(m.c.heldExtras()).toContain('Extra innings: Aaron starts on second.');
+      m.c.lastPlay.set(null); m.f.detectChanges(); await m.f.whenStable();
+      expect(m.el.querySelector('.result')?.textContent).toContain('Extra innings: Aaron starts on second.');
+      m.c.advance(3); m.f.detectChanges(); await m.f.whenStable();
+      expect(m.c.extraNote(), 'second batter of the half').toBeNull();
+      m.c.advance(1); m.f.detectChanges(); await m.f.whenStable();
+      expect(m.c.extraNote(), 'scheduled inning').toBeNull();
+    } finally { announcerOn.set(wasOn); m.restore(); }
+  });
+
+  it('announcer on: the spoken line leads the intro and the written note is not shown too', async () => {
+    const wasOn = announcerOn();
+    const m = await mount(view('aaroh101'));
+    try {
+      announcerOn.set(true);
+      m.c.advance(2); m.f.detectChanges(); await m.f.whenStable();
+      expect(m.c.extraNote()).toBeNull();
+      expect(m.c.pbpIntro()[0]).toBe('Extra innings, and a runner starts on second.');
+      const text = m.el.querySelector('.result')?.textContent ?? '';
+      expect(text).toContain('Extra innings, and a runner starts on second.');
+      expect(text).not.toContain('starts on second. Extra innings:');
+      expect(text.match(/Extra innings/g)?.length).toBe(1);
+    } finally { announcerOn.set(wasOn); m.restore(); }
+  });
+
+  it('unknown runner id: a plain note', async () => {
+    const wasOn = announcerOn();
+    const m = await mount(view('nobody99'));
+    try {
+      announcerOn.set(false);
+      m.c.advance(2); m.f.detectChanges(); await m.f.whenStable();
+      expect(m.c.extraNote()).toBe('Extra innings: a runner starts on second.');
+    } finally { announcerOn.set(wasOn); m.restore(); }
+  });
+});

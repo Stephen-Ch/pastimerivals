@@ -239,6 +239,7 @@
               <p class="muted">{{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) + ' · ' + batsLine(n.battingSide) : roundLabel(n) + ' · ' + sideName(n.battingSide) + ' batting' }}</p>
               <p class="call">{{ n.batter.name }} <span class="muted">{{ n.batter.year }}</span></p>
               <p class="how">vs {{ n.pitcher.name }} {{ n.pitcher.year }}@if (isInningGame() && yourSide() !== null) { · {{ n.battingSide !== yourSide() ? 'your' : 'their' }} pitcher }</p>
+              @if (extraNote(); as x) { <p class="pbp-intro">{{ x }}</p> }
               @if (pbpIntro().length) { <p class="pbp-intro">{{ pbpIntro().join(' ') }}</p> }
             }
           </section>
