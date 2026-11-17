@@ -101,5 +101,5 @@ pr-challenge .scene-wrap { container-name: ll-scene; }
   .under .ll-base { display: block; }
   .ll-next .full { display: none; } .ll-next .short { display: inline; }
   .ll-below { justify-content: flex-start; flex: none; }
-  .ll-below:has(.ll-extra) .ll-extras { display: none; }   /* Plan 71: the 2-line runner note takes the recap and intro room (they are spoken); nothing overlaps */
+  .ll-below:has(.ll-extra) .ll-extras { display: none; }   /* Plan 71: the 2-line runner note takes the recap and intro room (the voice and the play-by-play row cover them); nothing overlaps */
 }

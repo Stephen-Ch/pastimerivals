@@ -234,9 +234,9 @@ export interface Situation { outs: number; bases: (string | null)[]; inning: num
 export interface IntroCtx { key: string; index: number; batter: Person; pitcher: Person; showPitcher: boolean; pitchingSide: number | null; situation: Situation | null; }
 export interface Intro { extra: PbpLine | null; pitcher: PbpLine | null; batter: PbpLine; lead: string; }
 
-/** Plan 71: the first at-bat of an extra half that starts with the rule's runner on second (the server places him in bases[1]). */
 /** Plan 71: the spoken extra-inning line (its text is shown separately, as the written note). */
 export const isExtraLine = (l: PbpLine) => l.segs.some(s => 'p' in s && s.p === EXTRA);
+/** Plan 71: the first at-bat of an extra half that starts with the rule's runner on second (the server places him in bases[1]). */
 export function extraStart(sit: Situation | null): boolean {
   return !!sit && sit.firstOfHalf && sit.inning > sit.lastScheduledInning && !!sit.bases[1];
 }
