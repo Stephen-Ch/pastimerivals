@@ -32,7 +32,9 @@
                   } @else if (!rep || manifestState() === 'loading') {
                     <span class="pimg skeleton" aria-hidden="true"></span>
                   } @else if (a && !tileFailed()) {
-                    <img class="pimg" [class.mirror]="a.mirror" [src]="a.card" alt="" decoding="async" (error)="tileFailed.set(true)">
+                    @let fl = flip.state()?.role === role ? flip.state() : null;
+                    <img class="pimg" [class.mirror]="fl?.phase === 'out' ? fl!.old.mirror : a.mirror" [class.flip-out]="fl?.phase === 'out'" [class.flip-hold]="fl?.phase === 'hold'" [class.flip-in]="fl?.phase === 'in'"
+                         [src]="fl && fl.phase !== 'in' ? fl.old.card : a.card" alt="" decoding="async" (error)="tileFailed.set(true)">
                   } @else {
                     <span class="pimg pblank" aria-hidden="true"></span>
                   }

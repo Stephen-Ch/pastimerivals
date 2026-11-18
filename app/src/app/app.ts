@@ -10,6 +10,7 @@ import { PitchScene } from './pitch-scene';
 import { ERA_BOARD, lastName, Scoreboard, shortYear } from './scoreboard';
 import { sideLine } from './side-line';
 import { CLUTCH_SETUP, clutchNext } from './clutch';
+import { CardFlip, FlipCard } from './card-flip';
 import { announcerOn } from './announcer-setting';
 import { intro, lineText, PbpLine, pitchLines, rawLead, resultLine } from './pbp';
 import { bedFor, reactionFor, voice, voiceFor } from './audio';
@@ -305,6 +306,9 @@ export class App {
   protected readonly manifestState = signal<'loading' | 'ok' | 'failed'>('loading');
   /** Plan 52: a tile image that failed to load (reset whenever the pair changes). */
   protected readonly tileFailed = signal(false);
+  /** Plan 73 Part D: the card turns over when a picked season changes its picture (never on page load). */
+  protected readonly flip = new CardFlip();
+  private flipWant: { role: Role; old: FlipCard | null } | null = null;
   /** Art for both players of the current matchup, or null (manifest not ready, or a card missing: blank frames). */
   protected readonly pair = computed<PairArt | null>(() => {
     const p = this.pitcherReport(), b = this.batterReport();
@@ -481,8 +485,10 @@ export class App {
       api.event('matchup_view', this.session);
       const [br, pr] = await Promise.all([api.card(p.b, p.by, 'bat'), api.card(p.p, p.py, 'pit')]);
       this.batterReport.set(br); this.pitcherReport.set(pr);
+      const want = this.flipWant;
+      if (want) { const now = want.role === 'pit' ? this.pair()?.pit : this.pair()?.bat; this.flip.start(want.role, want.old, now?.card); }
     } catch (e) { this.error.set((e as Error).message); }
-    finally { this.busy.set(false); }
+    finally { this.busy.set(false); this.flipWant = null; }
   }
 
   protected openPicker(role: Role) {
@@ -539,6 +545,9 @@ export class App {
     const h = this.seasonsFor(), role = this.picking();
     if (!h || !role) return;
     const chosen: Chosen = { id: h.id, name: h.name, year: s.year, line: s.line };
+    const old = (role === 'pit' ? this.pair()?.pit : this.pair()?.bat) ?? null;   // plan 73 D: the picture on the card now
+    this.flip.cancel();
+    this.flipWant = { role, old: old && !this.tileFailed() ? { card: old.card, mirror: old.mirror } : null };
     (role === 'pit' ? this.pitcher : this.batter).set(chosen);
     this.closeOverlay();
     this.load();

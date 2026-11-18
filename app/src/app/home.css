@@ -33,3 +33,12 @@
   .pcard { min-height: 100px; }
   .about-art-side { display: inline; }
 }
+
+/* Plan 73 Part D: the card turns over (old picture squeezes to nothing, new one opens); mirrored cards stay mirrored. */
+.pimg { --m: 1; }
+.pimg.mirror { --m: -1; }
+.pimg.flip-out { animation: pflip .225s ease-in both; }
+.pimg.flip-hold { transform: scaleX(0); }
+.pimg.flip-in { animation: pflip .225s ease-out reverse both; }
+@keyframes pflip { from { transform: scaleX(var(--m)); } to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .pimg.flip-out, .pimg.flip-in, .pimg.flip-hold { animation: none; transform: scaleX(var(--m)); } }

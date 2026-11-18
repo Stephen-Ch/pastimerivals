@@ -2,6 +2,8 @@
 // pitch-hr.json (seed 424242) is a non-ITP home run for every Duel batter here: inside-the-park home runs only happen
 // before 1920 (logic.ts callA3 deadBall), and the fixtures' batters are Babe Ruth 1927 and Hank Aaron 1957.
 import { expect, Page, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { RIGHTY, serve } from './harness';
 
 /** Records performance.now() when the stage's data-cue turns to 'end', and the stage's data-end-wall at that moment. */
@@ -104,3 +106,66 @@ test('plan 73 C: setup line above the stage, consequence in the band; hidden (sc
   expect(shared).toContain('pr.test');
   expect(shared).not.toMatch(/walk-off|bottom of the 9th/);
 });
+
+// ---- Plan 73 Part D: the card turns over when a picked season changes the picture ----
+/** Records every flip class seen on a card picture, and the picture's layout size each time. */
+async function watchFlips(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __flips: string[]; __sizes: string[] };
+    w.__flips = []; w.__sizes = [];
+    new MutationObserver(ms => {
+      for (const m of ms) {
+        const el = m.target as HTMLElement;
+        if (!el.classList?.contains('pimg')) continue;
+        for (const c of ['flip-out', 'flip-hold', 'flip-in']) if (el.classList.contains(c) && w.__flips[w.__flips.length - 1] !== c) w.__flips.push(c);
+        w.__sizes.push(`${el.offsetWidth}x${el.offsetHeight}`);
+      }
+    }).observe(document, { attributes: true, subtree: true, attributeFilter: ['class', 'src'] });
+  });
+}
+
+async function pickBatterSeason(page: Page, year: number) {
+  await page.getByRole('button', { name: /Change batter/ }).click();
+  await page.getByPlaceholder('Type a first or last name').fill('Ruth');
+  await page.locator('.picker button.row-btn', { hasText: 'Babe Ruth' }).first().click();
+  await page.locator('.picker .list button', { hasText: String(year) }).first().click();
+}
+
+for (const [label, year, flips] of [['different era (1915)', 1915, true], ['same era (1925)', 1925, false]] as const) {
+  test(`plan 73 D: card flip on a ${label}`, async ({ context, page }, info) => {
+    test.skip(info.project.name !== 'phone', 'one size is enough');
+    await serve(context, { storage: { pr_seen: null } });   // first visit: Babe Ruth 1927 (a lefty: mirrored card)
+    await page.route('**/api/card?*', async route => {
+      const u = new URL(route.request().url());
+      if (u.searchParams.get('role') !== 'bat') return route.fallback();
+      const body = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'card-bat.json'), 'utf8'));
+      body.year = Number(u.searchParams.get('year'));
+      await route.fulfill({ status: 200, json: body });
+    });
+    await watchFlips(page);
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    const img = page.locator('.pcard img.pimg').nth(1);
+    await expect(img).toHaveClass(/mirror/);
+    const size0 = await img.evaluate(el => `${(el as HTMLElement).offsetWidth}x${(el as HTMLElement).offsetHeight}`);
+    expect(await page.evaluate(() => (window as unknown as { __flips: string[] }).__flips), 'no flip on page load').toEqual([]);
+    const src0 = await img.getAttribute('src');
+    await pickBatterSeason(page, year);
+    await page.waitForTimeout(900);
+    const flipsSeen = await page.evaluate(() => (window as unknown as { __flips: string[] }).__flips);
+    const sizes = await page.evaluate(() => (window as unknown as { __sizes: string[] }).__sizes);
+    const src1 = await img.getAttribute('src');
+    if (flips) {
+      expect(src1).not.toBe(src0);
+      expect(flipsSeen[0]).toBe('flip-out');
+      expect(flipsSeen).toContain('flip-in');
+    } else {
+      expect(src1).toBe(src0);
+      expect(flipsSeen).toEqual([]);
+    }
+    for (const s of sizes) expect(s, 'the card box never changes size').toBe(size0);
+    await expect(img).toHaveClass(/mirror/);
+    await expect(img).not.toHaveClass(/flip-/);
+    expect(await img.evaluate(el => getComputedStyle(el).transform)).toMatch(/^matrix\(-1, 0, 0, 1/);
+  });
+}
