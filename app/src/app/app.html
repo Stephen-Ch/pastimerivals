@@ -91,6 +91,7 @@
       </header>
       @if (!res) {
         @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
+        <p class="clutch-line">{{ clutchSetup }}</p>
         @if (announcer()) { <p class="pbp-row" aria-live="polite">{{ pbpLine() }}</p> }
       } @else if (matchup()) {
         <div class="bar-odds slim" role="img" [attr.aria-label]="'Outcome probabilities: ' + topText()">
@@ -107,6 +108,7 @@
                   <section sceneOver class="result held-result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
                     <h1 #screenTitle tabindex="-1" class="call duel-call result-word" [style.background]="wordColors().bg" [style.color]="wordColors().fg" [style.border-top-color]="wordColors().edge">{{ callText() }}</h1>
                     <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ countText() }} count</p>
+                    <p class="clutch-next">{{ clutchNext(r.outcome) }}</p>
                   </section>
                 }
                 @if (res && result()) {
@@ -126,6 +128,7 @@
             <section class="result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
               <h1 #screenTitle tabindex="-1" class="call duel-call">{{ callText() }}</h1>
               <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ countText() }} count</p>
+              <p class="clutch-next">{{ clutchNext(r.outcome) }}</p>
               @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
               <button type="button" class="link" (click)="openOverlay('why')">Why this result</button>
               @if (shareNote()) { <p class="note">{{ shareNote() }}</p> }

@@ -73,3 +73,34 @@ test('plan 73 A6: Watch again is ignored while Pitch again is in flight', async 
   release();
   await expect(page.locator('pr-pitch-scene .stage[data-held]')).toHaveCount(0, { timeout: 10_000 });   // the new pitch plays
 });
+
+// ---- Plan 73 Part C: the clutch setup and its consequence ----
+const SETUP = /bottom of the 9th, two outs, down a run, tying run on second/;
+test('plan 73 C: setup line above the stage, consequence in the band; hidden (screen-reader only) on small and short screens; not shared', async ({ context, page }, info) => {
+  await serve(context, { fixtures: { 'pitch.json': 'pitch-hr.json', ...RIGHTY } });
+  await page.addInitScript(() => { (navigator as unknown as { share: (d: unknown) => Promise<void> }).share = async d => { (window as unknown as { __shared: unknown }).__shared = d; }; });
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Pitch', exact: true }).click();
+  const line = page.locator('p.clutch-line');
+  await expect(line).toHaveText(SETUP);
+  const shown = info.project.name === 'phone';   // 390x844; phone-small 320x568 and landscape 568x320 hide it
+  const lb = (await line.boundingBox())!, sb = (await page.locator('pr-pitch-scene .stage').boundingBox())!;
+  if (shown) {
+    expect(lb.height).toBeGreaterThan(10);
+    expect(lb.y + lb.height).toBeLessThanOrEqual(sb.y + 0.5);   // above the stage
+  } else expect(lb.height).toBeLessThanOrEqual(1);
+  await page.getByRole('button', { name: 'Skip to result' }).click();
+  await page.locator('pr-pitch-scene .stage[data-held]').waitFor({ timeout: 15_000 });
+  const next = page.locator('pr-pitch-scene .held-band p.clutch-next');
+  await expect(next).toHaveText('...that\'s a walk-off.');
+  const nb = (await next.boundingBox())!;
+  if (shown) expect(nb.height).toBeGreaterThan(10); else expect(nb.height).toBeLessThanOrEqual(1);
+  await page.waitForTimeout(550);
+  if (shown) await page.screenshot({ path: info.outputPath('bm-clutch-held.png') });
+  expect(await page.evaluate(() => { const se = document.scrollingElement!; return se.scrollHeight - se.clientHeight; })).toBeLessThanOrEqual(1);
+  await page.getByRole('button', { name: 'Share' }).click();
+  const shared = await page.evaluate(() => JSON.stringify((window as unknown as { __shared: unknown }).__shared));
+  expect(shared).toContain('pr.test');
+  expect(shared).not.toMatch(/walk-off|bottom of the 9th/);
+});

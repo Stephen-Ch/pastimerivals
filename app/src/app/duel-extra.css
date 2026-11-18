@@ -1,0 +1,9 @@
+/* Plan 73 Part C: the clutch setup above the at-bat and its consequence under the result tag. */
+.clutch-line, .clutch-next { margin: 2px 0 0; font-size: .85rem; font-style: italic; line-height: 1.3; }
+.clutch-line { text-align: center; color: var(--text-secondary); }
+.clutch-next { color: var(--text-secondary); }
+.held-result .clutch-next { color: #fff; font-size: .8rem; }
+/* No room on portrait phones under 700 px tall (measured: at 360x640 the line wraps and the stage falls under 55%) or in short landscape (the grid layout): screen-reader only. */
+@media (orientation: portrait) and (max-height: 699.98px), (orientation: landscape) and (max-height: 500px) {
+  .clutch-line, .clutch-next { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}

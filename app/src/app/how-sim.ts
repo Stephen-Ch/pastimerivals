@@ -49,6 +49,7 @@ export const RETROSHEET_NOTICE = 'The information used here was obtained free of
               <li>When pitchers bat, they use their real batting line that season (or the average pitcher of their decade).</li>
               <li>Left-handed batters stand on the other side of the plate, so the view flips. Switch hitters usually bat from the side opposite the pitcher's arm.</li>
               <li>Not in this version: steals, bunts, pinch hitters and relief pitchers.</li>
+              <li>The Duel's game situations ("If it's the bottom of the 9th...") are just for fun and do not change the odds.</li>
               <li>Announcer voices are computer-generated, not real broadcasters. Not every player's name is recorded yet. Turn off silent mode if you hear nothing.</li>
             </ul>
             <h3>About the art</h3>

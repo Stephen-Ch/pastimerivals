@@ -9,6 +9,7 @@ import { capi } from './challenge-api';
 import { PitchScene } from './pitch-scene';
 import { ERA_BOARD, lastName, Scoreboard, shortYear } from './scoreboard';
 import { sideLine } from './side-line';
+import { CLUTCH_SETUP, clutchNext } from './clutch';
 import { announcerOn } from './announcer-setting';
 import { intro, lineText, PbpLine, pitchLines, rawLead, resultLine } from './pbp';
 import { bedFor, reactionFor, voice, voiceFor } from './audio';
@@ -66,7 +67,7 @@ function sessionId(): string {
 @Component({
   selector: 'app-root',
   imports: [ReportView, PitchScene, Scoreboard, ChallengeFlow, Feedback, HowSim, VoiceButton, PerfOverlay],
-  styleUrls: ['./app.css', './sims.css', './home.css'],
+  styleUrls: ['./app.css', './sims.css', './home.css', './duel-extra.css'],
   templateUrl: './app.html',
 })
 export class App {
@@ -74,6 +75,9 @@ export class App {
   protected readonly label = label;
   protected readonly percent = percent;
   protected readonly timesLeague = timesLeague;
+  /** Plan 73 Part C: the clutch setup line and each result's consequence (for fun; not spoken, not shared). */
+  protected readonly clutchSetup = CLUTCH_SETUP;
+  protected readonly clutchNext = clutchNext;
 
   protected readonly pitcher = signal<Chosen | null>(DEFAULT_PITCHER);
   protected readonly batter = signal<Chosen | null>(DEFAULT_BATTER);
