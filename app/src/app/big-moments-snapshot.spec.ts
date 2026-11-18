@@ -5,8 +5,9 @@ import { Call, callFor, countFor, OutcomeKey } from './logic';
 import { Frame, FxWord, PitchScene, SceneCue } from './pitch-scene';
 import { BIG_SNAPSHOT } from './big-moments-snapshot.data';
 
-/** Plan 73 A7: wall-clock snapshot of today's scenes (cue times, end time, and a hash of every drawn value sampled
- *  every 10 ms of wall time). Taken on c5cbfdd before any Plan 73 change; after the change every case runs with
+/** Plan 73 A7: wall-clock snapshot of today's scenes (cue times, end time, and a hash of the timing and motion values
+ *  sampled every 10 ms of wall time: ball, batter frame, trails, burst, smear, shake, word position/size/scale/opacity,
+ *  windup frame, park fade, park word, park shake, board, field-view play time; not the word text, plate, punch or ring). Taken on c5cbfdd before any Plan 73 change; after the change every case runs with
  *  bigMoments ON (except "hr-off") and must match exactly: the slow window touches only a non-ITP home run's final pitch. */
 const SNAP_BIG = true;
 

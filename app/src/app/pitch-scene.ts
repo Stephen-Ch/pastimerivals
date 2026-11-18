@@ -549,8 +549,9 @@ export function ringAt(pt: number, ball: { x: number; y: number; r: number } | n
         <div class="park" aria-hidden="true" [style.opacity]="parkFade()" [style.transform]="parkShake() ? 'translateX(' + parkShake() + 'px)' : null">
           <pr-ballpark-view [play]="pk.play" [sheet]="sheet()" [holdAt]="parkHold()" />
           @if (parkWord(); as w) {
-            <svg class="words" [attr.viewBox]="parkWordBox()?.vb ?? '0 0 760 480'" preserveAspectRatio="none">
-              <g class="word" [attr.transform]="'translate(' + (parkWordBox()?.x ?? w.x) + ' ' + ((parkWordBox()?.y ?? w.y) + punchDy(w)) + ') rotate(' + w.rot + ') scale(' + w.scale + ')'" [attr.opacity]="w.o">
+            @let wb = w.plate ? parkWordBox() : null;
+            <svg class="words" [attr.viewBox]="wb?.vb ?? '0 0 760 480'" preserveAspectRatio="none">
+              <g class="word" [attr.transform]="'translate(' + (wb?.x ?? w.x) + ' ' + ((wb?.y ?? w.y) + punchDy(w)) + ') rotate(' + w.rot + ') scale(' + w.scale + ')'" [attr.opacity]="w.o">
                 @if (w.plate; as pb) { <rect class="plate" [attr.x]="pb.x" [attr.y]="pb.y" [attr.width]="pb.w" [attr.height]="pb.h" rx="12" [attr.fill]="plateColors().bg" [attr.stroke]="plateColors().edge" stroke-width="7"/> }
                 <text text-anchor="middle" [attr.font-size]="w.size" [attr.fill]="w.plate ? plateColors().num : w.fill" [style.stroke]="w.plate ? plateColors().bg : null" [attr.stroke-width]="w.size * (w.plate ? 0.05 : 0.16)">
                   @for (line of w.lines; track $index) { <tspan x="0" [attr.dy]="$index === 0 ? (w.lines.length > 1 ? -w.size * 0.15 : w.size * 0.35) : w.size * 0.95">{{ line }}</tspan> }
@@ -561,7 +562,7 @@ export function ringAt(pt: number, ball: { x: number; y: number; r: number } | n
         </div>
         @if (ring(); as g) {
           <!-- Plan 73 A2: flash ring on the ball, outside the fading park so it shows at full strength -->
-          <svg class="ring" aria-hidden="true" [attr.viewBox]="'0 0 ' + g.w + ' ' + g.h" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none">
+          <svg class="ring" aria-hidden="true" [attr.viewBox]="'0 0 ' + g.w + ' ' + g.h" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none" [style.transform]="parkShake() ? 'translateX(' + parkShake() + 'px)' : null">
             <circle [attr.cx]="g.x" [attr.cy]="g.y" [attr.r]="g.r" [attr.opacity]="g.o" fill="none" stroke="#1d1b19" stroke-width="7"/>
             <circle [attr.cx]="g.x" [attr.cy]="g.y" [attr.r]="g.r" [attr.opacity]="g.o" fill="none" stroke="#ffd23f" stroke-width="4"/>
           </svg>
@@ -721,7 +722,7 @@ export class PitchScene {
   protected readonly plateColors = computed(() => ERA_BOARD[this.look() ?? '1990'] ?? ERA_BOARD['1990']);
   /** Plan 73 A3: the strikeout punch in panel units (2 px at this stage's scale). */
   protected punchDy(w: FxWord): number { return w.punch ? (w.punch * 2) / (this.fit()?.s ?? 0.475) : 0; }
-  /** Plan 73 A3: with big moments the field view's word is drawn at the side view's even scale (no stretch on a tall stage),
+  /** Plan 73 A3: with big moments a plated field-view word (HOME RUN!, DOUBLE!, TRIPLE!) is drawn at the side view's even scale (no stretch on a tall stage),
    *  centered, low on the stage; null keeps today's 760 x 480 box (Last Licks, and before the stage is measured). */
   protected readonly parkWordBox = computed(() => {
     const z = this.stageSize(), f = this.fit();
@@ -887,7 +888,7 @@ export class PitchScene {
     const idx = this.step();
     if (plan.s.windup) this.emitCue({ index: idx, final, moment: 'windup' });
     const start = performance.now();
-    if (final) this.endWall.set(Math.round(start + (lead0 + wallFor(end, w)) * 1000));
+    if (final && this.bigMoments()) this.endWall.set(Math.round(start + (lead0 + wallFor(end, w)) * 1000));
     const tick = () => {
       const el = (performance.now() - start) / 1000;
       if (el < lead0) { const wb = windupBlendAt(el); this.windBlend.set(wb); this.windFrame.set(wb.base); this.frame.set(frameAt(plan, 0)); if (!this.finished) this.raf = raf(tick); return; }

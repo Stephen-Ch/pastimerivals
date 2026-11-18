@@ -39,6 +39,7 @@
 .pimg.mirror { --m: -1; }
 .pimg.flip-out { animation: pflip .225s ease-in both; }
 .pimg.flip-hold { transform: scaleX(0); }
-.pimg.flip-in { animation: pflip .225s ease-out reverse both; }
+.pimg.flip-in { animation: pflip-in .225s ease-out both; }   /* its own name: a renamed animation restarts */
 @keyframes pflip { from { transform: scaleX(var(--m)); } to { transform: scaleX(0); } }
+@keyframes pflip-in { from { transform: scaleX(0); } to { transform: scaleX(var(--m)); } }
 @media (prefers-reduced-motion: reduce) { .pimg.flip-out, .pimg.flip-in, .pimg.flip-hold { animation: none; transform: scaleX(var(--m)); } }

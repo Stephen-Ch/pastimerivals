@@ -111,13 +111,16 @@ test('plan 73 C: setup line above the stage, consequence in the band; hidden (sc
 /** Records every flip class seen on a card picture, and the picture's layout size each time. */
 async function watchFlips(page: Page) {
   await page.addInitScript(() => {
-    const w = window as unknown as { __flips: string[]; __sizes: string[] };
-    w.__flips = []; w.__sizes = [];
+    const w = window as unknown as { __flips: string[]; __sizes: string[]; __mid: string[] };
+    w.__flips = []; w.__sizes = []; w.__mid = [];
     new MutationObserver(ms => {
       for (const m of ms) {
         const el = m.target as HTMLElement;
         if (!el.classList?.contains('pimg')) continue;
-        for (const c of ['flip-out', 'flip-hold', 'flip-in']) if (el.classList.contains(c) && w.__flips[w.__flips.length - 1] !== c) w.__flips.push(c);
+        for (const c of ['flip-out', 'flip-hold', 'flip-in']) if (el.classList.contains(c) && w.__flips[w.__flips.length - 1] !== c) {
+          w.__flips.push(c);
+          if (c === 'flip-in') setTimeout(() => w.__mid.push(getComputedStyle(el).transform), 110);   // half way through the opening
+        }
         w.__sizes.push(`${el.offsetWidth}x${el.offsetHeight}`);
       }
     }).observe(document, { attributes: true, subtree: true, attributeFilter: ['class', 'src'] });
@@ -159,6 +162,10 @@ for (const [label, year, flips] of [['different era (1915)', 1915, true], ['same
       expect(src1).not.toBe(src0);
       expect(flipsSeen[0]).toBe('flip-out');
       expect(flipsSeen).toContain('flip-in');
+      const mid = await page.evaluate(() => (window as unknown as { __mid: string[] }).__mid);
+      const sx = Math.abs(Number(/^matrix\(([-\d.e]+)/.exec(mid[0] ?? '')?.[1] ?? 'NaN'));
+      expect(sx, `card part-open half way through flip-in (${mid[0]})`).toBeGreaterThan(0.1);
+      expect(sx).toBeLessThan(0.95);
     } else {
       expect(src1).toBe(src0);
       expect(flipsSeen).toEqual([]);
@@ -169,3 +176,19 @@ for (const [label, year, flips] of [['different era (1915)', 1915, true], ['same
     expect(await img.evaluate(el => getComputedStyle(el).transform)).toMatch(/^matrix\(-1, 0, 0, 1/);
   });
 }
+
+test('plan 73 C: the stage stays at least 55% of the screen with the setup line, at more phone sizes', async ({ context, page }, info) => {
+  test.skip(info.project.name !== 'phone', 'sizes set here');
+  await serve(context, { fixtures: { 'pitch.json': 'pitch-hr.json', ...RIGHTY } });
+  for (const [w, h] of [[360, 640], [375, 667], [360, 720], [375, 740], [360, 780], [390, 844], [412, 915]] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.goto('/'); await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Pitch', exact: true }).click();
+    await page.locator('pr-pitch-scene .stage[data-cue="enter"]').waitFor({ timeout: 15_000 });
+    const r = await page.evaluate(() => { const s = document.querySelector('pr-pitch-scene .stage')!.getBoundingClientRect(), se = document.scrollingElement!;
+      return { pct: s.height / innerHeight, scroll: se.scrollHeight - se.clientHeight, line: document.querySelector('.clutch-line')!.getBoundingClientRect().height }; });
+    console.log(`[plan 73 C room] ${w}x${h}: stage ${(100 * r.pct).toFixed(1)}%, line ${r.line.toFixed(0)} px, scroll ${r.scroll}`);
+    expect(r.pct, `${w}x${h}`).toBeGreaterThanOrEqual(0.55);
+    expect(r.scroll, `${w}x${h}`).toBeLessThanOrEqual(1);
+  }
+});

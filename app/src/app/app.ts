@@ -471,7 +471,10 @@ export class App {
     await this.load();
   }
 
+  private loadSeq = 0;
   protected async load() {
+    const seq = ++this.loadSeq, want: { role: Role; old: FlipCard | null } | null = this.flipWant;   // plan 73 D: this load owns the flip asked for before it
+    this.flipWant = null;
     const p = this.pick();
     this.result.set(null); this.sims.set(null); this.error.set(null);
     if (!p) { this.matchup.set(null); return; }
@@ -485,10 +488,9 @@ export class App {
       api.event('matchup_view', this.session);
       const [br, pr] = await Promise.all([api.card(p.b, p.by, 'bat'), api.card(p.p, p.py, 'pit')]);
       this.batterReport.set(br); this.pitcherReport.set(pr);
-      const want = this.flipWant;
-      if (want) { const now = want.role === 'pit' ? this.pair()?.pit : this.pair()?.bat; this.flip.start(want.role, want.old, now?.card); }
+      if (want && seq === this.loadSeq) { const now = want.role === 'pit' ? this.pair()?.pit : this.pair()?.bat; this.flip.start(want.role, want.old, now?.card); }
     } catch (e) { this.error.set((e as Error).message); }
-    finally { this.busy.set(false); this.flipWant = null; }
+    finally { this.busy.set(false); }
   }
 
   protected openPicker(role: Role) {

@@ -93,7 +93,7 @@
       </header>
       @if (!res) {
         @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
-        <p class="clutch-line">{{ clutchSetup }}</p>
+        <p class="clutch-line" id="clutch-setup">{{ clutchSetup }}</p>
         @if (announcer()) { <p class="pbp-row" aria-live="polite">{{ pbpLine() }}</p> }
       } @else if (matchup()) {
         <div class="bar-odds slim" role="img" [attr.aria-label]="'Outcome probabilities: ' + topText()">
@@ -101,7 +101,7 @@
         </div>
       }
       <main class="flex" [class.scene-wrap]="!res" [class.held-wrap]="heldStage">
-        @if (!res) { <h1 #screenTitle tabindex="-1" class="sr-only">At bat</h1> }
+        @if (!res) { <h1 #screenTitle tabindex="-1" class="sr-only" aria-describedby="clutch-setup">At bat</h1> }
         @if (pending(); as pr) {
           @if (!res || heldStage) {
             @for (k of [sceneN()]; track k) {

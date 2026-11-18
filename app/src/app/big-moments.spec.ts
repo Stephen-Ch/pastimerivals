@@ -206,4 +206,50 @@ describe('plan 73 big moments: slow window in the scene', () => {
       expect(el.querySelector('svg.ring')).toBeNull();
     } finally { spy.mockRestore(); bs.mockRestore(); vi.useRealTimers(); }
   }, 30000);
+
+  it('Skip inside the slow window: ring cleared, done once, no late finish timer', async () => {
+    vi.useFakeTimers(FAKE);
+    const spy = vi.spyOn(BallparkView.prototype, 'draw').mockImplementation(() => undefined);
+    const bs = vi.spyOn(BallparkView.prototype, 'ballScreen').mockImplementation(() => ({ x: 300, y: 200, r: 5, w: 640, h: 480 }));
+    try {
+      const { f, count, pk } = mount('hr', hrSeed(), true);
+      const w = slowWindow({ isFinal: true, outcome: 'hr', motion: 'hit', itp: false, tPark: pk.tPark }, true, true)!;
+      let done = 0;
+      const cues: string[] = [];
+      f.componentInstance.done.subscribe(() => done++);
+      f.componentInstance.cue.subscribe(c => cues.push(c.moment));
+      f.detectChanges();
+      await vi.advanceTimersByTimeAsync(count.leadUp.length * (LEAD_TL.end * 1000 + 60));
+      await vi.advanceTimersByTimeAsync(Math.round(wallFor(pk.tPark + 0.18, w) * 1000));
+      f.detectChanges();
+      expect((f.nativeElement as HTMLElement).querySelector('svg.ring')).not.toBeNull();
+      f.componentInstance.finish();
+      f.detectChanges();
+      expect((f.nativeElement as HTMLElement).querySelector('svg.ring')).toBeNull();
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(done).toBe(1);
+      expect(cues.filter(m => m === 'end' || m === 'skipped')).toEqual(['skipped']);
+    } finally { spy.mockRestore(); bs.mockRestore(); vi.useRealTimers(); }
+  }, 30000);
+
+  it('the even-scale word box is used only for plated words (CRACK! on a single keeps today\'s 760 x 480 box)', async () => {
+    for (const [o, plated] of [['single', false], ['hr', true]] as [OutcomeKey, boolean][]) {
+      vi.useFakeTimers(FAKE);
+      const spy = vi.spyOn(BallparkView.prototype, 'draw').mockImplementation(() => undefined);
+      try {
+        let seed = o === 'hr' ? hrSeed() : '';
+        if (!seed) for (let i = 0; i < 500 && !seed; i++) { const s = `sg${i}`, c = callFor('single', s, countFor('single', s, '3'), 'Babe Ruth', 'R', 'R', '3', 1927); if (c.trajectory && c.trajectory !== 'bloop') seed = s; }
+        const { f, count, pk } = mount(o, seed, true);
+        f.detectChanges();
+        (f.componentInstance as unknown as { stageSize: { set(v: [number, number]): void } }).stageSize.set([390, 506]);   // after the first render (jsdom measures 0)
+        f.detectChanges();
+        await vi.advanceTimersByTimeAsync(count.leadUp.length * (LEAD_TL.end * 1000 + 60));
+        let vb: string | null = null;
+        for (let k = 0; k < 400 && !vb; k++) { await vi.advanceTimersByTimeAsync(10); f.detectChanges(); vb = (f.nativeElement as HTMLElement).querySelector('.park svg.words')?.getAttribute('viewBox') ?? null; }
+        expect(vb, o).not.toBeNull();
+        if (plated) expect(vb).not.toBe('0 0 760 480'); else expect(vb).toBe('0 0 760 480');
+        expect(pk).not.toBeNull();
+      } finally { spy.mockRestore(); vi.useRealTimers(); }
+    }
+  }, 30000);
 });
