@@ -8,7 +8,7 @@ import { BIG_SNAPSHOT } from './big-moments-snapshot.data';
 /** Plan 73 A7: wall-clock snapshot of today's scenes (cue times, end time, and a hash of every drawn value sampled
  *  every 10 ms of wall time). Taken on c5cbfdd before any Plan 73 change; after the change every case runs with
  *  bigMoments ON (except "hr-off") and must match exactly: the slow window touches only a non-ITP home run's final pitch. */
-export const SNAP_BIG = true;
+const SNAP_BIG = true;
 
 interface Case { name: string; outcome: OutcomeKey; seed: string; year: number; side: boolean; windup: boolean; big: boolean; leadOnly?: boolean; }
 
@@ -20,7 +20,7 @@ function hrSeed(year: number, itp: boolean): string {
   throw new Error('no seed');
 }
 
-export const SNAP_CASES: Case[] = [
+const SNAP_CASES: Case[] = [
   ...(['k', 'bb', 'hbp', 'single', 'double', 'triple', 'oip'] as OutcomeKey[]).map(o => ({ name: o, outcome: o, seed: `s-${o}`, year: 1927, side: true, windup: false, big: SNAP_BIG })),
   { name: 'hr-leadups', outcome: 'hr', seed: hrSeed(1927, false), year: 1927, side: true, windup: false, big: SNAP_BIG, leadOnly: true },
   { name: 'hr-itp', outcome: 'hr', seed: hrSeed(1910, true), year: 1910, side: true, windup: false, big: SNAP_BIG },
@@ -41,12 +41,12 @@ function fnv(s: string): string {
 }
 
 /** Test art: 8 frames, the contact frame at cell x 288 (about where real art makes contact), bat tip on frame 2. */
-export function testSide() {
+function testSide() {
   const frames = Array.from({ length: 8 }, (_, i) => (i === 3 ? { contact: [288, 230] } : i === 2 ? { batTip: [150, 170] } : {}));
   return { sheet: '/s.webp', frames, lineArt: false } as never;
 }
 
-export async function runCase(k: Case): Promise<{ cues: string[]; end: number; hash: string; n: number }> {
+async function runCase(k: Case): Promise<{ cues: string[]; end: number; hash: string; n: number }> {
   const draws: number[] = [];
   const spy = vi.spyOn(BallparkView.prototype, 'draw').mockImplementation(function (this: unknown, t: number) { draws.push(t); });
   try {

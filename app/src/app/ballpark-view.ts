@@ -1,5 +1,5 @@
 import { afterRenderEffect, Component, DestroyRef, ElementRef, effect, inject, input, viewChild } from '@angular/core';
-import { cameraAt, ParkPlay } from './park';
+import { ballAt, cameraAt, ParkPlay, project } from './park';
 import { FielderSheet, H, ParkPainter, W } from './park-draw';
 
 /** Plan 44: the field-level park view. One canvas, sized to the panel at devicePixelRatio capped at 2.
@@ -81,6 +81,17 @@ export class BallparkView {
       this.ro.observe(this.host.nativeElement as HTMLElement);
     }
     return true;
+  }
+
+  /** Plan 73 A2: the ball on screen at play time t, in painter units (w x h, as draw() sees them), with its drawn radius; null
+   *  when it is behind the camera. Same camera and projection as draw(). */
+  ballScreen(t: number): { x: number; y: number; r: number; w: number; h: number } | null {
+    if (!this.ready) this.setup();
+    const p = this.play(), [w, h] = this.units, cam = cameraAt(p, t, w / h), b = ballAt(p, t);
+    const q = project(cam, w, h, b[0], b[1], b[2]);
+    if (!q) return null;
+    const f = w / 2 / Math.tan((cam.fov * Math.PI) / 180 / 2);
+    return { x: q[0], y: q[1], r: Math.max(4, (0.6 * f) / q[2]), w, h };
   }
 
   draw(t: number) {

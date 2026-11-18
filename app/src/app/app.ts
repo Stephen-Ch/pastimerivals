@@ -215,7 +215,7 @@ export class App {
 
   protected goHome() {
     this.throwToken++;   // plan 50C
-    this.overlay.set(null); this.pending.set(null); this.info.set(null);
+    this.overlay.set(null); this.pending.set(null); this.info.set(null); this.replaying.set(false);
     this.playPushed = false; this.overlayPushed = false;   // plan 39 X1: the next Pitch pushes its own entry
     this.screen.set('matchup');
     if (!this.matchup() && !this.busy() && this.pick()) this.load();
@@ -254,7 +254,7 @@ export class App {
     this.screen.set('atbat');
   }
 
-  private toMatchup() { this.throwToken++; voice.stopAll(); this.pending.set(null); this.screen.set('matchup'); }
+  private toMatchup() { this.throwToken++; voice.stopAll(); this.pending.set(null); this.replaying.set(false); this.screen.set('matchup'); }
 
   /** On-screen back (standalone PWAs have no browser Back). */
   protected goBack() {
@@ -579,7 +579,7 @@ export class App {
     const intro = voiceOn() && !seed && !this.introduced.has(key) ? this.speakIntro() : null;   // a tap: ensure() above unlocked the audio
     try {
       // Plan 59 Round 2b: the held result keeps its text (result, deco) until the new pitch is ready to play.
-      this.busy.set(true); this.shareNote.set(null);
+      this.busy.set(true); this.shareNote.set(null); this.replaying.set(false);
       const r = await api.pitch(p, seed);
       if (!seed) api.event('pitch', this.session);
       const waits: Promise<unknown>[] = intro ? [intro] : [];
@@ -719,7 +719,7 @@ export class App {
     // Plan 50B: the final delivery line is text only, so the result line plays during the field view.
     if (c.moment === 'windup') { this.windupSeen.add(c.index); return; }
     if (c.moment === 'plate' && !c.final) { if (this.windupSeen.has(c.index)) void voice.sayCall(lines.audio, v); return; }
-    if (c.moment === 'plate' && c.final) voice.react(reactionFor(r.outcome), r.seed, 0.3);
+    if (c.moment === 'plate' && c.final) voice.react(reactionFor(r.outcome), r.seed, c.swellDelay ?? 0.3);   // plan 73 A4: a slowed home run's roar waits for normal speed
   }
 
   protected sceneDone() {
@@ -727,8 +727,30 @@ export class App {
     if (!r) return;
     if (this.announcer() && !this.pbpResult()) this.pbpResult.set(this.pbpResultText(r));
     this.result.set(r);   // Plan 59 Round 2b: pending stays set, so the finished scene stays on screen under the result
-    this.askFeedback.set(feedbackDue('p' + Date.now(), 3));   // plan 30: from the 3rd practice pitch
+    if (!this.replaying()) this.askFeedback.set(feedbackDue('p' + Date.now(), 3));   // plan 30: from the 3rd practice pitch (plan 73: a replay never counts)
+    this.replaying.set(false);
     this.screen.set('result');
+  }
+
+  /** Plan 73 A6: the at-bat just shown, played again (same result, same seed). No server call, no event, no feedback count.
+   *  Accepted: the announcer clips are not preloaded again, and the crowd bed keeps playing. */
+  protected readonly replaying = signal(false);
+  protected replay() {
+    if (this.busy()) return;   // an in-flight Pitch again must not be dropped
+    const r = this.pending();
+    if (!r) return;
+    voice.stop();
+    this.throwToken++;
+    this.liveCount.set({ balls: 0, strikes: 0 });
+    this.pbpLine.set(''); this.pbpResult.set(''); this.pbpTypeWord = false;
+    this.shareNote.set(null); this.error.set(null);
+    this.windupSeen = new Set();
+    this.askFeedback.set(false);   // accepted: also hides a feedback prompt not yet answered
+    this.replaying.set(true);
+    this.result.set(null);
+    this.screen.set('atbat');
+    this.sceneN.update(n => n + 1);
+    this.pending.set(r);
   }
 
   protected pitcherEra(): Era { return eraOf(this.pitcher()?.year ?? 2000); }

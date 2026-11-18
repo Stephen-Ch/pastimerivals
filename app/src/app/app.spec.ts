@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 import { App, sourceFromSearch, vsFromSearch } from './app';
 
 const probs = { k: 0.3, bb: 0.12, hbp: 0.01, single: 0.12, double: 0.04, triple: 0.005, hr: 0.045, oip: 0.36 };
@@ -194,6 +195,56 @@ describe('App', () => {
     await new Promise(r => setTimeout(r, 5));
     return { fixture, app, el, scene };
   }
+
+  // ---- Plan 73: big moments in the Duel ----
+  it('plan 73 A4: the crowd reaction gets the cue\'s swell delay (0.3 s without one)', async () => {
+    const { voice } = await import('./audio');
+    const { voiceOn } = await import('./voice-setting');
+    const fixture = TestBed.createComponent(App);
+    await new Promise(r => setTimeout(r, 0));
+    const app = fixture.componentInstance as any;
+    const was = voiceOn();
+    voiceOn.set(true);
+    const spy = vi.spyOn(voice, 'react').mockImplementation(() => undefined);
+    try {
+      const r = { outcome: 'hr', seed: 'sw1', engineVersion: '0.1.0' };
+      const n = (await import('./logic')).countFor('hr', 'sw1', app.deco()).leadUp.length;
+      app['voiceCue']({ index: n, final: true, moment: 'plate', swellDelay: 0.875 }, { audio: null }, r);
+      app['voiceCue']({ index: n, final: true, moment: 'plate' }, { audio: null }, r);
+      expect(spy.mock.calls.map(c => c[2])).toEqual([0.875, 0.3]);
+    } finally { spy.mockRestore(); voiceOn.set(was); }
+  });
+
+  it('plan 73 A6: Watch again replays the same result with no server call, no event and no feedback count', async () => {
+    const { app, el, fixture } = await held();
+    const calls: string[] = [];
+    const snap = () => JSON.stringify(Object.keys(localStorage).sort().map(k => [k, localStorage.getItem(k)]));
+    const before = snap();
+    globalThis.fetch = (async (url: string) => { calls.push(String(url)); return new Response('{}', { status: 200 }); }) as typeof fetch;
+    const link = [...el.querySelectorAll('button')].find(b => b.textContent?.includes('Watch again')) as HTMLButtonElement;
+    expect(link).toBeTruthy();
+    app.liveCount.set({ balls: 2, strikes: 1 });
+    const n0 = app.sceneN();
+    link.click();
+    fixture.detectChanges();
+    expect(app.screen()).toBe('atbat');
+    expect(app.sceneN()).toBe(n0 + 1);
+    expect(app.pending().seed).toBe('held1');
+    expect(app.liveCount()).toEqual({ balls: 0, strikes: 0 });
+    expect(app.replaying()).toBe(true);
+    app.sceneDone();
+    expect(app.screen()).toBe('result');
+    expect(app.replaying()).toBe(false);
+    expect(app.askFeedback()).toBe(false);
+    expect(calls).toEqual([]);
+    expect(snap()).toBe(before);   // the feedback counters (and everything else stored) unchanged
+    // ignored while a Pitch again is in flight
+    app.busy.set(true);
+    const n1 = app.sceneN();
+    app.replay();
+    expect(app.sceneN()).toBe(n1);
+    expect(app.screen()).toBe('result');
+  });
 
   it('r2b test 5: the result shows over the held scene; one title, connected and focused; the result is a polite live region', async () => {
     const { app, el, scene } = await held();

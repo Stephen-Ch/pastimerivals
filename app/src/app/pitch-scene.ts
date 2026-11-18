@@ -5,6 +5,8 @@ import { Call, countFor, Deco, finalCaption, FinalKind, OutcomeKey, PITCH_CAPTIO
 import { buildPlay, CF_F, cfLayout, hasPark, ParkPlay, PITCHER_CELL_FOOT, SIDE_F, sideCamera, WINDUP_F, WINDUP_FOOT, windupCamera, windupSpriteH } from './park';
 import { backdropKey, BackdropPlace, BackdropView, FielderSheet, LOOKS, renderBackdrop } from './park-draw';
 import { parkOn } from './park-setting';
+import { sceneT, slowWindow, SlowWindow, wallFor, wallRun } from './scene-clock';
+import { ERA_BOARD } from './scoreboard';
 
 // Plan 32C: side-on pitch scene. Batter only, seen from the first-base side (right-handed) or the third-base side
 // (left-handed: the whole panel is mirrored). Units are panel units: 760 x 480, x grows toward the pitcher.
@@ -218,21 +220,37 @@ export function batterFrame(m: Motion, p: Pitch, t: number, isFinal: boolean, hi
 
 // ---- Effects ----
 export interface FxLine { x1: number; y1: number; x2: number; y2: number; o: number; }
-export interface FxWord { lines: string[]; x: number; y: number; size: number; rot: number; scale: number; o: number; fill: string; }
+export interface FxWord { lines: string[]; x: number; y: number; size: number; rot: number; scale: number; o: number; fill: string;
+  /** Plan 73 A3: the era plate behind a big-moment word (word units, centered on the word's origin), and the strikeout punch (0..1). */
+  plate?: { x: number; y: number; w: number; h: number }; punch?: number; }
 export interface Fx { lines: FxLine[]; burst?: { x: number; y: number; points: string; o: number }; word?: FxWord; shake: number; smear?: { d: string; o: number }[]; }
 export const FX_NONE: Fx = { lines: [], shake: 0 };
 export const BURST_S = 0.12;   // the contact frame shows from tSwing - 0.03 to tSwing + 0.12
 
-/** The word for the final pitch, or null (outs and bloop singles get none). */
-export function fxWord(o: OutcomeKey, m: Motion, tr: Trajectory | null, itp: boolean): string[] | null {
+/** The word for the final pitch, or null (outs and bloop singles get none). Plan 73 A3: with big moments a home run
+ *  (not inside the park) says HOME RUN!, and a double or triple that has a word names the hit. */
+export function fxWord(o: OutcomeKey, m: Motion, tr: Trajectory | null, itp: boolean, big = false): string[] | null {
   switch (o) {
     case 'k': return m === 'look' ? ['STRIKE', 'THREE!'] : ['WHIFF!'];
     case 'bb': return ['BALL FOUR'];
     case 'hbp': return ['OUCH!'];
-    case 'hr': return itp ? ['CRACK!'] : ['GONE!'];
+    case 'hr': return itp ? ['CRACK!'] : big ? ['HOME', 'RUN!'] : ['GONE!'];
     case 'oip': return null;
-    default: return tr === 'bloop' ? null : ['CRACK!'];
+    default: return tr === 'bloop' ? null : big && o === 'double' ? ['DOUBLE!'] : big && o === 'triple' ? ['TRIPLE!'] : ['CRACK!'];
   }
+}
+
+/** Plan 73 A3: words that sit on the era plate (home run, double, triple, strikeout), with big moments on. */
+export function platedWord(s: PitchSetup): boolean {
+  if (!s.big || !s.isFinal) return false;
+  return (s.outcome === 'hr' && !s.call?.insideTheParkHr) || s.outcome === 'double' || s.outcome === 'triple' || s.outcome === 'k';
+}
+/** Plan 73 A3: the plate box (word units) for words of this size: the text's width estimate plus padding. */
+export function plateBox(lines: string[], size: number): { x: number; y: number; w: number; h: number } {
+  const longest = Math.max(...lines.map(x => x.length));
+  const w = longest * size * 0.62 + size * 0.5;
+  const two = lines.length > 1, h = two ? size * 2.07 : size * 1.12, cy = two ? -size * 0.035 : 0;
+  return { x: -w / 2, y: cy - h / 2, w, h };
 }
 
 /** Solid contact gets the starburst: hits except bloops, outs except pops; never fouls or tips. */
@@ -273,6 +291,8 @@ export interface PitchSetup {
   windup?: boolean;
   /** Plan 36: bat tip on frame 2 (start of the swing smear), panel units. */
   tip?: Pt;
+  /** Plan 73: big moments (the Duel): bigger words on the era plate. Left out (not false) when off. */
+  big?: boolean;
 }
 export interface Plan { p: Pitch; f: Flight | null; tl: Timeline; r: number[]; s: PitchSetup; highBall: boolean; exitT: number; }
 
@@ -379,21 +399,38 @@ export function frameAt(pl: Plan, t: number): Frame {
   return { ball, batter, fx };
 }
 
+/** When the impact word starts (scene seconds). */
+export function wordStart(pl: Plan): number { return Math.max(pl.p.tTarget + 0.2, pl.exitT + 0.02); }
+
 /** The impact word at time t; it fades out at `end` (the side view's end, or the park view's end in plan 44). */
 export function wordAt(pl: Plan, t: number, end: number): FxWord | undefined {
-  const { p, s } = pl;
+  const { s } = pl;
   const tr = s.call?.trajectory ?? null;
-  const words = s.isFinal ? fxWord(s.outcome, s.m, tr, !!s.call?.insideTheParkHr) : null;
-  const w0 = Math.max(p.tTarget + 0.2, pl.exitT + 0.02);
+  const itp = !!s.call?.insideTheParkHr;
+  const words = s.isFinal ? fxWord(s.outcome, s.m, tr, itp, !!s.big) : null;
+  const w0 = wordStart(pl);
   if (!words || t < w0 || w0 >= end - 0.15) return undefined;
   const u = (t - w0) / Math.min(0.2, end - w0);   // Plan 59 Round 3: arrival 200 ms where the window allows (was 150)
   const longest = Math.max(...words.map(x => x.length));
-  const size = Math.min(s.outcome === 'hr' ? 72 : 62, 290 / (longest * 0.66));
-  return {
-    lines: words, x: 175, y: words.length > 1 ? 385 : 418, size, rot: (pl.r[1] - 0.5) * 8,
+  const bigHr = !!s.big && s.outcome === 'hr' && !itp;   // Plan 73 A3: HOME RUN! is capped at 88 and sits higher (room for the plate)
+  const size = Math.min(bigHr ? 88 : s.outcome === 'hr' ? 72 : 62, 290 / (longest * 0.66));
+  const w: FxWord = {
+    lines: words, x: 175, y: bigHr ? 360 : words.length > 1 ? 385 : 418, size, rot: (pl.r[1] - 0.5) * 8,
     scale: u < 0.6 ? 0.6 + (u / 0.6) * 0.55 : u < 1 ? 1.15 - ((u - 0.6) / 0.4) * 0.15 : 1,
-    o: t > end - 0.2 ? Math.max(0, (end - t) / 0.2) : 1, fill: s.outcome === 'hr' && !s.call?.insideTheParkHr ? '#ffd23f' : '#ffffff',
+    o: t > end - 0.2 ? Math.max(0, (end - t) / 0.2) : 1, fill: s.outcome === 'hr' && !itp ? '#ffd23f' : '#ffffff',
   };
+  if (platedWord(s)) w.plate = plateBox(words, size);
+  const punch = punchWave(pl, t);
+  if (punch) w.punch = punch;
+  return w;
+}
+
+/** Plan 73 A3: the strikeout word lands with a short downward punch (0..1 of 2 px) over its first 120 ms. */
+export function punchWave(pl: Plan, t: number): number {
+  const { s } = pl;
+  if (!s.big || !s.isFinal || s.outcome !== 'k') return 0;
+  const u = (t - wordStart(pl)) / 0.12;
+  return u >= 0 && u < 1 ? Math.sin(u * Math.PI) : 0;
 }
 
 /** Plan 59 Round 3: the shake's shape (-1..1, decaying), with no size and no rounding; shakeAt = 3 px of it. */
@@ -463,14 +500,24 @@ export function backdropPlace(view: BackdropView, mirror: boolean, w: number, h:
 
 /** Side-on view of the whole at-bat: a short count for show, then the real result. */
 /** Plan 42: index = pitch (leadUp.length = the final pitch). */
-export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'enter' | 'plate' | 'park' | 'end' | 'skipped'; }
+export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'enter' | 'plate' | 'park' | 'end' | 'skipped';
+  /** Plan 73 A4: on the final plate cue of a slowed home run, the wall seconds until normal speed resumes (the crowd swell waits for it). */
+  swellDelay?: number; }
+
+/** Plan 73 A2: the flash ring on the ball in the field view, from 0.12 to 0.24 scene s after the park takes over (after its fade). */
+export const RING_FROM = 0.12, RING_TO = 0.24;
+export function ringAt(pt: number, ball: { x: number; y: number; r: number } | null): { x: number; y: number; r: number; o: number } | null {
+  if (!ball || pt < RING_FROM || pt >= RING_TO) return null;
+  const u = (pt - RING_FROM) / (RING_TO - RING_FROM);
+  return { x: ball.x, y: ball.y, r: Math.max(10, ball.r * 2.5) * (1 + 1.2 * u), o: 1 - u };
+}
 
 @Component({
   selector: 'pr-pitch-scene',
   imports: [BallparkView],
   template: `
     @if (side(); as a) {
-      <div class="stage" #stage [attr.data-cue]="lastCue()" [attr.data-held]="held() ? '1' : null" [style.--sky]="tint().sky" [style.--grass]="tint().grass" [style.--hz]="sideHz()" [style.--whz]="windHz">
+      <div class="stage" #stage [attr.data-cue]="lastCue()" [attr.data-end-wall]="endWall()" [attr.data-held]="held() ? '1' : null" [style.--sky]="tint().sky" [style.--grass]="tint().grass" [style.--hz]="sideHz()" [style.--whz]="windHz">
       <canvas class="bg" #bgSide aria-hidden="true"></canvas>
       <div class="side" [class.mirror]="bats() === 'L'" [class.fit]="!!fit()" aria-hidden="true"
            [style.left.px]="fit()?.left" [style.top.px]="fit()?.top" [style.width.px]="fit() ? 760 * fit()!.s : null" [style.height.px]="fit() ? 480 * fit()!.s : null">
@@ -489,8 +536,9 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
         </div>
         @if (frame().fx.word; as w) {
           <svg class="words" viewBox="0 0 760 480" preserveAspectRatio="none">
-            <g class="word" [attr.transform]="'translate(' + (bats() === 'L' ? 760 - w.x : w.x) + ' ' + w.y + ') rotate(' + w.rot + ') scale(' + w.scale + ')'" [attr.opacity]="w.o">
-              <text text-anchor="middle" [attr.font-size]="w.size" [attr.fill]="w.fill" [attr.stroke-width]="w.size * 0.16">
+            <g class="word" [attr.transform]="'translate(' + (bats() === 'L' ? 760 - w.x : w.x) + ' ' + (w.y + punchDy(w)) + ') rotate(' + w.rot + ') scale(' + w.scale + ')'" [attr.opacity]="w.o">
+              @if (w.plate; as pb) { <rect class="plate" [attr.x]="pb.x" [attr.y]="pb.y" [attr.width]="pb.w" [attr.height]="pb.h" rx="12" [attr.fill]="plateColors().bg" [attr.stroke]="plateColors().edge" stroke-width="7"/> }
+              <text text-anchor="middle" [attr.font-size]="w.size" [attr.fill]="w.plate ? plateColors().num : w.fill" [style.stroke]="w.plate ? plateColors().bg : null" [attr.stroke-width]="w.size * (w.plate ? 0.05 : 0.16)">
                 @for (line of w.lines; track $index) { <tspan x="0" [attr.dy]="$index === 0 ? (w.lines.length > 1 ? -w.size * 0.15 : w.size * 0.35) : w.size * 0.95">{{ line }}</tspan> }
               </text>
             </g>
@@ -501,15 +549,23 @@ export interface SceneCue { index: number; final: boolean; moment: 'windup' | 'e
         <div class="park" aria-hidden="true" [style.opacity]="parkFade()" [style.transform]="parkShake() ? 'translateX(' + parkShake() + 'px)' : null">
           <pr-ballpark-view [play]="pk.play" [sheet]="sheet()" [holdAt]="parkHold()" />
           @if (parkWord(); as w) {
-            <svg class="words" viewBox="0 0 760 480" preserveAspectRatio="none">
-              <g class="word" [attr.transform]="'translate(' + w.x + ' ' + w.y + ') rotate(' + w.rot + ') scale(' + w.scale + ')'" [attr.opacity]="w.o">
-                <text text-anchor="middle" [attr.font-size]="w.size" [attr.fill]="w.fill" [attr.stroke-width]="w.size * 0.16">
+            <svg class="words" [attr.viewBox]="parkWordBox()?.vb ?? '0 0 760 480'" preserveAspectRatio="none">
+              <g class="word" [attr.transform]="'translate(' + (parkWordBox()?.x ?? w.x) + ' ' + ((parkWordBox()?.y ?? w.y) + punchDy(w)) + ') rotate(' + w.rot + ') scale(' + w.scale + ')'" [attr.opacity]="w.o">
+                @if (w.plate; as pb) { <rect class="plate" [attr.x]="pb.x" [attr.y]="pb.y" [attr.width]="pb.w" [attr.height]="pb.h" rx="12" [attr.fill]="plateColors().bg" [attr.stroke]="plateColors().edge" stroke-width="7"/> }
+                <text text-anchor="middle" [attr.font-size]="w.size" [attr.fill]="w.plate ? plateColors().num : w.fill" [style.stroke]="w.plate ? plateColors().bg : null" [attr.stroke-width]="w.size * (w.plate ? 0.05 : 0.16)">
                   @for (line of w.lines; track $index) { <tspan x="0" [attr.dy]="$index === 0 ? (w.lines.length > 1 ? -w.size * 0.15 : w.size * 0.35) : w.size * 0.95">{{ line }}</tspan> }
                 </text>
               </g>
             </svg>
           }
         </div>
+        @if (ring(); as g) {
+          <!-- Plan 73 A2: flash ring on the ball, outside the fading park so it shows at full strength -->
+          <svg class="ring" aria-hidden="true" [attr.viewBox]="'0 0 ' + g.w + ' ' + g.h" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none">
+            <circle [attr.cx]="g.x" [attr.cy]="g.y" [attr.r]="g.r" [attr.opacity]="g.o" fill="none" stroke="#1d1b19" stroke-width="7"/>
+            <circle [attr.cx]="g.x" [attr.cy]="g.y" [attr.r]="g.r" [attr.opacity]="g.o" fill="none" stroke="#ffd23f" stroke-width="4"/>
+          </svg>
+        }
       }
       @if (windFrame() >= 0 && windup() && cf(); as c) {
         <div class="windup cf" aria-hidden="true" [style.--whz]="cfHz()">
@@ -659,6 +715,24 @@ export class PitchScene {
   /** Plan 44: what the server decided about the play (inning and friend games; practice passes null). */
   readonly play = input<PlayFacts | null>(null);
   protected readonly park = signal<ParkTiming | null>(null);
+  /** Plan 73: big moments (the Duel only): slow window on a home run, words on the era plate, flash ring, strikeout punch. */
+  readonly bigMoments = input(false);
+  /** Plan 73 A3: the era plate's colors (the look's scoreboard colors, as the result band uses). */
+  protected readonly plateColors = computed(() => ERA_BOARD[this.look() ?? '1990'] ?? ERA_BOARD['1990']);
+  /** Plan 73 A3: the strikeout punch in panel units (2 px at this stage's scale). */
+  protected punchDy(w: FxWord): number { return w.punch ? (w.punch * 2) / (this.fit()?.s ?? 0.475) : 0; }
+  /** Plan 73 A3: with big moments the field view's word is drawn at the side view's even scale (no stretch on a tall stage),
+   *  centered, low on the stage; null keeps today's 760 x 480 box (Last Licks, and before the stage is measured). */
+  protected readonly parkWordBox = computed(() => {
+    const z = this.stageSize(), f = this.fit();
+    if (!this.bigMoments() || !z || !f) return null;
+    const w = z[0] / f.s, h = z[1] / f.s;
+    return { vb: `0 0 ${w.toFixed(1)} ${h.toFixed(1)}`, x: w / 2, y: h * 0.7 };
+  });
+  /** Plan 73 A2: the flash ring in the park view's painter units (w x h), or null. */
+  protected readonly ring = signal<{ x: number; y: number; r: number; o: number; w: number; h: number } | null>(null);
+  /** Plan 73 A2: when the final pitch will end (performance.now ms), for browser tests. */
+  protected readonly endWall = signal<number | null>(null);
   protected readonly parkFade = signal(0);
   protected readonly parkWord = signal<FxWord | null>(null);
   protected readonly parkShake = signal(0);
@@ -795,7 +869,7 @@ export class PitchScene {
     return c ? { x: c[0] - CELL_X0, y: c[1] } : { x: 372, y: 200 };
   }
 
-  private runPitch(): { plan: Plan; end: number } {
+  private runPitch(): { plan: Plan; end: number; w: SlowWindow | null } {
     this.clearFrames();
     const final = this.isFinal(), m = this.motion();
     const lead = final ? null : this.count().leadUp[this.step()];
@@ -804,17 +878,22 @@ export class PitchScene {
     const pk = final ? parkTiming(plan, this.parkPlayFor(m)) : null;
     if (pk) { this.sheet(); this.park.set(pk); }
     const end = pk ? pk.end : plan.tl.end;
+    // Plan 73 A2: the slow window (a non-ITP home run's final pitch, big moments on, field view present)
+    const w = slowWindow({ isFinal: final, outcome: this.outcome(), motion: m, itp: !!plan.s.call?.insideTheParkHr, tPark: pk?.tPark ?? plan.p.tPlate }, this.bigMoments(), !!pk);
+    const wStart = wordStart(plan);
     let cleared = false, called = false, parked = false;
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: FrameRequestCallback) => setTimeout(() => fn(performance.now()), 16) as unknown as number;
     const lead0 = plan.s.windup ? WINDUP_S : 0;
     const idx = this.step();
     if (plan.s.windup) this.emitCue({ index: idx, final, moment: 'windup' });
     const start = performance.now();
+    if (final) this.endWall.set(Math.round(start + (lead0 + wallFor(end, w)) * 1000));
     const tick = () => {
       const el = (performance.now() - start) / 1000;
       if (el < lead0) { const wb = windupBlendAt(el); this.windBlend.set(wb); this.windFrame.set(wb.base); this.frame.set(frameAt(plan, 0)); if (!this.finished) this.raf = raf(tick); return; }
       this.windFrame.set(-1);
-      const t = Math.min(end, el - lead0);
+      const wall = el - lead0;
+      const t = Math.min(end, sceneT(wall, w));
       if (this.side() && (!pk || t < pk.tPark)) this.frame.set(frameAt(plan, Math.min(plan.tl.end, t)));   // the side view holds its last frame under the park
       else if (pk && t >= pk.tPark && this.frame().fx.shake) this.frame.update(f => ({ ...f, fx: { ...f.fx, shake: 0 } }));   // Plan 59 Round 3: no frozen shake under the park
       if (!cleared && t >= plan.p.enter) { cleared = true; this.board.update(b => ({ ...b, caption: '' })); this.emitCue({ index: idx, final, moment: 'enter' }); }
@@ -822,20 +901,27 @@ export class PitchScene {
         called = true;
         if (lead) this.setBoard(lead.balls, lead.strikes, PITCH_CAPTION[lead.kind]);
         else if (fin) this.board.update(b => ({ ...b, caption: fin }));
-        this.emitCue({ index: idx, final, moment: 'plate' });
+        this.emitCue(w ? { index: idx, final, moment: 'plate', swellDelay: wallFor(w.to, w) - wallFor(plan.p.tPlate, w) } : { index: idx, final, moment: 'plate' });
       }
       if (pk && t >= pk.tPark) {
         if (!parked) { parked = true; this.emitCue({ index: idx, final, moment: 'park' }); }
         const pt = t - pk.tPark;
         this.parkFade.set(Math.min(1, pt / PARK_FADE));
         this.parkView()?.draw(Math.min(pk.play.len, pt));
-        this.parkWord.set(wordAt(plan, t, end) ?? null);
-        this.parkShake.set(shakePx(shakeWave(plan, t), shakeUnit(this.fit()?.s)));
+        // Plan 73 A2/A3: in the slow window the shake and the word's arrival keep wall speed (the word still fades by scene time)
+        const wt = wallRun(t, wall, wStart, w);
+        this.parkWord.set(wordAt(plan, wt, end + (wt - t)) ?? null);
+        this.parkShake.set(shakePx(shakeWave(plan, wallRun(t, wall, plan.p.tTarget, w)), shakeUnit(this.fit()?.s)));
+        if (w) {
+          const ball = pt >= RING_FROM && pt < RING_TO ? this.parkView()?.ballScreen(Math.min(pk.play.len, pt)) ?? null : null;
+          const g = ringAt(pt, ball);
+          this.ring.set(g && ball ? { ...g, w: ball.w, h: ball.h } : null);
+        }
       }
       if (!this.finished && t < end) this.raf = raf(tick);
     };
     tick();
-    return { plan, end };
+    return { plan, end, w };
   }
 
   /** The plan for pitch `step` (lead-up index, or leadUp.length for the final pitch); pure in the scene's inputs. */
@@ -845,7 +931,7 @@ export class PitchScene {
     const kind: 'ball' | 'strike' | null = lead ? (lead.kind === 'ball' ? 'ball' : 'strike') : this.outcome() === 'bb' ? 'ball' : null;
     return planPitch({ m, kind, isFinal: final, outcome: this.outcome(), era: this.era(), bats: this.bats() === 'L' ? 'L' : 'R',
       call: final ? this.call() : null, contact: this.contactPoint(), seed: this.seed(), index: step,
-      windup: !!this.windup() && !!this.side(), tip: this.batTip() });
+      windup: !!this.windup() && !!this.side(), tip: this.batTip(), ...(this.bigMoments() ? { big: true } : {}) });
   }
 
   /** Plan 59 Round 2b: the final pitch's plan (the held picture after an early end). */
@@ -864,14 +950,15 @@ export class PitchScene {
     this.parkFade.set(1);
     this.parkWord.set(null);
     this.parkShake.set(0);
+    this.ring.set(null);
     this.parkHold.set(pk.play.len);
   }
 
   private next() {
     if (this.finished) return;
     this.loadSheet();
-    const { plan, end } = this.runPitch();
-    const ms = (end + (plan.s.windup ? WINDUP_S : 0)) * 1000 + (this.isFinal() ? 0 : 60);
+    const { plan, end, w } = this.runPitch();
+    const ms = (wallFor(end, w) + (plan.s.windup ? WINDUP_S : 0)) * 1000 + (this.isFinal() ? 0 : 60);   // plan 73: + the slow window's extra
     if (this.isFinal()) { this.timer = setTimeout(() => this.finish(false), ms); return; }
     this.timer = setTimeout(() => {
       const p = this.count().leadUp[this.step()];
@@ -894,6 +981,7 @@ export class PitchScene {
     this.finished = true;
     clearTimeout(this.timer);
     this.clearFrames();
+    this.ring.set(null);
     if (skipped) this.showFinal();
     const c = this.count();
     this.emitCue({ index: c.leadUp.length, final: true, moment: skipped ? 'skipped' : 'end' });
