@@ -128,7 +128,7 @@ export class App {
   protected readonly resultNames = computed<[string, string]>(() => [`${this.pitcher()?.name ?? ''} ${this.pitcher()?.year ?? ''}`, `${this.batter()?.name ?? ''} ${this.batter()?.year ?? ''}`]);
   /** Plan 59 Round 2b: the result word over the held stage wears the era board's colors (one graphics style per game). */
   protected readonly wordColors = computed(() => ERA_BOARD[this.sceneLook() ?? '1990']);
-  /** The final count of the shown result (same numbers as countText()). */
+  /** The final count of the shown result (the count when the last pitch was thrown; plan 75 pitchText says it). */
   protected readonly finalCount = computed(() => {
     const r = this.result();
     if (!r) return null;
@@ -156,13 +156,6 @@ export class App {
     return b && p ? { b: b.id, by: b.year, p: p.id, py: p.year } : null;
   });
 
-  /** Count shown with the result, e.g. "3-2". For show only (plan 11). */
-  protected readonly countText = computed(() => {
-    const r = this.result();
-    if (!r) return '';
-    const c = countFor(r.outcome, r.seed, this.deco());
-    return `${c.balls}-${c.strikes}`;
-  });
   /** Plan 75 F1: the count as a phrase, "on a 1-2 pitch" / "on the first pitch" (capital form for the Why sheet). */
   protected readonly pitchText = computed(() => { const c = this.finalCount(); return c ? pitchPhrase(c.balls, c.strikes) : ''; });
   protected readonly pitchTextCap = computed(() => { const c = this.finalCount(); return c ? pitchPhrase(c.balls, c.strikes, true) : ''; });

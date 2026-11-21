@@ -128,3 +128,17 @@ test('plan 75: the held Duel stage height is unchanged from 4684c2c at 7 portrai
     expect(r.scroll, `${w}x${h}`).toBeLessThanOrEqual(1);
   }
 });
+
+test('plan 75 F2: with reduced motion the plate shows at once on the held result', async ({ context, page }, info) => {
+  test.skip(info.project.name !== 'phone', 'one size');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await serve(context, { fixtures: { 'pitch.json': 'pitch-hr.json', ...RIGHTY } });
+  await page.goto('/'); await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Pitch', exact: true }).click();
+  await page.locator('pr-pitch-scene .stage[data-held]').waitFor({ timeout: 10_000 });
+  const m = await measure(page);
+  expect(m.plate).not.toBeNull();
+  expect(m.text).toMatch(/^HOME\s*RUN!$/);
+  expect(m.op).toBe(1);
+  expect(m.oldWords).toBe(0);
+});

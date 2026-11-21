@@ -277,7 +277,7 @@ describe('App', () => {
 
   it('r2b test 6: Pitch again keeps the old result text until the new pitch is in, then a new scene; leaving clears the held stage', async () => {
     const { fixture, app, el, scene } = await held();
-    const word = el.querySelector('h1')!.textContent, count = app.countText();
+    const word = el.querySelector('h1')!.textContent, count = app.pitchText();
     expect(word).toBeTruthy();
     let release!: () => void;
     const gate = new Promise<void>(r => (release = r));
@@ -289,7 +289,7 @@ describe('App', () => {
     const p = app.throwPitch();
     fixture.detectChanges(); await new Promise(r => setTimeout(r, 0));
     expect(el.querySelector('h1')?.textContent).toBe(word);
-    expect(app.countText()).toBe(count);
+    expect(app.pitchText()).toBe(count);
     expect(el.querySelector('pr-pitch-scene')).toBe(scene);
     release(); await p;
     fixture.detectChanges(); await fixture.whenStable();
