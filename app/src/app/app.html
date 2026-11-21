@@ -109,15 +109,16 @@
                 @if (res && result(); as r) {
                   <section sceneOver class="result held-result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
                     <h1 #screenTitle tabindex="-1" class="call duel-call result-word" [style.background]="wordColors().bg" [style.color]="wordColors().fg" [style.border-top-color]="wordColors().edge">{{ callText() }}</h1>
-                    <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ countText() }} count</p>
+                    <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ pitchText() }}</p>
                     <p class="clutch-next">{{ clutchNext(r.outcome) }}</p>
                   </section>
                 }
                 @if (res && result()) {
                   <p sceneBelow class="result-links">
-                    <button type="button" class="link" (click)="openOverlay('why')">Why this result</button>
-                    <button type="button" class="link watch-again" (click)="replay()" [disabled]="busy()">Watch again</button>
-                    @if (staleApp()) { <button type="button" class="link small" (click)="reload()">Refresh for the latest version</button> }
+                    <button type="button" class="outline watch-again" (click)="replay()" [disabled]="busy()">Watch again</button>
+                    <!-- Plan 75 A1: with Refresh in the row, "Why" alone keeps the row on one line at 320 px (the name still says the whole thing) -->
+                    <button type="button" class="link" (click)="openOverlay('why')" [attr.aria-label]="staleApp() ? 'Why this result' : null">{{ staleApp() ? 'Why' : 'Why this result' }}</button>
+                    @if (staleApp()) { <button type="button" class="link small" (click)="reload()">Refresh app</button> }
                     @else if (shareNote()) { <span class="note">{{ shareNote() }}</span> }
                   </p>
                 }
@@ -129,7 +130,7 @@
           @if (result(); as r) {
             <section class="result" [class.good]="isHit(r.outcome) || r.outcome === 'bb' || r.outcome === 'hbp'" aria-live="polite">
               <h1 #screenTitle tabindex="-1" class="call duel-call">{{ callText() }}</h1>
-              <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ countText() }} count</p>
+              <p class="outcome-tag">Result: <strong>{{ label(r.outcome) }}</strong> · {{ pitchText() }}</p>
               <p class="clutch-next">{{ clutchNext(r.outcome) }}</p>
               @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
               <button type="button" class="link" (click)="openOverlay('why')">Why this result</button>
@@ -229,7 +230,7 @@
   <div class="sheet" role="dialog" aria-modal="true" aria-label="Why this result">
     <div class="sheet-head"><h2 #sheetTitle tabindex="-1">Why this result</h2><button type="button" class="link" (click)="closeOverlay()">Close</button></div>
     <p class="how">{{ resultText() }}</p>
-    <p class="note">On a {{ countText() }} count. Pitch count is for fun; only the result comes from the odds.</p>
+    <p class="note">{{ pitchTextCap() }}. Pitch count is for fun; only the result comes from the odds.</p>
   </div>
 }
 

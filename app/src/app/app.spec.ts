@@ -196,6 +196,19 @@ describe('App', () => {
     return { fixture, app, el, scene };
   }
 
+  // ---- Plan 75 F1: count wording ----
+  it('plan 75 F1: the result tag and the Why sheet say "on a X-Y pitch" with the count of the last pitch', async () => {
+    const { fixture, app, el } = await held();
+    const { countFor } = await import('./logic');
+    const c = countFor('k', 'held1', app.deco());
+    const phrase = c.balls === 0 && c.strikes === 0 ? 'on the first pitch' : `on a ${c.balls}-${c.strikes} pitch`;
+    expect(el.querySelector('.outcome-tag')!.textContent!.replace(/\s+/g, ' ').trim()).toBe(`Result: Strikeout · ${phrase}`);
+    expect(el.textContent).not.toContain(' count');
+    app.openOverlay('why'); fixture.detectChanges(); await fixture.whenStable();
+    const note = el.querySelector('.sheet .note')!.textContent!;
+    expect(note.startsWith(phrase[0].toUpperCase() + phrase.slice(1) + '. Pitch count is for fun')).toBe(true);
+  });
+
   // ---- Plan 73: big moments in the Duel ----
   it('plan 73 A4: the crowd reaction gets the cue\'s swell delay (0.3 s without one)', async () => {
     const { voice } = await import('./audio');

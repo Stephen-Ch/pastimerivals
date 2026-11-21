@@ -47,7 +47,7 @@ function testSide() {
   return { sheet: '/s.webp', frames, lineArt: false } as never;
 }
 
-async function runCase(k: Case): Promise<{ cues: string[]; end: number; hash: string; n: number }> {
+async function runCase(k: Case): Promise<{ cues: string[]; end: number; hash: string; n: number; pre: string }> {
   const draws: number[] = [];
   const spy = vi.spyOn(BallparkView.prototype, 'draw').mockImplementation(function (this: unknown, t: number) { draws.push(t); });
   try {
@@ -79,9 +79,16 @@ async function runCase(k: Case): Promise<{ cues: string[]; end: number; hash: st
     }
     if (k.leadOnly) { const i = cues.findIndex(x => x.startsWith(`${lead}:`)); if (i >= 0) cues.length = i; }
     f.destroy();
-    return { cues, end: k.leadOnly ? -1 : end, hash: fnv(samples.join('|')), n: samples.length };
+    return { cues, end: k.leadOnly ? -1 : end, hash: fnv(samples.join('|')), n: samples.length, pre: fnv(samples.slice(0, -1).join('|')) };
   } finally { spy.mockRestore(); }
 }
+
+/** Plan 75 F2: at the end a plated word moves to the held plate and the in-scene word is cleared, so only the one sample taken
+ *  after done differs. `pre` (every sample but that last one) was computed on 4684c2c, before Plan 75: play is unchanged. */
+const P75_AFTER_END: Record<string, { hash: string; pre: string }> = {
+  k: { hash: '5ac00f01', pre: 'a6749b7e' }, double: { hash: '3408e024', pre: '795b6004' },
+  triple: { hash: '2c505b9f', pre: 'a7c4170' }, 'windup-double': { hash: 'bf1fe7a6', pre: '21603a0' },
+};
 
 describe('plan 73 snapshot (wall clock)', () => {
   it('every case matches the c5cbfdd snapshot', async () => {
@@ -90,7 +97,12 @@ describe('plan 73 snapshot (wall clock)', () => {
       const got: Record<string, unknown> = {};
       for (const k of SNAP_CASES) got[k.name] = await runCase(k);
       if (!BIG_SNAPSHOT) { expect(JSON.stringify(got)).toBe('RECORD ME'); return; }
-      for (const k of SNAP_CASES) expect(got[k.name], k.name).toEqual(BIG_SNAPSHOT[k.name]);
+      for (const k of SNAP_CASES) {
+        const { pre, ...g } = got[k.name] as { pre: string };
+        const want = { ...(BIG_SNAPSHOT[k.name] as object), ...(P75_AFTER_END[k.name] ? { hash: P75_AFTER_END[k.name].hash } : {}) };
+        expect(g, k.name).toEqual(want);
+        if (P75_AFTER_END[k.name]) expect(pre, k.name + ' before the end').toBe(P75_AFTER_END[k.name].pre);
+      }
     } finally { vi.useRealTimers(); }
   }, 120000);
 });

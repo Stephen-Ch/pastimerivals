@@ -65,6 +65,12 @@ function sessionId(): string {
   } catch { return 'no-storage'; }
 }
 
+/** Plan 75 F1: the numbers are the count when the last pitch was thrown, so say "on a 1-2 pitch"; 0-0 is "on the first pitch". */
+export function pitchPhrase(balls: number, strikes: number, cap = false): string {
+  const t = balls === 0 && strikes === 0 ? 'on the first pitch' : `on a ${balls}-${strikes} pitch`;
+  return cap ? t[0].toUpperCase() + t.slice(1) : t;
+}
+
 @Component({
   selector: 'app-root',
   imports: [ReportView, PitchScene, Scoreboard, ChallengeFlow, Feedback, HowSim, VoiceButton, PerfOverlay],
@@ -157,6 +163,9 @@ export class App {
     const c = countFor(r.outcome, r.seed, this.deco());
     return `${c.balls}-${c.strikes}`;
   });
+  /** Plan 75 F1: the count as a phrase, "on a 1-2 pitch" / "on the first pitch" (capital form for the Why sheet). */
+  protected readonly pitchText = computed(() => { const c = this.finalCount(); return c ? pitchPhrase(c.balls, c.strikes) : ''; });
+  protected readonly pitchTextCap = computed(() => { const c = this.finalCount(); return c ? pitchPhrase(c.balls, c.strikes, true) : ''; });
 
   /** Plan 21: call for the pitch being animated, so the ball flight matches what the announcer will say. */
   protected readonly sceneCall = computed(() => {

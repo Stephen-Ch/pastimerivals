@@ -7,3 +7,6 @@
 @media (orientation: portrait) and (max-height: 699.98px), (orientation: landscape) and (max-height: 500px) {
   .clutch-line, .clutch-next { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
+/* Plan 75 F3: Watch again is a real (outline) button, first in the row under the held stage. 44 px tall; clearly dimmed while busy. */
+button.outline { background: none; border: 2px solid var(--accent); color: var(--accent-text); font-weight: 600; font-size: .9rem; padding: 0 10px; min-height: 44px; flex: none; }
+button.outline:disabled { border-color: var(--border); color: var(--text-secondary); opacity: .6; cursor: default; }

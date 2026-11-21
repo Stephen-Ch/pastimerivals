@@ -46,6 +46,9 @@ pr-pitch-scene .stage[data-held] .held-scrim { display: block; position: absolut
   animation: held-in 450ms cubic-bezier(.2, 0, 0, 1); }
 pr-pitch-scene .stage[data-held] .held-band { display: block; position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; max-height: 100%; overflow: hidden;
   padding: 8px 12px 10px; background: var(--band); color: #fff; animation: held-rise 450ms cubic-bezier(.2, 0, 0, 1); }
+/* Plan 75 F2: the plated final word held on the result (only rendered for plated words with big moments: the Duel). Above the scrim, under the band. */
+pr-pitch-scene .stage[data-held] .held-plate { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 6; pointer-events: none; }
+pr-pitch-scene .held-plate text { font-style: italic; font-weight: 900; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; letter-spacing: -.02em; paint-order: stroke; stroke-linejoin: round; }
 @keyframes held-in { from { opacity: 0; } }
 @keyframes held-rise { from { opacity: 0; transform: translateY(12px); } }
 @media (prefers-reduced-motion: reduce) { pr-pitch-scene .stage[data-held] .held-scrim, pr-pitch-scene .stage[data-held] .held-band { animation: none; } }

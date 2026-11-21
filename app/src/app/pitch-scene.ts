@@ -597,6 +597,17 @@ export function ringAt(pt: number, ball: { x: number; y: number; r: number } | n
         </div>
       }
       <div class="held-scrim" aria-hidden="true"></div>
+      @if (held() && heldPlateBox(); as hp) {
+        <!-- Plan 75 F2: the plated word stays on the held result (aria-hidden: the band's h1 says the result) -->
+        <svg class="held-plate" aria-hidden="true" [attr.viewBox]="hp.vb" preserveAspectRatio="none">
+          <g [attr.transform]="'translate(' + hp.x + ' ' + hp.y + ')'">
+            <rect class="plate" [attr.x]="hp.box.x" [attr.y]="hp.box.y" [attr.width]="hp.box.w" [attr.height]="hp.box.h" rx="12" [attr.fill]="plateColors().bg" [attr.stroke]="plateColors().edge" [attr.stroke-width]="hp.edge"/>
+            <text text-anchor="middle" [attr.font-size]="hp.size" [attr.fill]="plateColors().num" [style.stroke]="plateColors().bg" [attr.stroke-width]="hp.size * 0.05">
+              @for (line of hp.lines; track $index) { <tspan x="0" [attr.dy]="$index === 0 ? (hp.lines.length > 1 ? -hp.size * 0.15 : hp.size * 0.35) : hp.size * 0.95">{{ line }}</tspan> }
+            </text>
+          </g>
+        </svg>
+      }
       <div class="held-band"><ng-content select="[sceneOver]" /></div>
       </div>
     }
@@ -736,6 +747,19 @@ export class PitchScene {
   protected readonly endWall = signal<number | null>(null);
   protected readonly parkFade = signal(0);
   protected readonly parkWord = signal<FxWord | null>(null);
+  /** Plan 75 F2: the plated final word (HOME RUN!, DOUBLE!, TRIPLE!, WHIFF! / STRIKE THREE!) held on the result, set in finish(); null = none. */
+  protected readonly heldPlate = signal<string[] | null>(null);
+  /** Plan 75 F2: where the held plate sits, in stage px: top at 4% of the stage height, plate at most 30% of it in portrait
+   *  (24% in landscape, one line there), scaled evenly to fit 92% of the width. Before the stage is measured: a 760 x 480 stage. */
+  protected readonly heldPlateBox = computed(() => {
+    const words = this.heldPlate();
+    if (!words) return null;
+    const z = this.stageSize(), [w, h] = z && z[0] > 0 && z[1] > 0 ? z : [760, 480];
+    const wide = w > h, lines = wide ? [words.join(' ')] : words;
+    const unit = plateBox(lines, 100), k = Math.min(((wide ? 0.24 : 0.3) * h) / unit.h, (0.92 * w) / unit.w);
+    const size = 100 * k, box = plateBox(lines, size);
+    return { vb: `0 0 ${w} ${h}`, x: w / 2, y: 0.04 * h - box.y, size, box, lines, edge: Math.max(2, Math.min(5, size * 0.06)) };
+  });
   protected readonly parkShake = signal(0);
   /** Plan 59 Round 3: the side view's shake in px, scaled to the side panel. */
   protected readonly sideShakePx = computed(() => shakePx(this.frame().fx.shake, shakeUnit(this.fit()?.s)));
@@ -976,6 +1000,18 @@ export class PitchScene {
     if (b.balls !== balls || b.strikes !== strikes) this.boardChange.emit({ balls, strikes });
   }
 
+  /** Plan 75 F2: on every ending (natural, Skip, reduced motion) a plated final word moves to the held plate layer, and the
+   *  in-scene word is cleared (a natural end can freeze it part-faded; two words would show). No word (a bloop double): no plate. */
+  private holdPlate() {
+    const pl = this.finalPlan();
+    if (!platedWord(pl.s)) return;
+    const words = fxWord(pl.s.outcome, pl.s.m, pl.s.call?.trajectory ?? null, !!pl.s.call?.insideTheParkHr, true);
+    if (!words) return;
+    this.heldPlate.set(words);
+    this.parkWord.set(null);
+    if (this.frame().fx.word) this.frame.update(f => ({ ...f, fx: { ...f.fx, word: undefined } }));
+  }
+
   /** Ends the scene once, whether by timer or the Skip button (or reduced motion: skipped). */
   finish(skipped = true) {
     if (this.finished) return;
@@ -984,6 +1020,7 @@ export class PitchScene {
     this.clearFrames();
     this.ring.set(null);
     if (skipped) this.showFinal();
+    this.holdPlate();
     const c = this.count();
     this.emitCue({ index: c.leadUp.length, final: true, moment: skipped ? 'skipped' : 'end' });
     this.done.emit();
