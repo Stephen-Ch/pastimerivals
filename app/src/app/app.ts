@@ -10,7 +10,7 @@ import { PitchScene } from './pitch-scene';
 import { ERA_BOARD, lastName, Scoreboard, shortYear } from './scoreboard';
 import { sideLine } from './side-line';
 import { CLUTCH_SETUP, clutchNext } from './clutch';
-import { CardFlip, FlipCard } from './card-flip';
+import { CardFlip, FlipCard, loadImage } from './card-flip';
 import { announcerOn } from './announcer-setting';
 import { intro, lineText, PbpLine, pitchLines, rawLead, resultLine } from './pbp';
 import { bedFor, reactionFor, voice, voiceFor } from './audio';
@@ -25,6 +25,8 @@ import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hits
 type Role = 'bat' | 'pit';
 interface Chosen { id: string; name: string; year: number; line: string; }
 /** Plan 36/39: the first-visit matchup (and the fallback when a random one cannot be had). */
+/** Plan 76 D: a card shows its picture after this long even if the file has not arrived; the opener waits at most this long. */
+export const CARD_WAIT_MS = 1500, OPENER_LIMIT_MS = 3000;
 const DEFAULT_PITCHER: Chosen = { id: 'martp001', name: 'Pedro Martinez', year: 1999, line: '313 K, 37 BB in 835 batters faced' };
 const DEFAULT_BATTER: Chosen = { id: 'ruthb101', name: 'Babe Ruth', year: 1927, line: '192 H, 60 HR, 137 BB in 691 PA' };
 
@@ -313,7 +315,19 @@ export class App {
   /** Plan 52: a tile image that failed to load (reset whenever the pair changes). */
   protected readonly tileFailed = signal(false);
   /** Plan 73 Part D: the card turns over when a picked season changes its picture (never on page load). */
-  protected readonly flip = new CardFlip();
+  protected readonly flip = new CardFlip(url => loadImage(url).then(ok => { this.markCardReady(url); return ok; }));   // plan 76 D: the flip's picture counts as loaded
+  /** Plan 76 D: card pictures that are loaded (or failed, or waited CARD_WAIT_MS): until then a card shows a placeholder. */
+  protected readonly cardReady = signal<ReadonlySet<string>>(new Set());
+  private readonly cardAsked = new Set<string>();
+  private markCardReady(url: string) { if (!this.cardReady().has(url)) this.cardReady.update(s => new Set([...s, url])); }
+  private watchCard(url: string) {
+    if (this.cardAsked.has(url)) return;
+    this.cardAsked.add(url);
+    void preloadImages([url]).then(() => this.markCardReady(url));   // a failed file shows the img, whose error path shows blank paper
+    setTimeout(() => this.markCardReady(url), CARD_WAIT_MS);
+  }
+  /** Plan 76 D: the random opener is choosing players (cards show placeholders, not "Pick a"). */
+  protected readonly openerPending = signal(false);
   private flipWant: { role: Role; old: FlipCard | null } | null = null;
   /** Art for both players of the current matchup, or null (manifest not ready, or a card missing: blank frames). */
   protected readonly pair = computed<PairArt | null>(() => {
@@ -404,6 +418,7 @@ export class App {
       const detail = a ? (a.pit.line || a.bat.line ? 'blank' : null) : 'missing';
       untracked(() => { this.fallbackSent = key; if (detail) api.event('art_fallback', this.session, detail); });
     });
+    effect(() => { const a = this.pair(); if (a) untracked(() => { this.watchCard(a.pit.card); this.watchCard(a.bat.card); }); });   // plan 76 D: per card
     effect(() => {
       const a = this.pair();
       this.artOk.set(false);
@@ -461,18 +476,28 @@ export class App {
   }
 
   /**
-   * Plan 39 E: a random opening matchup. Starts with no players (so Pedro vs Ruth never flashes), waits for the pairs and
-   * the art list (art list up to 2 s), takes the first pair with art for both, else the first pair, else Pedro vs Ruth.
+   * Plan 39 E / plan 76 D: a random opening matchup. Starts with no players (so Pedro vs Ruth never flashes; the cards show
+   * placeholders), waits for the pairs and the art list together for at most OPENER_LIMIT_MS, and takes the first pair with
+   * art for both, else the first pair, else Pedro vs Ruth. A reply after the limit is ignored. A side the player already
+   * picked while waiting is kept; only the empty side is filled.
    */
   private async randomOpener(manifestLoad: Promise<ArtManifest | null>) {
     this.pitcher.set(null); this.batter.set(null);
+    this.openerPending.set(true);
     let pairs: RandomPair[] | null = null;
-    try { pairs = await api.randomPairs(12); } catch { pairs = null; }
-    const m = pairs?.length ? await Promise.race([manifestLoad, new Promise<null>(res => setTimeout(() => res(null), 2000))]) : null;
-    if (this.pitcher() || this.batter()) return;   // the player already chose someone
-    const pick = choosePair(pairs, m);
-    this.pitcher.set(pick?.pitcher ?? DEFAULT_PITCHER);
-    this.batter.set(pick?.batter ?? DEFAULT_BATTER);
+    const work = (async () => {
+      try { pairs = await api.randomPairs(12); } catch { pairs = null; }
+      const m = pairs?.length ? await manifestLoad : null;
+      return choosePair(pairs, m);
+    })();
+    const late = new Promise<'late'>(res => setTimeout(() => res('late'), OPENER_LIMIT_MS));
+    const got = await Promise.race([work, late]);
+    this.openerPending.set(false);
+    const pick = got === 'late' ? choosePair(pairs, null) : got;   // at the limit: pairs without the art list if they came, else the fallback
+    const p = this.pitcher(), b = this.batter();
+    if (p && b) return;   // the player chose both while waiting
+    if (!p) this.pitcher.set(pick?.pitcher ?? DEFAULT_PITCHER);
+    if (!b) this.batter.set(pick?.batter ?? DEFAULT_BATTER);
     await this.load();
   }
 

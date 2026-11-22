@@ -23,16 +23,19 @@
             @let rep = role === 'pit' ? pitcherReport() : batterReport();
             @let a = role === 'pit' ? pair()?.pit : pair()?.bat;
             <div class="pcard-wrap">
-              <button type="button" class="pcard" (click)="openPicker(role)"
-                      [attr.aria-label]="(c ? 'Change ' + (role === 'pit' ? 'pitcher' : 'batter') + ', now ' + c.name + ' ' + c.year : 'Pick a ' + (role === 'pit' ? 'pitcher' : 'batter'))">
+              @let opening = !c && openerPending();
+              <button type="button" class="pcard" (click)="openPicker(role)" [attr.aria-busy]="opening ? 'true' : null"
+                      [attr.aria-label]="(c ? 'Change ' + (role === 'pit' ? 'pitcher' : 'batter') + ', now ' + c.name + ' ' + c.year : opening ? 'Loading players' : 'Pick a ' + (role === 'pit' ? 'pitcher' : 'batter'))">
                 <span class="frame">
                   <span class="prole">{{ role === 'pit' ? 'Pitcher' : 'Batter' }}</span>
-                  @if (!c) {
+                  @let fl = flip.state()?.role === role ? flip.state() : null;
+                  @if (opening) {
+                    <span class="pimg skeleton" aria-hidden="true"></span>
+                  } @else if (!c) {
                     <span class="pempty">Pick a {{ role === 'pit' ? 'pitcher' : 'batter' }}</span>
-                  } @else if (!rep || manifestState() === 'loading') {
+                  } @else if (!rep || manifestState() === 'loading' || (a && !tileFailed() && !fl && !cardReady().has(a.card))) {
                     <span class="pimg skeleton" aria-hidden="true"></span>
                   } @else if (a && !tileFailed()) {
-                    @let fl = flip.state()?.role === role ? flip.state() : null;
                     <img class="pimg" [class.mirror]="fl?.phase === 'out' ? fl!.old.mirror : a.mirror" [class.flip-out]="fl?.phase === 'out'" [class.flip-hold]="fl?.phase === 'hold'" [class.flip-in]="fl?.phase === 'in'"
                          [src]="fl && fl.phase !== 'in' ? fl.old.card : a.card" alt="" decoding="async" (error)="tileFailed.set(true)">
                   } @else {

@@ -1,5 +1,7 @@
 // Plan 76: the first 30 seconds. Part A: no art pop-up; the one-line note counts as seen only after 1 s on screen.
 import { expect, Page, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { LL_CODE, serve } from './harness';
 
 const pageScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight);
@@ -134,6 +136,137 @@ test.describe('plan 76 A: fit with the note due', () => {
     await expect(page.locator('.ll-art')).toBeVisible();
     expect(await pageScroll(page), 'page scroll').toBeLessThanOrEqual(14);
     expect(await page.evaluate(() => { const c = document.querySelector('section.result p.call') as HTMLElement | null; if (!c) return false; const b = c.getBoundingClientRect(); return b.height > 1 && b.top >= 0 && b.bottom <= innerHeight; }), 'next batter visible').toBe(true);
+    expect(h.bad).toEqual([]);
+  });
+});
+
+// ---- Plan 76 D: no empty card frames ----
+/** Samples every card frame on every animation frame from page start: skel / img (loaded) / img-empty / pick / other. */
+async function watchFrames(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __st: { s: string; t: number }[][] };
+    w.__st = [];
+    const tick = () => {
+      document.querySelectorAll('.pcard .frame').forEach((f, i) => {
+        const img = f.querySelector('img') as HTMLImageElement | null;
+        const s = img ? (img.complete && img.naturalWidth > 0 ? 'img' : 'img-empty') : f.querySelector('.skeleton') ? 'skel'
+          : (f.textContent ?? '').includes('Pick a') ? 'pick' : f.querySelector('.pblank') ? 'blank' : 'other';
+        const list = (w.__st[i] ??= []);
+        if (list[list.length - 1]?.s !== s) list.push({ s, t: Math.round(performance.now()) });
+      });
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+const states = (page: Page) => page.evaluate(() => (window as unknown as { __st: { s: string; t: number }[][] }).__st);
+const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+const finalLoaded = (page: Page) => page.locator('.pcard img.pimg').evaluateAll(els => els.map(e => (e as HTMLImageElement).naturalWidth > 0));
+
+test.describe('plan 76 D: no empty card frames', () => {
+  test('pictures 800 ms late: placeholder, then the picture; never an empty frame or "Pick a"', async ({ context, page }, info) => {
+    phoneOnly(info);
+    const h = await serve(context);
+    await page.route('**/art/card-*', async r => { await delay(800); await r.fallback(); });
+    await watchFrames(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await expect.poll(() => finalLoaded(page), { timeout: 8000 }).toEqual([true, true]);
+    await page.waitForTimeout(200);
+    const st = await states(page);
+    expect(st.length).toBe(2);
+    for (const card of st) {
+      expect(card.map(x => x.s), JSON.stringify(card)).toEqual(['skel', 'img']);
+    }
+    expect(h.bad).toEqual([]);
+  });
+
+  test('pictures 2 s late: the img shows at 1.5 s anyway and ends loaded', async ({ context, page }, info) => {
+    phoneOnly(info);
+    const h = await serve(context);
+    await page.route('**/art/card-*', async r => { await delay(2000); await r.fallback(); });
+    await watchFrames(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await expect.poll(() => finalLoaded(page), { timeout: 8000 }).toEqual([true, true]);
+    await page.waitForTimeout(200);
+    for (const card of await states(page)) {
+      const seq = card.map(x => x.s);
+      expect(seq[0]).toBe('skel');
+      expect(seq[seq.length - 1]).toBe('img');
+      expect(seq).not.toContain('pick');
+      const skel = card.find(x => x.s === 'skel')!.t, shown = card.find(x => x.s !== 'skel')!.t;
+      expect(shown - skel, JSON.stringify(card)).toBeGreaterThan(1200);   // waited for the 1.5 s limit (the skeleton starts after the reports)
+      expect(shown - skel).toBeLessThan(1900);
+    }
+    expect(h.bad).toEqual([]);
+  });
+
+  async function returning(page: Page, context: import('@playwright/test').BrowserContext, ms: number) {
+    const h = await serve(context, { storage: { pr_seen: '1' } });
+    await page.route('**/api/matchup/random*', async r => {
+      await delay(ms);
+      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ pitcher: { id: 'martp001', name: 'Pedro Martinez', year: 2000, line: 'x' }, batter: { id: 'ruthb101', name: 'Babe Ruth', year: 1930, line: 'y' } }]) });
+    });
+    await watchFrames(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    return h;
+  }
+
+  test('random pairs 1 s late: placeholders (busy), then that pair; never "Pick a"', async ({ context, page }, info) => {
+    phoneOnly(info);
+    const h = await returning(page, context, 1000);
+    await expect(page.locator('.pcard[aria-busy="true"]')).toHaveCount(2);
+    await expect(page.locator('.pcard').first()).toHaveAttribute('aria-label', 'Loading players');
+    await expect(page.locator('.pcard-wrap .pname').first()).toContainText('2000', { timeout: 5000 });
+    await expect(page.locator('.pcard-wrap .pname').nth(1)).toContainText('1930');
+    await expect.poll(() => finalLoaded(page), { timeout: 8000 }).toEqual([true, true]);
+    for (const card of await states(page)) {
+      expect(card.map(x => x.s)).not.toContain('pick');
+      expect(card.map(x => x.s)).not.toContain('img-empty');
+    }
+    expect(h.bad).toEqual([]);
+  });
+
+  test('random pairs 4 s late: Pedro 1999 vs Ruth 1927 at 3 s; the late reply is ignored', async ({ context, page }, info) => {
+    phoneOnly(info);
+    const h = await returning(page, context, 4000);
+    await page.waitForTimeout(2500);
+    await expect(page.locator('.pcard[aria-busy="true"]')).toHaveCount(2);
+    await expect(page.locator('.pcard-wrap .pname').first()).toContainText('1999', { timeout: 1500 });
+    await expect(page.locator('.pcard-wrap .pname').nth(1)).toContainText('1927');
+    await page.waitForTimeout(1500);   // the reply has come and gone
+    await expect(page.locator('.pcard-wrap .pname').first()).toContainText('1999');
+    expect(h.requests.filter(r => r.startsWith('GET /api/matchup?')).length).toBe(1);
+    await expect.poll(() => finalLoaded(page), { timeout: 8000 }).toEqual([true, true]);
+    for (const card of await states(page)) expect(card.map(x => x.s)).not.toContain('pick');
+    expect(h.bad).toEqual([]);
+  });
+
+  test('a same-picture season change shows no placeholder', async ({ context, page }, info) => {
+    phoneOnly(info);
+    const h = await serve(context, { storage: { pr_seen: null } });
+    await page.route('**/api/card?*', async route => {
+      const u = new URL(route.request().url());
+      if (u.searchParams.get('role') !== 'bat') return route.fallback();
+      const body = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'card-bat.json'), 'utf8'));
+      body.year = Number(u.searchParams.get('year'));
+      await route.fulfill({ status: 200, json: body });
+    });
+    await watchFrames(page);
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await expect.poll(() => finalLoaded(page)).toEqual([true, true]);
+    const before = (await states(page)).map(c => c.length);
+    await page.getByRole('button', { name: /Change batter/ }).click();
+    await page.getByPlaceholder('Type a first or last name').fill('Ruth');
+    await page.locator('.picker button.row-btn', { hasText: 'Babe Ruth' }).first().click();
+    await page.locator('.picker .list button', { hasText: '1925' }).first().click();
+    await expect(page.locator('.pcard-wrap .pname').nth(1)).toContainText('1925');
+    await page.waitForTimeout(500);
+    const after = await states(page);
+    expect(after.map(c => c.length), JSON.stringify(after)).toEqual(before);
     expect(h.bad).toEqual([]);
   });
 });
