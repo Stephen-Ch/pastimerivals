@@ -10,3 +10,5 @@
 /* Plan 75 F3: Watch again is a real (outline) button, first in the row under the held stage. 44 px tall; clearly dimmed while busy. */
 button.outline { background: none; border: 2px solid var(--accent); color: var(--accent-text); font-weight: 600; font-size: .9rem; padding: 0 10px; min-height: 44px; flex: none; }
 button.outline:disabled { border-color: var(--border); color: var(--text-secondary); opacity: .6; cursor: default; }
+/* Plan 76 B: the legends shelf under the empty search box. */
+.legends-h { margin: 10px 0 2px; font-size: .85rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }

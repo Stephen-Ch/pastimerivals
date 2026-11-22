@@ -1,6 +1,8 @@
 import { OutcomeKey, Pick } from './logic';
 
 export interface PlayerHit { id: string; name: string; years: string; bats: string; throws: string; hof: boolean; bio?: string; }
+/** Plan 76 B: a legends-shelf row: the player plus his famous season. */
+export interface FeaturedItem extends PlayerHit { year: number; line: string; }
 /** isDefault = most played. Plan 76 C: isBest = the season to start on; bestFallback = none qualified (isBest is the most played). Old API: neither. */
 export interface SeasonItem { year: number; teams: string; pa: number; line: string; grade: string; isDefault: boolean; isBest?: boolean; bestFallback?: boolean; }
 
@@ -49,6 +51,7 @@ async function post<T>(url: string, body: unknown): Promise<T> {
 
 export const api = {
   search: (q: string, role: 'bat' | 'pit') => get<PlayerHit[]>(`/api/players/search?q=${encodeURIComponent(q)}&role=${role}`),
+  featured: (role: 'bat' | 'pit') => get<FeaturedItem[]>(`/api/players/featured?role=${role}`),
   seasons: (id: string, role: 'bat' | 'pit') => get<SeasonItem[]>(`/api/players/${encodeURIComponent(id)}/seasons?role=${role}`),
   matchup: (m: Pick) => get<MatchupView>(`/api/matchup?b=${m.b}&by=${m.by}&p=${m.p}&py=${m.py}`),
   /** Plan 39: random opening matchups (pitcher and batter with name, year and card line). */

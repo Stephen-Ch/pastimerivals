@@ -27,6 +27,7 @@ const STUBS: [RegExp, (route: Route, url: URL, fixture: Fx) => Promise<void>][] 
   [/^\/api\/sims$/, (r, _u, fixture) => json(r, fixture('sims.json'))],
   [/^\/api\/matchup\/random$/, (r, _u, fixture) => json(r, fixture('matchup-random.json'))],
   [/^\/api\/matchup$/, (r, _u, fixture) => json(r, fixture('matchup.json'))],
+  [/^\/api\/players\/featured$/, (r, u, fixture) => json(r, JSON.stringify(JSON.parse(fixture('players-featured.json'))[u.searchParams.get('role') === 'pit' ? 'pit' : 'bat']))],   // plan 76 B
   [/^\/api\/players\/search$/, (r, _u, fixture) => json(r, fixture('players-search.json'))],
   [/^\/api\/players\/[^/]+\/seasons$/, (r, _u, fixture) => json(r, fixture('seasons.json'))],
   [/^\/api\/card$/, (r, u, fixture) => json(r, fixture(u.searchParams.get('role') === 'pit' ? 'card-pit.json' : 'card-bat.json'))],

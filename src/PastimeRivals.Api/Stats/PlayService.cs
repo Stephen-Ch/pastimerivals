@@ -8,6 +8,8 @@ public sealed record PlayerHit(string Id, string Name, string Years, string Bats
 /// <summary>IsDefault = most played (kept for old cached apps). Plan 76 C: IsBest = the season the new app starts on;
 /// BestFallback = no season qualified, so IsBest sits on the most-played season and the app says "Most played".</summary>
 public sealed record SeasonItem(int Year, string Teams, int Pa, string Line, char Grade, bool IsDefault, bool IsBest = false, bool BestFallback = false);
+/// <summary>Plan 76 B: one legends-shelf row: the player (as a search hit) plus his famous season.</summary>
+public sealed record FeaturedItem(string Id, string Name, string Years, string Bats, string Throws, bool Hof, string Bio, int Year, string Line);
 public sealed record Side(string Id, string Name, int Year, string Hand);
 public sealed record MatchupView(Side Batter, Side Pitcher, bool? SameHand, Dictionary<string, double> Probabilities,
     IReadOnlyList<OutcomeStep> Steps, string Neutral, string EngineVersion);
@@ -92,6 +94,39 @@ public sealed class PlayService(IStatsSource source)
                     d.Bios.GetOrAdd((p.Id, role == "pit"), k => BuildBio(d, k.Id, k.Pit)));
             })
             .ToList();
+    }
+
+    /// <summary>
+    /// Plan 76 B: hand-picked (player, season) pairs, all retired (research/research-player-names-legal.md point 4).
+    /// "Famous seasons" (decision D4), not the computed best season.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Id, int Year)> FeaturedBatters = new[]
+    {
+        ("ruthb101", 1927), ("gibsj101", 1943), ("willt103", 1941), ("maysw101", 1965),
+        ("aaroh101", 1971), ("bondb001", 2001), ("grifk002", 1997), ("mantm101", 1956),
+    };
+    public static readonly IReadOnlyList<(string Id, int Year)> FeaturedPitchers = new[]
+    {
+        ("johnw102", 1913), ("paigs101", 1934), ("mathc102", 1908), ("koufs101", 1965),
+        ("gibsb101", 1968), ("ryann001", 1973), ("maddg002", 1995), ("martp001", 1999),
+    };
+
+    /// <summary>Plan 76 B: the legends shelf for a role, in order; any pair not in the data is skipped.</summary>
+    public async Task<IReadOnlyList<FeaturedItem>> FeaturedAsync(string role)
+    {
+        var d = await _loaded.Value;
+        var pit = role == "pit";
+        var pool = pit ? d.Pit : d.Bat;
+        var list = new List<FeaturedItem>();
+        foreach (var (id, year) in pit ? FeaturedPitchers : FeaturedBatters)
+        {
+            if (!pool.TryGetValue(id, out var rows) || !d.People.TryGetValue(id, out var p)) continue;
+            var row = rows.FirstOrDefault(r => r.Year == year);
+            if (row == null) continue;
+            list.Add(new FeaturedItem(p.Id, p.Name, $"{rows[0].Year}-{rows[^1].Year}", p.Bats, p.Throws, p.Hof == "HOF",
+                d.Bios.GetOrAdd((p.Id, pit), k => BuildBio(d, k.Id, k.Pit)), year, Line(row, role)));
+        }
+        return list;
     }
 
     // First or last name starts with the text, or the full name does (first-or-last-name prefix, kept from 2017).

@@ -67,7 +67,7 @@ describe('App', () => {
     const b = { id: 'bbb', name: 'Player B', years: '1950', bats: 'R', throws: 'R', hof: false };
     app.choosePlayer(a); app.choosePlayer(a);
     fixture.detectChanges();
-    expect(calls.length).toBe(1);
+    expect(calls.filter(u => !u.includes('/api/players/featured')).length).toBe(1);   // plan 76 B: the picker also asks for the legends shelf
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Loading seasons');
     app.choosePlayer(b);
     resolvers['b'](new Response(JSON.stringify([{ year: 1950, teams: 'X', pa: 600, line: 'b', grade: 'A', isDefault: true }])));

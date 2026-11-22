@@ -8,7 +8,7 @@ public sealed record EventRequest(string Name, string Session, string? Source = 
 
 public static class PlayEndpoints
 {
-    private static readonly HashSet<string> EventNames = new() { "open", "matchup_view", "pitch", "sim1000", "share", "share_open", "art_wrong_look", "art_fallback", "cpu_game", "sim_open", "first_view", "art_note_shown", "art_note_more", "art_blank_why" };   // plan 36: first_view; plan 52B: art notes
+    private static readonly HashSet<string> EventNames = new() { "open", "matchup_view", "pitch", "sim1000", "share", "share_open", "art_wrong_look", "art_fallback", "cpu_game", "sim_open", "first_view", "art_note_shown", "art_note_more", "art_blank_why", "featured_pick" };   // plan 76 B: featured_pick   // plan 36: first_view; plan 52B: art notes
 
     public static void MapPlay(this WebApplication app)
     {
@@ -16,6 +16,10 @@ public static class PlayEndpoints
 
         api.MapGet("/players/search", async (string q, string? role, PlayService s) =>
             Results.Ok(await s.SearchAsync(q, role == "pit" ? "pit" : "bat")));
+
+        // Plan 76 B: the legends shelf (hand-picked famous seasons), in order. Read-only.
+        api.MapGet("/players/featured", async (string? role, PlayService s) =>
+            Results.Ok(await s.FeaturedAsync(role == "pit" ? "pit" : "bat")));
 
         api.MapGet("/players/{id}/seasons", async (string id, string? role, PlayService s) =>
             await s.SeasonsAsync(id, role == "pit" ? "pit" : "bat") is { } list ? Results.Ok(list) : Results.NotFound());

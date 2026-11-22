@@ -253,6 +253,14 @@
         }
         @if (query() && hits().length === 0) { <li class="muted pad">No players found yet.</li> }
       </ul>
+      @if (!query().trim() && featured()[role]?.length) {
+        <h3 class="legends-h">Famous seasons</h3>
+        <ul class="list legends">
+          @for (f of featured()[role]!; track f.id) {
+            <li><button type="button" class="row-btn" (click)="chooseFeatured(f)"><span>{{ f.name }} {{ f.year }}@if (f.hof) { <span class="muted"> · Hall of Fame</span> }</span><span class="chev" aria-hidden="true">›</span></button></li>
+          }
+        </ul>
+      }
     } @else {
       <button type="button" class="link" (click)="backToSearch()">‹ Back to search</button>
       @if (seasonsLoading()) { <p class="muted pad" role="status">Loading seasons...</p> }

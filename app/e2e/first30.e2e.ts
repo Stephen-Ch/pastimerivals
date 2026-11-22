@@ -270,3 +270,69 @@ test.describe('plan 76 D: no empty card frames', () => {
     expect(h.bad).toEqual([]);
   });
 });
+
+// ---- Plan 76 B: the legends shelf ----
+test('plan 76 B: Famous seasons in the empty picker; a tap puts Willie Mays 1965 on the card at once', async ({ context, page }, info) => {
+  phoneOnly(info);
+  const h = await serve(context, { storage: { pr_seen: null } });
+  const ev = await events(page);
+  const fx = (n: string) => JSON.parse(readFileSync(join(__dirname, 'fixtures', n), 'utf8'));
+  await page.route('**/api/card?*', async route => {
+    const u = new URL(route.request().url());
+    if (u.searchParams.get('id') !== 'maysw101') return route.fallback();
+    await route.fulfill({ status: 200, json: { ...fx('card-bat.json'), id: 'maysw101', name: 'Willie Mays', year: 1965, bats: 'R', throws: 'R' } });
+  });
+  await page.route('**/api/matchup?*', async route => {
+    const u = new URL(route.request().url());
+    if (u.searchParams.get('b') !== 'maysw101') return route.fallback();
+    const m = fx('matchup.json');
+    await route.fulfill({ status: 200, json: { ...m, batter: { ...m.batter, id: 'maysw101', name: 'Willie Mays', year: 1965, hand: 'R' } } });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  const img = page.locator('.pcard img.pimg').nth(1);
+  const src0 = await img.getAttribute('src');
+  await page.getByRole('button', { name: /Change batter/ }).click();
+  await expect(page.locator('.legends-h')).toHaveText('Famous seasons');
+  const rows = page.locator('.legends button');
+  await expect(rows).toHaveCount(8);
+  await expect(rows.first()).toContainText('Babe Ruth 1927');
+  await expect(rows.first()).toContainText('Hall of Fame');
+  await expect(page.locator('.legends button', { hasText: 'Barry Bonds 2001' })).not.toContainText('Hall of Fame');
+  await page.getByPlaceholder('Type a first or last name').fill('Ru');
+  await expect(page.locator('.legends')).toHaveCount(0);
+  await page.getByPlaceholder('Type a first or last name').fill('');
+  await page.locator('.legends button', { hasText: 'Willie Mays 1965' }).click();
+  await expect(page.locator('.picker')).toHaveCount(0);
+  await expect(page.locator('.pcard-wrap .pname').nth(1)).toContainText('Willie Mays');
+  await expect(page.locator('.pcard-wrap .pname').nth(1)).toContainText('1965');
+  await expect.poll(() => img.getAttribute('src'), { timeout: 5000 }).not.toBe(src0);
+  await expect.poll(() => img.evaluate(e => (e as HTMLImageElement).naturalWidth > 0)).toBe(true);
+  expect(h.requests.some(r => r.includes('/seasons'))).toBe(false);
+  await expect.poll(() => ev.filter(e => e.name === 'featured_pick').map(e => e.source)).toEqual(['maysw101-1965']);
+  expect(h.bad).toEqual([]);
+});
+
+test('plan 76: screenshots for Stephen (first visit, share entry, open picker)', async ({ context, page }, info) => {
+  phoneOnly(info);
+  await serve(context, { storage: { pr_art_note: null, pr_seen: null } });
+  const out = join(__dirname, '..', 'dist', 'first30-shots');
+  for (const [w, hh] of [[390, 844], [844, 390]] as [number, number][]) {
+    const p = await context.newPage();
+    await p.setViewportSize({ width: w, height: hh });
+    await p.goto('/');
+    await p.waitForLoadState('networkidle'); await p.waitForTimeout(300);
+    await p.screenshot({ path: join(out, `first-visit-${w}x${hh}.png`) });
+    await p.goto(SHARE);
+    await p.locator('pr-pitch-scene .stage[data-held="1"]').waitFor({ timeout: 20_000 });
+    await p.getByRole('button', { name: '‹ Matchup' }).click();
+    await p.waitForTimeout(300);
+    await p.screenshot({ path: join(out, `share-entry-back-${w}x${hh}.png`) });
+    await p.getByRole('button', { name: /Change batter/ }).click();
+    await p.locator('.legends-h').waitFor();
+    await p.screenshot({ path: join(out, `picker-${w}x${hh}.png`) });
+    await p.close();
+  }
+  void page;
+});

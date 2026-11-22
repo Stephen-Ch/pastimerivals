@@ -1,7 +1,7 @@
 import { HowSim, InfoKind } from './how-sim';
 import { isCold, navDepth, pushEntry, stampBase } from './nav';
 import { Component, computed, effect, ElementRef, inject, signal, untracked, viewChild } from '@angular/core';
-import { api, MatchupView, PitchResult, PlayerHit, Report, SEASON_KIND_TEXT, SeasonItem, seasonKind, SimsResult, startSeason } from './api';
+import { api, FeaturedItem, MatchupView, PitchResult, PlayerHit, Report, SEASON_KIND_TEXT, SeasonItem, seasonKind, SimsResult, startSeason } from './api';
 import { ReportView } from './report';
 import { ChallengeFlow } from './challenge';
 import { Feedback, feedbackDue } from './feedback';
@@ -528,6 +528,7 @@ export class App {
     this.seasonsToken++;
     this.picking.set(role); this.query.set(''); this.hits.set([]); this.seasonsFor.set(null); this.seasons.set([]);
     this.seasonsLoading.set(false); this.seasonsError.set(false);
+    this.loadFeatured(role);
   }
 
   protected closePicker() { this.closeOverlay(); }
@@ -576,13 +577,32 @@ export class App {
   protected chooseSeason(s: SeasonItem) {
     const h = this.seasonsFor(), role = this.picking();
     if (!h || !role) return;
-    const chosen: Chosen = { id: h.id, name: h.name, year: s.year, line: s.line };
+    this.pickPlayer(role, { id: h.id, name: h.name, year: s.year, line: s.line });
+  }
+
+  /** Plan 73 D / plan 76 B: put a chosen player-season on a card (flip asked for, picker closed so history pops, one load). */
+  private pickPlayer(role: Role, chosen: Chosen) {
     const old = (role === 'pit' ? this.pair()?.pit : this.pair()?.bat) ?? null;   // plan 73 D: the picture on the card now
     this.flip.cancel();
     this.flipWant = { role, old: old && !this.tileFailed() ? { card: old.card, mirror: old.mirror } : null };
     (role === 'pit' ? this.pitcher : this.batter).set(chosen);
     this.closeOverlay();
     this.load();
+  }
+
+  // ---- Plan 76 B: the legends shelf (famous seasons) in the picker's search step ----
+  protected readonly featured = signal<Partial<Record<Role, FeaturedItem[]>>>({});
+  private readonly featuredAsked = new Set<Role>();
+  private loadFeatured(role: Role) {
+    if (this.featuredAsked.has(role)) return;   // once per role per visit; an error shows nothing
+    this.featuredAsked.add(role);
+    api.featured(role).then(list => this.featured.update(f => ({ ...f, [role]: Array.isArray(list) ? list : [] }))).catch(() => undefined);
+  }
+  protected chooseFeatured(f: FeaturedItem) {
+    const role = this.picking();
+    if (!role) return;
+    api.event('featured_pick', this.session, `${f.id}-${f.year}`);
+    this.pickPlayer(role, { id: f.id, name: f.name, year: f.year, line: f.line });
   }
 
   protected openInfo(kind: InfoKind, afterClose: (() => void) | null = null, returnTo: HTMLElement | null = null) {

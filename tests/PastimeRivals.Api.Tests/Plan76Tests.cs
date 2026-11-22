@@ -21,7 +21,7 @@ public sealed class Plan76Stats : IStatsSource
 
     public Task<StatsBundle> LoadAsync()
     {
-        var years = new[] { 1950, 1951, 1952, 1953, 1960, 1961, 1962, 1963, 1970, 1971 };
+        var years = new[] { 1927, 1941, 1950, 1951, 1952, 1953, 1960, 1961, 1962, 1963, 1970, 1971 };
         var leagues = new List<LeagueRow>();
         foreach (var y in years)
         {
@@ -57,6 +57,10 @@ public sealed class Plan76Stats : IStatsSource
         bat.Add(new PlayerRow("nglb0001", 1945, 0, 0, 0, C(400, 80, 100, 40, 50), 'A', "HOM", "C", PaNn2: 400));
         bat.Add(Mlb("nglb0001", 1950, C(500, 40, 70, 20, 10)));
         bat.Add(Mlb("nglb0001", 1951, C(400, 50, 70, 20, 20)));
+        // Plan 76 B: two legends in the data, listed out of shelf order (Williams first) to test the order; Ruth also has a 1928.
+        bat.Add(Mlb("willt103", 1941, C(606, 147, 112, 33, 37)));
+        bat.Add(Mlb("ruthb101", 1927, C(691, 137, 95, 29, 60)));
+        bat.Add(Mlb("ruthb101", 1941, C(100, 10, 15, 5, 3)));
         // Pitchers: lower is better. 1951 allows less than 1950 (the most played).
         pit.Add(Mlb("pitc0001", 1950, C(800, 90, 140, 50, 30), "P"));
         pit.Add(Mlb("pitc0001", 1951, C(700, 40, 80, 20, 10), "P"));
@@ -67,7 +71,8 @@ public sealed class Plan76Stats : IStatsSource
             new("fillb001", "Fill", "Batter", "R", "R", 1920, ""), new("fillp001", "Fill", "Pitcher", "R", "R", 1920, ""),
             new("bestb001", "Best", "Season", "R", "R", 1925, "HOF"), new("tieb0001", "Tie", "One", "R", "R", 1935, ""),
             new("tieb0002", "Tie", "Two", "R", "R", 1935, ""), new("smalb001", "Small", "Sample", "R", "R", 1945, ""),
-            new("nglb0001", "Two", "Leagues", "R", "R", 1920, "HOF"), new("pitc0001", "Low", "Allowed", "R", "R", 1925, "HOF"),
+            new("nglb0001", "Two", "Leagues", "R", "R", 1920, "HOF"), new("ruthb101", "Babe", "Ruth", "L", "L", 1895, "HOF"),
+            new("willt103", "Ted", "Williams", "L", "R", 1918, "HOF"), new("pitc0001", "Low", "Allowed", "R", "R", 1925, "HOF"),
         };
         var teams = new List<TeamRow> { new("NYA", "AL", "New York", 1903, 9999), new("HOM", "NN2", "Homestead", 1930, 1950) };
         return Task.FromResult(new StatsBundle(cat, people, teams));
@@ -121,6 +126,38 @@ public class Plan76Tests
     }
 
     [Fact]
+    public async Task Featured_lists_shelf_pairs_in_order_and_skips_missing_ones()
+    {
+        var c = Make();
+        var bat = (await c.GetFromJsonAsync<JsonElement>("/api/players/featured?role=bat")).EnumerateArray().ToArray();
+        Assert.Equal(new[] { "ruthb101", "willt103" }, bat.Select(x => x.GetProperty("id").GetString()));   // shelf order, not data order
+        var ruth = bat[0];
+        Assert.Equal(1927, ruth.GetProperty("year").GetInt32());
+        Assert.Equal("Babe Ruth", ruth.GetProperty("name").GetString());
+        Assert.Equal("1927-1941", ruth.GetProperty("years").GetString());
+        Assert.True(ruth.GetProperty("hof").GetBoolean());
+        Assert.Equal("L", ruth.GetProperty("bats").GetString());
+        Assert.Contains("60 HR", ruth.GetProperty("line").GetString());
+        Assert.True(ruth.TryGetProperty("bio", out _));
+        var pit = (await c.GetFromJsonAsync<JsonElement>("/api/players/featured?role=pit")).EnumerateArray().ToArray();
+        Assert.Empty(pit);   // no shelf pitcher in this fixture
+    }
+
+    [Fact]
+    public async Task Featured_pick_is_an_allowed_event()
+    {
+        var events = new MemoryEvents();
+        var c = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseSetting("RateLimit:PerMinute", "1000");
+            b.ConfigureServices(s => { s.AddSingleton<IStatsSource, Plan76Stats>(); s.AddSingleton<IEventSink>(events); });
+        }).CreateClient();
+        var r = await c.PostAsJsonAsync("/api/events", new { name = "featured_pick", session = "s1", source = "bat" });
+        Assert.Equal(System.Net.HttpStatusCode.NoContent, r.StatusCode);
+        Assert.Contains(events.Events, e => e.Name == "featured_pick");
+    }
+
+    [Fact]
     public async Task Ties_go_to_more_plate_appearances_then_the_earlier_year()
     {
         var c = Make();
@@ -136,6 +173,18 @@ public class Plan76RealDataTests
     private static PlayService? _play;
     private static PlayService Play() => _play ??= new PlayService(new CsvStatsSource(new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?> { ["Stats:CsvDir"] = Dir }).Build()));
+
+    [Fact]
+    public async Task All_16_legend_pairs_are_in_the_data_in_order()
+    {
+        if (Dir is null) return;
+        var bat = await Play().FeaturedAsync("bat");
+        var pit = await Play().FeaturedAsync("pit");
+        Assert.Equal(PlayService.FeaturedBatters.Select(x => $"{x.Id} {x.Year}"), bat.Select(x => $"{x.Id} {x.Year}"));
+        Assert.Equal(PlayService.FeaturedPitchers.Select(x => $"{x.Id} {x.Year}"), pit.Select(x => $"{x.Id} {x.Year}"));
+        Assert.False(bat.Single(x => x.Id == "bondb001").Hof);   // Bonds: no Hall of Fame badge
+        Assert.Equal(15, bat.Concat(pit).Count(x => x.Hof));
+    }
 
     [Theory]
     [InlineData("ruthb101", "bat", 1920)] [InlineData("willt103", "bat", 1941)] [InlineData("maysw101", "bat", 1965)] [InlineData("aaroh101", "bat", 1971)]
