@@ -102,6 +102,10 @@ public class PlayApiTests
         var def = s.EnumerateArray().Single(x => x.GetProperty("isDefault").GetBoolean());
         Assert.Equal(1927, def.GetProperty("year").GetInt32());
         Assert.Contains("60 HR", def.GetProperty("line").GetString());
+        // Plan 76 C: 1927 also qualifies as the best season (the 10 PA 1999 row is under the floor); isBest is a new field.
+        var best = s.EnumerateArray().Single(x => x.GetProperty("isBest").GetBoolean());
+        Assert.Equal(1927, best.GetProperty("year").GetInt32());
+        Assert.False(best.GetProperty("bestFallback").GetBoolean());
     }
 
     [Fact]

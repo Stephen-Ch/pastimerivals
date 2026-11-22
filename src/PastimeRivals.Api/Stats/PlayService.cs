@@ -5,7 +5,9 @@ using PastimeRivals.Engine;
 namespace PastimeRivals.Api.Stats;
 
 public sealed record PlayerHit(string Id, string Name, string Years, string Bats, string Throws, bool Hof, string Bio = "");
-public sealed record SeasonItem(int Year, string Teams, int Pa, string Line, char Grade, bool IsDefault);
+/// <summary>IsDefault = most played (kept for old cached apps). Plan 76 C: IsBest = the season the new app starts on;
+/// BestFallback = no season qualified, so IsBest sits on the most-played season and the app says "Most played".</summary>
+public sealed record SeasonItem(int Year, string Teams, int Pa, string Line, char Grade, bool IsDefault, bool IsBest = false, bool BestFallback = false);
 public sealed record Side(string Id, string Name, int Year, string Hand);
 public sealed record MatchupView(Side Batter, Side Pitcher, bool? SameHand, Dictionary<string, double> Probabilities,
     IReadOnlyList<OutcomeStep> Steps, string Neutral, string EngineVersion);
@@ -100,8 +102,32 @@ public sealed class PlayService(IStatsSource source)
     {
         var d = await _loaded.Value;
         if (!(role == "pit" ? d.Pit : d.Bat).TryGetValue(id, out var rows)) return null;
-        var best = rows.MaxBy(r => r.Counts.Pa)!.Year;
-        return rows.Select(r => new SeasonItem(r.Year, TeamsFor(r), r.Counts.Pa, Line(r, role), r.Grade, r.Year == best)).ToList();
+        var list = rows.ToList();   // a copy: scoring below never holds the lock for the whole list
+        var most = list.MaxBy(r => r.Counts.Pa)!;
+        var (best, fallback) = BestSeason(d, list, most, role == "pit");
+        return list.Select(r => new SeasonItem(r.Year, TeamsFor(r), r.Counts.Pa, Line(r, role), r.Grade, r == most,
+            r == best, r == best && fallback)).ToList();
+    }
+
+    /// <summary>
+    /// Plan 76 C: the best season. Qualifying seasons are in the same group as the most-played season M (Negro Leagues or
+    /// major league), reach the group's floor, and have at least two thirds of M's plate appearances. Best Score wins
+    /// (highest for batters, lowest for pitchers); ties: more PA, then the earlier year. None qualify: M (fallback).
+    /// </summary>
+    private static (PlayerRow Best, bool Fallback) BestSeason(Loaded d, List<PlayerRow> rows, PlayerRow most, bool pit)
+    {
+        var scored = new List<(PlayerRow Row, double Score)>();
+        foreach (var r in rows)
+        {
+            if (r.IsNgl != most.IsNgl || r.Counts.Pa < Floor(r, pit) || 3 * r.Counts.Pa < 2 * most.Counts.Pa) continue;
+            double sc;
+            lock (d) sc = d.Score(r, pit);   // Score fills shared caches
+            scored.Add((r, sc));
+        }
+        if (scored.Count == 0) return (most, true);
+        var best = (pit ? scored.OrderBy(x => x.Score) : scored.OrderByDescending(x => x.Score))
+            .ThenByDescending(x => x.Row.Counts.Pa).ThenBy(x => x.Row.Year).First().Row;
+        return (best, false);
     }
 
     private static string TeamsFor(PlayerRow r) => r.IsNgl ? (r.PaNn2 > 0 && r.PaNal > 0 ? "NNL/NAL" : r.PaNn2 > 0 ? "NNL" : "NAL") : (r.PaAl, r.PaNl, r.PaFl) switch

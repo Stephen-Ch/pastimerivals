@@ -1,6 +1,6 @@
 import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, DestroyRef, effect, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
-import { api, PlayerHit, SeasonItem } from './api';
+import { api, PlayerHit, SEASON_KIND_TEXT, SeasonItem, seasonKind } from './api';
 import { ArtManifest, CfArt, cfArt, eraOf, fielderArt, ParkLook, parkLookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
 import { sideLine, sideNameLine } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
@@ -424,6 +424,9 @@ export class ChallengeFlow {
     this.slots().forEach((s, i) => s?.choices.forEach((c, r) => { if (!(i === slot && r === rank) && (r === 0 || i === slot)) ids.add(c.id); }));
     return ids;
   }
+
+  protected readonly seasonKind = seasonKind;   // plan 76 C: badge text
+  protected readonly kindText = SEASON_KIND_TEXT;
 
   protected async chooseSeason(s: SeasonItem) {
     const h = this.seasonsFor();

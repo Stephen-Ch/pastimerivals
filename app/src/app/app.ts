@@ -1,7 +1,7 @@
 import { HowSim, InfoKind } from './how-sim';
 import { isCold, navDepth, pushEntry, stampBase } from './nav';
 import { Component, computed, effect, ElementRef, inject, signal, untracked, viewChild } from '@angular/core';
-import { api, MatchupView, PitchResult, PlayerHit, Report, SeasonItem, SimsResult } from './api';
+import { api, MatchupView, PitchResult, PlayerHit, Report, SEASON_KIND_TEXT, SeasonItem, seasonKind, SimsResult, startSeason } from './api';
 import { ReportView } from './report';
 import { ChallengeFlow } from './challenge';
 import { Feedback, feedbackDue } from './feedback';
@@ -96,7 +96,9 @@ export class App {
   protected readonly seasons = signal<SeasonItem[]>([]);
   protected readonly seasonsLoading = signal(false);
   protected readonly seasonsError = signal(false);
-  protected readonly defaultSeason = computed(() => this.seasons().find(s => s.isDefault) ?? null);
+  protected readonly defaultSeason = computed(() => startSeason(this.seasons()));   // plan 76 C: best season
+  protected readonly seasonKind = seasonKind;
+  protected readonly kindText = SEASON_KIND_TEXT;
   private seasonsToken = 0;
   private readonly sheetTitle = viewChild<ElementRef<HTMLElement>>('sheetTitle');
 

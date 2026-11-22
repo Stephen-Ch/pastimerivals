@@ -76,7 +76,7 @@ describe('App', () => {
     await new Promise(r => setTimeout(r, 0));
     fixture.detectChanges();
     expect(app.seasons()[0].year).toBe(1950);
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Use 1950 (most played)');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Use 1950 (most played)');   // plan 76 C: an old API (no isBest) keeps today's label
   });
 
   it('picker: a failed seasons request offers Retry', async () => {

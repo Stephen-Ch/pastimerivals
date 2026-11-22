@@ -1,7 +1,18 @@
 import { OutcomeKey, Pick } from './logic';
 
 export interface PlayerHit { id: string; name: string; years: string; bats: string; throws: string; hof: boolean; bio?: string; }
-export interface SeasonItem { year: number; teams: string; pa: number; line: string; grade: string; isDefault: boolean; }
+/** isDefault = most played. Plan 76 C: isBest = the season to start on; bestFallback = none qualified (isBest is the most played). Old API: neither. */
+export interface SeasonItem { year: number; teams: string; pa: number; line: string; grade: string; isDefault: boolean; isBest?: boolean; bestFallback?: boolean; }
+
+/** Plan 76 C: the season a player starts on: the best season, or the most played from an older API. */
+export function startSeason(list: readonly SeasonItem[]): SeasonItem | null { return list.find(s => s.isBest) ?? list.find(s => s.isDefault) ?? null; }
+
+/** Plan 76 C: "best season" only when the API found one; the most-played season is labeled as such. */
+export function seasonKind(s: SeasonItem): 'best' | 'most' | null {
+  if (s.isBest) return s.bestFallback ? 'most' : 'best';
+  return s.isDefault ? 'most' : null;
+}
+export const SEASON_KIND_TEXT = { best: 'Best season', most: 'Most played' } as const;
 export interface Step {
   outcome: string; batterObserved: number | null; batterShrunk: number; batterLeague: number; batterRatio: number;
   pitcherObserved: number | null; pitcherShrunk: number; pitcherLeague: number; pitcherRatio: number;

@@ -96,7 +96,7 @@
               @for (se of seasons(); track se.year) {
                 <li><button type="button" [class.best]="se.isDefault" (click)="chooseSeason(se)" [disabled]="busy()">
                   <strong>{{ se.year }}</strong> {{ se.teams }} <span class="muted">{{ se.line }}</span>
-                  @if (se.isDefault) { <span class="badge">Most played</span> }
+                  @if (seasonKind(se); as k) { <span class="badge">{{ kindText[k] }}</span> }
                 </button></li>
               }
             </ul>
