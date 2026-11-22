@@ -46,15 +46,27 @@ describe('Plan 51 art note', () => {
     expect(feedbackDue('g1', 1, 1_800_000_000_000)).toBe(false);
   });
 
-  it('renders the title, paragraph, Got it, and More buttons', async () => {
+  it('plan 76 A: the pop-up kind is gone; the art sheet has the note and one Close button', async () => {
     await TestBed.configureTestingModule({ imports: [HowSim] }).compileComponents();
     const fixture = TestBed.createComponent(HowSim);
-    fixture.componentRef.setInput('kind', 'artIntro');
+    fixture.componentRef.setInput('kind', 'art');
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.textContent).toContain('Why don\'t the players look like the real ones?');
+    expect(el.textContent).not.toContain('Why don\'t the players look like the real ones?');
     expect(el.textContent).toContain(ART_NOTE_TEXT);
-    expect(el.textContent).toContain('Got it');
-    expect(el.textContent).toContain('More about the art');
+    expect(el.textContent).not.toContain('Got it');
+    expect(el.textContent).not.toContain('More about the art');
+    expect(Array.from(el.querySelectorAll('button')).map(x => x.textContent?.trim())).toEqual(['Close']);
+  });
+
+  it('plan 76 A: due is a snapshot at visit start; marking twice reports once', () => {
+    localStorage.setItem('pr_art_note', '1');
+    expect(artNoteDue()).toBe(false);
+    localStorage.removeItem('pr_art_note');
+    expect(artNoteDue()).toBe(false);   // fixed for the visit
+    resetArtNoteVisit();
+    expect(artNoteDue()).toBe(true);
+    expect(markArtNoteShown()).toBe(true);
+    expect(markArtNoteShown()).toBe(false);
   });
 });

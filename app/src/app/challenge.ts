@@ -13,7 +13,7 @@ import { bedFor, reactionFor, voice, voiceFor } from './audio';
 import { voiceOn } from './voice-setting';
 import { VoiceButton } from './voice-button';
 import { outAt } from './inning';
-import { artNoteDue, markArtNoteShown } from './art-note';
+import { ART_NOTE_SHORT, ArtNoteSeen, artArrival, artNoteDue, markArtNoteShown } from './art-note';
 import { HowSim, InfoKind } from './how-sim';
 import { pushEntry } from './nav';
 import { awayHome, boardOrder, firstWord, headerParts, ownTag, sideColor, TEAM_BLUE } from './team';
@@ -55,7 +55,7 @@ export function parkLookForView(v: CView | null): ParkLook | null {
 
 @Component({
   selector: 'pr-challenge',
-  imports: [PitchScene, Scoreboard, Feedback, HowSim, VoiceButton],
+  imports: [PitchScene, Scoreboard, Feedback, HowSim, VoiceButton, ArtNoteSeen],
   templateUrl: './challenge.html',
   styleUrls: ['./app.css', './challenge.css'],
 })
@@ -679,12 +679,6 @@ export class ChallengeFlow {
   protected async pitch() {
     const ab = this.nextAtBat();
     if (!ab || this.scene() || this.loadingArt()) return;
-    if (this.step() === 'play' && this.revealed() === 0 && artNoteDue()) {
-      markArtNoteShown();
-      api.event('art_note_shown', this.session, 'challenge');
-      this.openInfo('artIntro', () => { void this.pitch(); });
-      return;
-    }
     if (voiceOn()) { voice.ensure(); voice.stop(); voice.bedStart(bedFor(this.newestYear())); this.windupSeen = new Set(); }   // plan 50: before any await
     this.pbpLine.set('');
     const token = ++this.pitchToken;
@@ -962,9 +956,13 @@ export class ChallengeFlow {
     queueMicrotask(() => this.infoReturnFocus?.focus({ preventScroll: true }));
   }
 
-  protected moreArtInfo() {
-    api.event('art_note_more', this.session);
-    this.info.set('art');
+  /** Plan 76 A: the short art note on the first at-bat's note line, seen after 1 s on screen. */
+  /** Shown while due; once seen it stays until the first at-bat is revealed (no 1 s flash). */
+  protected readonly llArt = signal(artNoteDue());
+  private readonly llArtOff = effect(() => { if (!artNoteDue() && this.revealed() > 0) this.llArt.set(false); });
+  protected readonly artShort = ART_NOTE_SHORT;
+  protected artNoteSeen() {
+    if (markArtNoteShown()) api.event('art_note_shown', this.session, artArrival());
   }
 
   protected openMine(code: string) {

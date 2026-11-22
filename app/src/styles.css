@@ -106,3 +106,9 @@ pr-challenge .scene-wrap { container-name: ll-scene; }
   .ll-below { justify-content: flex-start; flex: none; }
   .ll-below:has(.ll-extra) .ll-extras { display: none; }   /* Plan 71: the 2-line runner note takes the recap and intro room (the voice and the play-by-play row cover them); nothing overlaps */
 }
+/* Plan 76 A: the one-line art note (global: component styles are at their budgets). The short form shows only in short
+   landscape 341-500 px tall, where the full line is hidden; Last Licks appends it to the first at-bat's note. */
+.art-line { margin: 0; font-size: .78rem; color: var(--text-secondary); text-align: center; }
+.art-line .inline-link { min-height: 0; padding: 0; font-size: inherit; display: inline; }
+.art-short { display: none; font-size: .75rem; color: var(--text-secondary); text-align: center; }
+@media (orientation: landscape) and (min-height: 341px) and (max-height: 500px) { .art-short { display: block; } }

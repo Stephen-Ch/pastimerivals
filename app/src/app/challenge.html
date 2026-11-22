@@ -235,7 +235,7 @@
             @if (pbpRecap().length) { <p class="base-line">{{ pbpRecap().join(' ') }}</p> }
             @else if (baseText()) { <p class="base-line">{{ baseText() }}</p> }
             @if (halfCard()) { <p class="half-card">{{ halfCard() }}</p> }
-            @if (revealed() === 0) { <p class="note">@if (isInningGame()) { One inning. Most runs wins. }Tap Pitch to see each at-bat.</p> }
+            @if (revealed() === 0) { <p class="note">@if (isInningGame()) { One inning. Most runs wins. }Tap Pitch to see each at-bat.@if (llArt()) { <span class="ll-art" (prArtNoteSeen)="artNoteSeen()"> {{ artShort }}</span> }</p> }
             @if (nextAtBat(); as n) {
               <p class="muted">{{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) + ' · ' + batsLine(n.battingSide) : roundLabel(n) + ' · ' + sideName(n.battingSide) + ' batting' }}</p>
               <p class="call">{{ n.batter.name }} <span class="muted">{{ n.batter.year }}</span></p>
@@ -344,6 +344,6 @@
       </div>
     }
   }
-  @if (info(); as k) { <pr-how-sim [kind]="k" (more)="moreArtInfo()" (close)="closeInfo()" /> }
+  @if (info(); as k) { <pr-how-sim [kind]="k" (close)="closeInfo()" /> }
   <footer class="notice">The information used here was obtained free of charge from and is copyrighted by Retrosheet. Interested parties may contact Retrosheet at 20 Sunset Rd., Newark, DE 19711.</footer>
 </div>

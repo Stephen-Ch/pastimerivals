@@ -1,3 +1,4 @@
+import { resetArtNoteVisit } from './art-note';
 import { TestBed } from '@angular/core/testing';
 import { App } from './app';
 import { Report } from './api';
@@ -70,6 +71,7 @@ describe('plan 52: app wiring', () => {
     history.replaceState(null, '', '/');   // other specs may leave a /c/ route behind
     localStorage.removeItem('pr_seen');   // first visit: Pedro vs Ruth load at once (no random opener)
     localStorage.setItem('pr_art_note', '1');
+    resetArtNoteVisit();
     events = [];
     globalThis.fetch = (async (url: string, init?: RequestInit) => {
       const u = String(url);
@@ -127,9 +129,9 @@ describe('plan 52: app wiring', () => {
   it('a blank-note request never replaces a note that is already open', async () => {
     const { app } = await start();
     let ran = 0;
-    app.openInfo('artIntro', () => ran++);
+    app.openInfo('how', () => ran++);
     app.openInfo('blank');
-    expect(app.info()).toBe('artIntro');
+    expect(app.info()).toBe('how');
     app.closeInfo();
     expect(ran).toBe(1);
   });

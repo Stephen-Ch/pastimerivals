@@ -19,7 +19,7 @@ import { VoiceButton } from './voice-button';
 import { PerfOverlay, perfFromSearch } from './perf-overlay';
 import { SceneCue } from './pitch-scene';
 import { ArtManifest, CfArt, cfArt, Era, eraOf, fielderArt, isFirstVisit, PairArt, pairArt, ParkLook, parkLookOf, PlayerArt, preloadImages, SEEN_KEY, SideArt, sideArt, WindupArt, windupArt } from './art';
-import { artNoteDue, artNoteShownThisVisit, markArtNoteShown } from './art-note';
+import { ART_NOTE_SHORT, ArtNoteSeen, artArrival, artNoteDue, markArtNoteShown, setArtArrival } from './art-note';
 import { battingLine, callFor, countFor, Deco, DECORATION_VERSION, explain, hitsFrom, label, OUTCOMES, OutcomeKey, parseOpen, parseShare, percent, Pick, rate3, resolveDeco, shareUrl, timesLeague } from './logic';
 
 type Role = 'bat' | 'pit';
@@ -73,7 +73,7 @@ export function pitchPhrase(balls: number, strikes: number, cap = false): string
 
 @Component({
   selector: 'app-root',
-  imports: [ReportView, PitchScene, Scoreboard, ChallengeFlow, Feedback, HowSim, VoiceButton, PerfOverlay],
+  imports: [ReportView, PitchScene, Scoreboard, ChallengeFlow, Feedback, HowSim, VoiceButton, PerfOverlay, ArtNoteSeen],
   styleUrls: ['./app.css', './sims.css', './home.css', './duel-extra.css'],
   templateUrl: './app.html',
 })
@@ -216,7 +216,9 @@ export class App {
   protected readonly myGames = signal(0);
   /** Plan 38/39: info sheets (How the sim works, Simulate, About the art). */
   protected readonly info = signal<InfoKind | null>(null);
-  protected readonly artNoteShownThisVisit = artNoteShownThisVisit;
+  /** Plan 76 A: the one-line art note shows while due; once seen it stays until the player leaves this matchup screen. */
+  protected readonly noteLine = signal(false);
+  protected readonly artShort = ART_NOTE_SHORT;
   private infoReturnFocus: HTMLElement | null = null;
   private infoAfterClose: (() => void) | null = null;
 
@@ -381,10 +383,10 @@ export class App {
       if (!on || !m) return;
       untracked(() => { if (!this.introduced.has(this.matchKey())) voice.prefetch(this.audioIntroLines(), this.practiceVoice(), voice.running()); });
     });
+    // Plan 76 A: no pop-up. The line shows on the matchup screen while the note is due; after it was seen it hides when the screen changes.
     effect(() => {
-      const m = this.matchup(), sc = this.screen();
-      if (!m || !this.pitcherReport() || !this.batterReport() || sc !== 'matchup' || this.challenge() !== undefined) return;   // plan 51: players are on screen (card art or blank frame)
-      untracked(() => this.maybeShowArtNote('home'));
+      const due = artNoteDue(), sc = this.screen();
+      untracked(() => { if (due) this.noteLine.set(true); else if (sc !== 'matchup') this.noteLine.set(false); });
     });
     const manifestLoad: Promise<ArtManifest | null> = (typeof fetch === 'function' ? fetch('/art-manifest.json') : Promise.reject())
       .then(r => (r.ok ? r.json() : null)).then(m => (m && m.tones && m.sheets && m.cards ? (m as ArtManifest) : null)).catch(() => null);
@@ -435,13 +437,12 @@ export class App {
       this.batter.set({ id: shared.pick.b, name: shared.pick.b, year: shared.pick.by, line: '' });
       this.pitcher.set({ id: shared.pick.p, name: shared.pick.p, year: shared.pick.py, line: '' });
       api.event('share_open', this.session);
-      this.load().then(() => {
-        if (this.maybeShowArtNote('share', () => this.throwPitch(shared.seed))) return;
-        void this.throwPitch(shared.seed);
-      });
+      setArtArrival('share');
+      this.load().then(() => this.throwPitch(shared.seed));   // plan 76 A: the shared pitch plays at once (no pop-up first)
     } else {
       const first = isFirstVisit(false, this.storage());
       const opened = typeof location !== 'undefined' && this.challenge() === undefined ? parseOpen(location.search) : null;
+      setArtArrival(this.challenge() !== undefined ? 'challenge' : opened ? 'page' : 'home');
       if (opened) {   // plan matchup-pages-1: a matchup page's button opens that matchup ready to pitch
         this.screen.set('matchup');
         this.batter.set({ id: opened.b, name: opened.b, year: opened.by, line: '' });
@@ -572,17 +573,15 @@ export class App {
     queueMicrotask(() => this.infoReturnFocus?.focus({ preventScroll: true }));
   }
 
-  protected moreArtInfo() {
-    api.event('art_note_more', this.session);
-    this.info.set('art');
+  /** Plan 76 A: "About the art" from the note line ('line') or the standing link ('link'). */
+  protected moreArtInfo(detail: 'line' | 'link') {
+    api.event('art_note_more', this.session, detail);
+    this.openInfo('art');
   }
 
-  private maybeShowArtNote(entry: 'home' | 'share', afterClose: (() => void) | null = null): boolean {
-    if (!artNoteDue()) return false;
-    markArtNoteShown();
-    api.event('art_note_shown', this.session, entry);
-    this.openInfo('artIntro', afterClose);
-    return true;
+  /** Plan 76 A: the note line was on screen for 1 s: pr_art_note + pr_seen, one art_note_shown per visit. */
+  protected artNoteSeen() {
+    if (markArtNoteShown()) api.event('art_note_shown', this.session, artArrival());
   }
 
   protected async throwPitch(seed?: string) {
@@ -622,6 +621,7 @@ export class App {
       if (!seed) this.deco.set(DECORATION_VERSION);
       this.sceneN.update(n => n + 1);   // a fresh scene for every pitch, even one with the same seed
       this.pending.set(r);   // the scene plays, then sceneDone() reveals the result (the scene stays on screen, held)
+      if (seed) { try { this.storage()?.setItem(SEEN_KEY, '1'); } catch { /* fine */ } }   // plan 76 A: a shared link's pitch has played
       if (intro) this.introduced.add(key);
       this.voicePitch(r);
       if (!seed) this.practiceN.update(n => n + 1);

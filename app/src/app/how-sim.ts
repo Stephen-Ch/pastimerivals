@@ -5,7 +5,7 @@ import { parkOn, setPark } from './park-setting';
 import { setVoice, voiceOn } from './voice-setting';
 
 /** Plan 38/39: short info sheets over the current screen. */
-export type InfoKind = 'how' | 'sim' | 'art' | 'artIntro' | 'blank';
+export type InfoKind = 'how' | 'sim' | 'art' | 'blank';
 export const ART_NOTE_TEXT = 'Real players\' faces belong to them and their families, so we chose not to draw them. Team uniforms and logos belong to the clubs, so ours are made up in the style of each era. Every matchup is built from the players\' real stats.';
 
 /** Plan 52: blank-paper cards (wording approved by Stephen, Oct 27). */
@@ -19,10 +19,6 @@ export const RETROSHEET_NOTICE = 'The information used here was obtained free of
     <div class="how-sheet" role="dialog" aria-modal="true" aria-labelledby="how-title" (keydown)="onKeydown($event)">
       <div #howCard class="how-card">
         @switch (kind()) {
-          @case ('artIntro') {
-            <h2 #title id="how-title" tabindex="-1">Why don't the players look like the real ones?</h2>
-            <p>{{ artNote }}</p>
-          }
           @case ('blank') {
             <h2 #title id="how-title" tabindex="-1">Why no face?</h2>
             <p>{{ blankNote }}</p>
@@ -70,12 +66,7 @@ export const RETROSHEET_NOTICE = 'The information used here was obtained free of
             <li>Pastime Rivals is an independent game. It is not affiliated with or endorsed by Major League Baseball, its teams, the players or their families.</li>
           </ul>
         </ng-template>
-        @if (kind() === 'artIntro') {
-          <button type="button" class="primary" (click)="close.emit()">Got it</button>
-          <button type="button" class="link" (click)="more.emit()">More about the art</button>
-        } @else {
-          <button type="button" class="primary" (click)="close.emit()">Close</button>
-        }
+        <button type="button" class="primary" (click)="close.emit()">Close</button>
       </div>
     </div>`,
   imports: [NgTemplateOutlet],
@@ -96,7 +87,6 @@ export const RETROSHEET_NOTICE = 'The information used here was obtained free of
 export class HowSim implements AfterViewInit {
   readonly kind = input<InfoKind>('how');
   readonly close = output<void>();
-  readonly more = output<void>();
   protected readonly notice = RETROSHEET_NOTICE;
   protected readonly artNote = ART_NOTE_TEXT;
   protected readonly blankNote = BLANK_NOTE_TEXT;

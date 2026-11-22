@@ -1,3 +1,4 @@
+import { resetArtNoteVisit } from './art-note';
 import { TestBed } from '@angular/core/testing';
 import { App } from './app';
 import { parseOpen } from './logic';
@@ -41,6 +42,7 @@ describe('App opened from a matchup page', () => {
     history.replaceState(null, '', '/?b=bondb001&by=2001&p=gibsb101&py=1968&ref=mp-bonds-gibson');
     localStorage.removeItem('pr_seen');   // a search visitor is new
     localStorage.setItem('pr_art_note', '1');
+    resetArtNoteVisit();
     calls = []; events = [];
     globalThis.fetch = (async (url: string, init?: RequestInit) => {
       const u = String(url);
@@ -75,7 +77,7 @@ describe('App opened from a matchup page', () => {
     expect(app.result()).toBeNull();
   });
 
-  it('a brand-new visitor (art note not yet seen) still counts as a first view and no pitch is thrown', async () => {
+  it('a brand-new visitor (art note not yet seen) still counts as a first view, no pitch is thrown, no pop-up (plan 76)', async () => {
     localStorage.removeItem('pr_art_note');
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance as any;
@@ -84,6 +86,12 @@ describe('App opened from a matchup page', () => {
     expect(app.batter().name).toBe('Barry Bonds');
     expect(events.map(e => e.name)).toContain('first_view');
     expect(calls.some(u => u.includes('/api/pitch'))).toBe(false);
+    // Plan 76 A: no pop-up; the one-line note shows instead, and is not counted until it was on screen for 1 s.
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[role=dialog]')).toBeNull();
+    expect(el.querySelector('.art-line')).not.toBeNull();
+    expect(events.map(e => e.name)).not.toContain('art_note_shown');
+    expect(localStorage.getItem('pr_art_note')).toBeNull();
   });
 
   it('a challenge link with matchup fields is left to the challenge screen', async () => {

@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 import { serve } from './harness';
 
 const SIZES: [number, number][] = [[740, 360], [667, 375], [844, 390], [568, 320], [320, 568], [390, 844]];
-const VISITS: [string, Record<string, string | null>][] = [['first visit', {}], ['returning', { pr_seen: '1' }]];
+const VISITS: [string, Record<string, string | null>][] = [['first visit', {}], ['returning', { pr_seen: '1' }], ['art note due (plan 76)', { pr_art_note: null }]];
 
 for (const [w, h] of SIZES) {
   for (const [visit, storage] of VISITS) {

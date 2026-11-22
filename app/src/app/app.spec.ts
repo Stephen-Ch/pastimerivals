@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { App, sourceFromSearch, vsFromSearch } from './app';
+import { resetArtNoteVisit } from './art-note';
 
 const probs = { k: 0.3, bb: 0.12, hbp: 0.01, single: 0.12, double: 0.04, triple: 0.005, hr: 0.045, oip: 0.36 };
 const matchup = {
@@ -20,6 +21,7 @@ describe('App', () => {
   beforeEach(async () => {
     localStorage.setItem('pr_seen', '1');   // plan 36: returning player unless a test says otherwise
     localStorage.setItem('pr_art_note', '1');
+    resetArtNoteVisit();
     globalThis.fetch = (async (url: string) =>
       new Response(JSON.stringify(
         String(url).includes('/api/matchup') ? matchup
@@ -123,7 +125,7 @@ describe('App', () => {
     expect(vsFromSearch('')).toBeNull();
   });
 
-  it('a new player sees Pedro vs Ruth, the hint and the art note; Play an inning marks the visit seen (plan 36/39)', async () => {
+  it('a new player sees Pedro vs Ruth, the hint and the art note line (no pop-up, plan 76); Play an inning marks the visit seen (plan 36/39)', async () => {
     localStorage.removeItem('pr_seen');
     localStorage.removeItem('pr_art_note');
     const fixture = TestBed.createComponent(App);
@@ -132,10 +134,9 @@ describe('App', () => {
     const el = fixture.nativeElement as HTMLElement;
     expect(el.textContent).toContain('Pedro Martinez');
     expect(el.textContent).toContain('Tap Pitch to play this at-bat');
-    expect(el.textContent).toContain('Why don\'t the players look like the real ones?');
-    expect(el.textContent).toContain('Got it');
-    (Array.from(el.querySelectorAll('button')).find(b => b.textContent?.trim() === 'Got it') as HTMLButtonElement).click();
-    fixture.detectChanges();
+    expect(el.textContent).not.toContain('Why don\'t the players look like the real ones?');   // plan 76 A: no pop-up
+    expect(el.querySelector('[role=dialog]')).toBeNull();
+    expect(el.querySelector('.art-line')?.textContent).toContain('generic ballplayers, not portraits');
     (Array.from(el.querySelectorAll('button')).find(b => b.textContent?.trim() === 'Play an inning') as HTMLButtonElement).click();
     expect(localStorage.getItem('pr_seen')).toBe('1');
   });

@@ -1,8 +1,6 @@
 /* Plan 39: the matchup is home. */
 .brand { font-weight: 700; }
-.art-line { margin: 0; font-size: .78rem; color: var(--text-secondary); text-align: center; }
 .about-art { align-self: center; min-height: 28px; }
-.art-line .inline-link { min-height: 0; padding: 0; font-size: inherit; display: inline; }
 .actions.home-row { grid-template-columns: 1fr auto 44px; align-items: stretch; }
 .home-row .help-btn { width: 44px; min-width: 44px; padding: 0; border-radius: 50%; font-weight: 700; aspect-ratio: 1; align-self: center; }
 .home-row .modes { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
