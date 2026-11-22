@@ -28,7 +28,8 @@ describe('Plan 76 C: best season default', () => {
       localStorage.setItem('pr_seen', '1'); localStorage.setItem('pr_art_note', '1');
       resetArtNoteVisit();
       globalThis.fetch = (async (url: string) => new Response(JSON.stringify(
-        String(url).includes('/seasons') ? [row(1920, { isBest: true }), row(1923, { isDefault: true, pa: 697 }), row(1935, { pa: 92 })] : []), { status: 200 })) as typeof fetch;
+        String(url).includes('/seasons') ? [row(1920, { isBest: true }), row(1923, { isDefault: true, pa: 697 }), row(1935, { pa: 92 })] : []),
+        { status: /\/api\/(matchup|card)/.test(String(url)) ? 404 : 200 })) as typeof fetch;   // no matchup in this test
       await TestBed.configureTestingModule({ imports: [App] }).compileComponents();
     });
 

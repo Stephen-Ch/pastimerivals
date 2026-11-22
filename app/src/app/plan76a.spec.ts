@@ -20,9 +20,9 @@ const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 @Component({
   imports: [ArtNoteSeen],
-  template: `@if (on()) { <p class="n" (prArtNoteSeen)="n = n + 1">note</p> }`,
+  template: `@if (on()) { <p class="n" (prArtNoteSeen)="n = n + 1" [prArtNotePaused]="paused()">note</p> }`,
 })
-class Host { on = signal(true); n = 0; }
+class Host { on = signal(true); paused = signal(false); n = 0; }
 
 describe('Plan 76 A: the art note line, no pop-up', () => {
   const realIO = (globalThis as any).IntersectionObserver;
@@ -58,6 +58,19 @@ describe('Plan 76 A: the art note line, no pop-up', () => {
     f.componentInstance.on.set(true); f.detectChanges();
     await wait(1100);
     expect(f.componentInstance.n).toBe(0);
+  });
+
+  it('does not count while covered by a sheet; the 1 s restarts when uncovered', async () => {
+    await TestBed.configureTestingModule({ imports: [Host] }).compileComponents();
+    const f = TestBed.createComponent(Host); f.detectChanges();
+    const el = f.nativeElement.querySelector('.n') as HTMLElement;
+    FakeIO.show(el); await wait(600);
+    f.componentInstance.paused.set(true); f.detectChanges(); await wait(1200);
+    expect(f.componentInstance.n).toBe(0);
+    f.componentInstance.paused.set(false); f.detectChanges(); await wait(600);
+    expect(f.componentInstance.n).toBe(0);   // restarted, not resumed
+    await wait(600);
+    expect(f.componentInstance.n).toBe(1);
   });
 
   it('no feedback ask on the visit the note was marked seen', () => {
@@ -112,6 +125,22 @@ describe('Plan 76 A: the art note line, no pop-up', () => {
       const short = el.querySelector('.art-short') as HTMLElement;
       FakeIO.show(short); await wait(1100);
       expect(events.filter(e => e.name === 'art_note_shown').length).toBe(1);
+    });
+
+    it('the picker open over the line stops it counting', async () => {
+      const f = TestBed.createComponent(App); await settle(f);
+      const el = f.nativeElement as HTMLElement, app = f.componentInstance as any;
+      app.openPicker('bat'); await settle(f);
+      FakeIO.show(el.querySelector('.art-line') as HTMLElement); await wait(1200);
+      expect(events.some(e => e.name === 'art_note_shown')).toBe(false);
+      expect(localStorage.getItem('pr_art_note')).toBeNull();
+    });
+
+    it('a matchup-page link arrives as page', async () => {
+      history.replaceState(null, '', '/?b=ruthb101&by=1927&p=martp001&py=1999');
+      const f = TestBed.createComponent(App); await settle(f);
+      FakeIO.show((f.nativeElement as HTMLElement).querySelector('.art-line') as HTMLElement); await wait(1100);
+      expect(events.filter(e => e.name === 'art_note_shown').map(e => e.source)).toEqual(['page']);
     });
 
     it('About the art from the line and from the standing link send art_note_more line / link and open the art sheet', async () => {

@@ -24,7 +24,9 @@ export function flipWanted(old: FlipCard | null | undefined, next: string | null
 export class CardFlip {
   readonly state = signal<FlipState | null>(null);
   private token = 0;
-  constructor(private readonly load: (url: string) => Promise<boolean> = loadImage, private readonly reduced: () => boolean = prefersReducedMotion) {}
+  /** Plan 76 D: giveUp(url) runs when the hold times out with the picture still loading (the card then shows it as it arrives). */
+  constructor(private readonly load: (url: string) => Promise<boolean> = loadImage, private readonly reduced: () => boolean = prefersReducedMotion,
+              private readonly giveUp: (url: string) => void = () => undefined) {}
 
   /** Starts a flip from `old` to the picture at `next`; false (and nothing shown) when no flip is due. */
   start(role: FlipRole, old: FlipCard | null | undefined, next: string | null | undefined): boolean {
@@ -40,7 +42,7 @@ export class CardFlip {
       if (t !== this.token) return;
       if (loaded !== null) { this.open(t, loaded); return; }
       this.state.update(s => s && { ...s, phase: 'hold' });
-      setTimeout(() => { if (t === this.token && this.state()?.phase === 'hold') this.state.set(null); }, FLIP_HOLD_MAX);
+      setTimeout(() => { if (t === this.token && this.state()?.phase === 'hold') { this.giveUp(next!); this.state.set(null); } }, FLIP_HOLD_MAX);
     }, FLIP_HALF);
     return true;
   }

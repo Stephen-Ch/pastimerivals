@@ -52,7 +52,7 @@
           }
         </div>
         @if (noteLine()) {
-          <p class="art-line" (prArtNoteSeen)="artNoteSeen()">The drawings are generic ballplayers, not portraits. Uniforms are made up, in era styles.
+          <p class="art-line" (prArtNoteSeen)="artNoteSeen()" [prArtNotePaused]="notePaused()">The drawings are generic ballplayers, not portraits. Uniforms are made up, in era styles.
             <button type="button" class="link small inline-link" (click)="moreArtInfo('line')">About the art</button></p>
         } @else { <button type="button" class="link small about-art" (click)="moreArtInfo('link')">About the art</button> }
         @if (error()) {
@@ -64,7 +64,7 @@
               @for (o of outcomes; track o) { <span class="seg" [class]="'seg c-' + o" [style.width]="barWidth(o)"></span> }
             </div>
             <p class="top3">{{ topText() }}</p>
-            @if (pbpIntro().length && !firstView() && !noteLine()) { <p class="pbp-intro">{{ pbpIntro().join(' ') }}</p> }
+            @if (pbpIntro().length && !firstView()) { <p class="pbp-intro" [class.note-due]="noteLine()">{{ pbpIntro().join(' ') }}</p> }
             @if (sims()) { <button type="button" class="link small simline" (click)="openOverlay('sims')">Simulated: {{ simSummary() }} ›</button> }
           </div>
         }
@@ -79,7 +79,7 @@
           <button type="button" (click)="openChallenge('friend')">Challenge a friend</button>
         </div>
         <div class="links">
-          @if (noteLine()) { <span class="art-short" (prArtNoteSeen)="artNoteSeen()">{{ artShort }}</span> }
+          @if (noteLine()) { <span class="art-short" (prArtNoteSeen)="artNoteSeen()" [prArtNotePaused]="notePaused()">{{ artShort }}</span> }
           <button type="button" class="link small about-art-side" (click)="moreArtInfo('link')">About the art</button>
           <button type="button" class="link small how-link" (click)="openInfo('how')">How the sim works</button>
         </div>

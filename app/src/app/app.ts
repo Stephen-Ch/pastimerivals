@@ -220,6 +220,8 @@ export class App {
   protected readonly myGames = signal(0);
   /** Plan 38/39: info sheets (How the sim works, Simulate, About the art). */
   protected readonly info = signal<InfoKind | null>(null);
+  /** Plan 76 A: the note's 1 s only counts while nothing covers it (picker, info sheet, Details/Sims/Why). */
+  protected readonly notePaused = computed(() => !!this.picking() || !!this.info() || !!this.overlay());
   /** Plan 76 A: the one-line art note shows while due; once seen it stays until the player leaves this matchup screen. */
   protected readonly noteLine = signal(false);
   protected readonly artShort = ART_NOTE_SHORT;
@@ -315,7 +317,7 @@ export class App {
   /** Plan 52: a tile image that failed to load (reset whenever the pair changes). */
   protected readonly tileFailed = signal(false);
   /** Plan 73 Part D: the card turns over when a picked season changes its picture (never on page load). */
-  protected readonly flip = new CardFlip(url => loadImage(url).then(ok => { this.markCardReady(url); return ok; }));   // plan 76 D: the flip's picture counts as loaded
+  protected readonly flip = new CardFlip(url => loadImage(url).then(ok => { this.markCardReady(url); return ok; }), undefined, url => this.markCardReady(url));   // plan 76 D: the flip's picture counts as loaded
   /** Plan 76 D: card pictures that are loaded (or failed, or waited CARD_WAIT_MS): until then a card shows a placeholder. */
   protected readonly cardReady = signal<ReadonlySet<string>>(new Set());
   private readonly cardAsked = new Set<string>();
@@ -401,8 +403,8 @@ export class App {
     });
     // Plan 76 A: no pop-up. The line shows on the matchup screen while the note is due; after it was seen it hides when the screen changes.
     effect(() => {
-      const due = artNoteDue(), sc = this.screen();
-      untracked(() => { if (due) this.noteLine.set(true); else if (sc !== 'matchup') this.noteLine.set(false); });
+      const due = artNoteDue(), sc = this.screen(), away = this.challenge() !== undefined;   // Last Licks keeps screen 'matchup'
+      untracked(() => { if (due) this.noteLine.set(true); else if (sc !== 'matchup' || away) this.noteLine.set(false); });
     });
     const manifestLoad: Promise<ArtManifest | null> = (typeof fetch === 'function' ? fetch('/art-manifest.json') : Promise.reject())
       .then(r => (r.ok ? r.json() : null)).then(m => (m && m.tones && m.sheets && m.cards ? (m as ArtManifest) : null)).catch(() => null);
@@ -490,8 +492,10 @@ export class App {
       const m = pairs?.length ? await manifestLoad : null;
       return choosePair(pairs, m);
     })();
-    const late = new Promise<'late'>(res => setTimeout(() => res('late'), OPENER_LIMIT_MS));
+    let lateTimer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<'late'>(res => { lateTimer = setTimeout(() => res('late'), OPENER_LIMIT_MS); });
     const got = await Promise.race([work, late]);
+    clearTimeout(lateTimer);
     this.openerPending.set(false);
     const pick = got === 'late' ? choosePair(pairs, null) : got;   // at the limit: pairs without the art list if they came, else the fallback
     const p = this.pitcher(), b = this.batter();

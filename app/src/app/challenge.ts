@@ -1,6 +1,6 @@
 import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, DestroyRef, effect, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
-import { api, PlayerHit, SEASON_KIND_TEXT, SeasonItem, seasonKind } from './api';
+import { api, PlayerHit, SEASON_KIND_TEXT, SeasonItem, seasonKind, startSeason } from './api';
 import { ArtManifest, CfArt, cfArt, eraOf, fielderArt, ParkLook, parkLookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
 import { sideLine, sideNameLine } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
@@ -265,7 +265,7 @@ export class ChallengeFlow {
       if (!code || this.yourSide() === null) return;
       if (this.fbChecked === code) return;
       this.fbChecked = code;
-      this.askFeedback.set(feedbackDue(code, 2));
+      this.askFeedback.set(untracked(() => feedbackDue(code, 2)));   // plan 76 A: feedbackDue reads the art note's seen signal
     });
     effect(() => { this.step(); this.slotIndex(); this.editRank(); setTimeout(() => this.title()?.nativeElement.focus({ preventScroll: true }), 0); });
     // Plan 50: the voice. Leaving the game screens stops everything; each game loads all its intros; the next-batter panel
@@ -427,6 +427,7 @@ export class ChallengeFlow {
 
   protected readonly seasonKind = seasonKind;   // plan 76 C: badge text
   protected readonly kindText = SEASON_KIND_TEXT;
+  protected readonly startRow = computed(() => startSeason(this.seasons()));   // plan 76 C: the highlighted row is the best season
 
   protected async chooseSeason(s: SeasonItem) {
     const h = this.seasonsFor();

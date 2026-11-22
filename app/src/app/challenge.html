@@ -94,7 +94,7 @@
             @if (seasonsLoading()) { <p class="muted pad" role="status">Loading seasons...</p> }
             <ul class="list">
               @for (se of seasons(); track se.year) {
-                <li><button type="button" [class.best]="se.isDefault" (click)="chooseSeason(se)" [disabled]="busy()">
+                <li><button type="button" [class.best]="se === startRow()" (click)="chooseSeason(se)" [disabled]="busy()">
                   <strong>{{ se.year }}</strong> {{ se.teams }} <span class="muted">{{ se.line }}</span>
                   @if (seasonKind(se); as k) { <span class="badge">{{ kindText[k] }}</span> }
                 </button></li>
@@ -235,7 +235,7 @@
             @if (pbpRecap().length) { <p class="base-line">{{ pbpRecap().join(' ') }}</p> }
             @else if (baseText()) { <p class="base-line">{{ baseText() }}</p> }
             @if (halfCard()) { <p class="half-card">{{ halfCard() }}</p> }
-            @if (revealed() === 0) { <p class="note">@if (isInningGame()) { One inning. Most runs wins. }Tap Pitch to see each at-bat.@if (llArt()) { <span class="ll-art" (prArtNoteSeen)="artNoteSeen()"> {{ artShort }}</span> }</p> }
+            @if (revealed() === 0) { <p class="note">@if (isInningGame()) { One inning. Most runs wins. }Tap Pitch to see each at-bat.@if (llArt()) { <span class="ll-art" (prArtNoteSeen)="artNoteSeen()" [prArtNotePaused]="!!info()"> {{ artShort }}</span> }</p> }
             @if (nextAtBat(); as n) {
               <p class="muted">{{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) + ' · ' + batsLine(n.battingSide) : roundLabel(n) + ' · ' + sideName(n.battingSide) + ' batting' }}</p>
               <p class="call">{{ n.batter.name }} <span class="muted">{{ n.batter.year }}</span></p>

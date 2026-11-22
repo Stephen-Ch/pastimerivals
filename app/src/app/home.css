@@ -8,6 +8,8 @@
 .home-row .links { grid-column: 1 / -1; display: flex; justify-content: center; gap: 18px; }
 .home-row .links .link { min-height: 28px; }
 .about-art-side, .how-head { display: none; }
+/* Plan 76 A: in portrait the art note line takes the play-by-play intro's place while it shows. */
+@media (orientation: portrait) { .pbp-intro.note-due { display: none; } }
 /* Short phones (portrait): How it works moves to the header, the mode buttons get smaller. */
 @media (orientation: portrait) and (max-height: 640px) {
   .how-head { display: inline; }

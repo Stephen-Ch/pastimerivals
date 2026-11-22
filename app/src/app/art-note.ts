@@ -1,4 +1,4 @@
-import { Directive, ElementRef, OnDestroy, OnInit, inject, output, signal } from '@angular/core';
+import { Directive, ElementRef, OnDestroy, OnInit, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { SEEN_KEY } from './art';
 
 /**
@@ -52,6 +52,11 @@ export function resetArtNoteVisit() { snapshot = null; seen.set(false); arrival 
 @Directive({ selector: '[prArtNoteSeen]' })
 export class ArtNoteSeen implements OnInit, OnDestroy {
   readonly seenNote = output<void>({ alias: 'prArtNoteSeen' });
+  /** Covered by a sheet: the 1 s does not run (and restarts from zero when uncovered). */
+  readonly paused = input(false, { alias: 'prArtNotePaused' });
+  private onScreen = false;
+  private readonly pauseWatch = effect(() => { this.paused(); untracked(() => this.update()); });
+  private readonly onVis = () => this.update();
   private readonly el = inject<ElementRef<HTMLElement>>(ElementRef);
   private io: IntersectionObserver | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -59,15 +64,25 @@ export class ArtNoteSeen implements OnInit, OnDestroy {
   ngOnInit(): void {
     if (typeof IntersectionObserver !== 'function') return;
     this.io = new IntersectionObserver(entries => {
-      const on = entries.some(e => e.isIntersecting && e.intersectionRatio > 0);
-      if (on && !this.timer) this.timer = setTimeout(() => { this.timer = null; this.stop(); this.seenNote.emit(); }, ART_NOTE_SEEN_MS);
-      else if (!on) this.clear();
+      this.onScreen = entries.some(e => e.isIntersecting && e.intersectionRatio > 0);
+      this.update();
     });
     this.io.observe(this.el.nativeElement);
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVis);
   }
 
   ngOnDestroy(): void { this.stop(); }
 
+  /** Counts only while on screen, not covered, and the tab is visible. */
+  private update() {
+    const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    const on = !!this.io && this.onScreen && !this.paused() && visible;
+    if (on && !this.timer) this.timer = setTimeout(() => { this.timer = null; this.stop(); this.seenNote.emit(); }, ART_NOTE_SEEN_MS);
+    else if (!on) this.clear();
+  }
   private clear() { if (this.timer) { clearTimeout(this.timer); this.timer = null; } }
-  private stop() { this.clear(); this.io?.disconnect(); this.io = null; }
+  private stop() {
+    this.clear(); this.io?.disconnect(); this.io = null;
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVis);
+  }
 }
