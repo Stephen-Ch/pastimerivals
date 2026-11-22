@@ -5,7 +5,8 @@ import { api, FeaturedItem, MatchupView, PitchResult, PlayerHit, Report, SEASON_
 import { ReportView } from './report';
 import { ChallengeFlow } from './challenge';
 import { Feedback, feedbackDue } from './feedback';
-import { capi } from './challenge-api';
+import { capi, type CMine } from './challenge-api';
+import { gamesLinkText, waitingCount } from './game-status';
 import { PitchScene } from './pitch-scene';
 import { ERA_BOARD, lastName, Scoreboard, shortYear } from './scoreboard';
 import { sideLine } from './side-line';
@@ -218,6 +219,10 @@ export class App {
 
   // ---- Plan 39: the matchup is home ----
   protected readonly myGames = signal(0);
+  /** Plan 69: results waiting (played, not yet seen) plus rematches addressed to you. */
+  protected readonly myWaiting = signal(0);
+  protected readonly gamesLink = computed(() => gamesLinkText(this.myGames(), this.myWaiting(), false));
+  private setMine(m: CMine[]) { this.myGames.set(m.length); this.myWaiting.set(waitingCount(m)); }
   /** Plan 38/39: info sheets (How the sim works, Simulate, About the art). */
   protected readonly info = signal<InfoKind | null>(null);
   /** Plan 76 A: the note's 1 s only counts while nothing covers it (picker, info sheet, Details/Sims/Why). */
@@ -234,7 +239,7 @@ export class App {
     this.playPushed = false; this.overlayPushed = false;   // plan 39 X1: the next Pitch pushes its own entry
     this.screen.set('matchup');
     if (!this.matchup() && !this.busy() && this.pick()) this.load();
-    capi.mine().then(m => this.myGames.set(m.length)).catch(() => undefined);
+    capi.mine().then(m => this.setMine(m)).catch(() => undefined);
   }
 
   // ---- Plan 23: one screen at a time ----
@@ -469,7 +474,7 @@ export class App {
         void this.load();
       } else if (first) this.load();
       else void this.randomOpener(manifestLoad);   // plan 39 E: returning visitors get a random matchup
-      capi.mine().then(m => this.myGames.set(m.length)).catch(() => undefined);
+      capi.mine().then(m => this.setMine(m)).catch(() => undefined);
       if (this.challenge() === undefined && first) {
         this.firstView.set(true);
         api.event('first_view', this.session);

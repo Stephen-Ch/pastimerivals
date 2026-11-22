@@ -132,12 +132,14 @@ public static class ChallengeEndpoints
         {
             var g = await CurrentGuest(ctx, store);
             if (g is null) return Results.Ok(Array.Empty<object>());
-            var list = await store.MineAsync(g.Id, 50);
+            // Plan 69: friend games and computer games are taken apart, so a night of computer play cannot push friend games off the list.
             var now = DateTime.UtcNow;
+            var list = await store.MineAsync(g.Id, MineFriendGames, MineCpuGames, now);
             return Results.Ok(list.Select(s => new
             {
                 s.Code, you = s.Side == 0 ? "creator" : "opponent", s.CreatorName, s.OpponentName, s.CreatedUtc, s.VsCpu, s.Mode,
                 status = s.Status == ChallengeStatus.Open && s.OpponentName is null && s.ExpiresUtc <= now ? "expired" : s.Status.ToString().ToLowerInvariant(),
+                stage = GameStage.Of(s, now), rematchSent = s.RematchMade,
             }));
         });
 
@@ -168,6 +170,17 @@ public static class ChallengeEndpoints
             if (!Identity.CodePattern().IsMatch(code) || await store.GetAsync(code) is not { } ch) { misses.Miss(ip); return Results.NotFound(); }
             if (await SideOf(ch, ctx, store) != 0) return Results.NotFound();
             await Funnel(store, code, "sent");
+            return Results.NoContent();
+        });
+
+        // Plan 69: the friend shared or copied the result back to the creator (friend side only, played friend games only).
+        write.MapPost("/challenges/{code}/told", async (string code, HttpContext ctx, IChallengeStore store, MissCounter misses) =>
+        {
+            var ip = MissCounter.KeyFor(ctx);
+            if (misses.Blocked(ip)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            if (!Identity.CodePattern().IsMatch(code) || await store.GetAsync(code) is not { } ch) { misses.Miss(ip); return Results.NotFound(); }
+            if (ch.VsCpu || ch.Status != ChallengeStatus.Resolved || await SideOf(ch, ctx, store) != 1) return Results.NotFound();
+            await Funnel(store, code, "told");
             return Results.NoContent();
         });
 
@@ -379,11 +392,11 @@ public static class ChallengeEndpoints
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Pastime Rivals funnel, last {days} days (UTC; friend challenges grouped by the day they were created)");
-        sb.AppendLine("day         kind     mode     created  sent  opened  opened-late  picking  played  watched");
+        sb.AppendLine("day         kind     mode     created  sent  opened  opened-late  picking  played  watched  told (share tapped)");
         foreach (var d in r.Days)
-            sb.AppendLine($"{d.Day:yyyy-MM-dd}  {(d.Rematch ? "rematch" : "first  ")}  {d.Mode,-7}  {d.Created,7}  {d.Sent,4}  {d.Opened,6}  {d.OpenedExpired,11}  {d.Picking,7}  {d.Played,6}  {d.Watched,7}");
+            sb.AppendLine($"{d.Day:yyyy-MM-dd}  {(d.Rematch ? "rematch" : "first  ")}  {d.Mode,-7}  {d.Created,7}  {d.Sent,4}  {d.Opened,6}  {d.OpenedExpired,11}  {d.Picking,7}  {d.Played,6}  {d.Watched,7}  {d.Told,19}");
         int T(Func<FunnelDay, int> f) => r.Days.Sum(f);
-        sb.AppendLine($"TOTAL                          {T(d => d.Created),7}  {T(d => d.Sent),4}  {T(d => d.Opened),6}  {T(d => d.OpenedExpired),11}  {T(d => d.Picking),7}  {T(d => d.Played),6}  {T(d => d.Watched),7}");
+        sb.AppendLine($"TOTAL                          {T(d => d.Created),7}  {T(d => d.Sent),4}  {T(d => d.Opened),6}  {T(d => d.OpenedExpired),11}  {T(d => d.Picking),7}  {T(d => d.Played),6}  {T(d => d.Watched),7}  {T(d => d.Told),19}");
         sb.AppendLine($"Spread (friends who played and later made their own challenge): {r.Spread}");
         sb.AppendLine($"Computer games (kept 30 days): {r.Computer.Sum(c => c.Games)}" + (r.Computer.Count > 0 ? " | " + string.Join(", ", r.Computer.Select(c => $"{c.Day:MM-dd} {c.Games}")) : ""));
         sb.AppendLine("App opens by source: " + (r.Sources.Count == 0 ? "none yet" : string.Join(", ", r.Sources.Select(s => $"{s.Source} {s.Opens}"))));
@@ -397,6 +410,8 @@ public static class ChallengeEndpoints
     }
 
     public const int FeedbackPerIpPerDay = 10;
+    /// <summary>Plan 69: "Your games" keeps the newest 40 friend games and the newest 10 computer games.</summary>
+    public const int MineFriendGames = 40, MineCpuGames = 10;
     /// <summary>Plan 30 reason keys: thumbs up "What do you like?", thumbs down "What would make it better?".</summary>
     public static readonly HashSet<string> FeedbackUp = new() { "oldtime", "friends", "quick", "animation" };
     public static readonly HashSet<string> FeedbackDown = new() { "hard", "confusing", "slow", "players" };

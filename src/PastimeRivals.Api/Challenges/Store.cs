@@ -14,12 +14,42 @@ public sealed record Challenge(
 
 public sealed record StoredPick(int Side, int Slot, int Rank, string PlayerId, int Year);
 
-public sealed record ChallengeSummary(string Code, int Side, ChallengeStatus Status, string CreatorName, string? OpponentName, DateTime CreatedUtc, DateTime ExpiresUtc, bool VsCpu = false, string Mode = Rules.Classic);
+public sealed record ChallengeSummary(string Code, int Side, ChallengeStatus Status, string CreatorName, string? OpponentName, DateTime CreatedUtc, DateTime ExpiresUtc, bool VsCpu = false, string Mode = Rules.Classic,
+    GameSteps Steps = default, bool RematchMade = false, bool RematchForYou = false);
+
+/// <summary>Plan 69: which funnel steps a friend game has reached (ch_funnel rows).</summary>
+public readonly record struct GameSteps(bool Sent = false, bool Opened = false, bool OpenedExpired = false, bool Picking = false, bool Played = false, bool Watched = false, bool Told = false);
+
+/// <summary>Plan 69: the status line of one row in "Your games".</summary>
+public static class GameStage
+{
+    public const string ExpiredLate = "expired_late", Expired = "expired", Result = "result", Done = "done",
+        Picking = "picking", Opened = "opened", Sent = "sent", Unsent = "unsent", YouPlayed = "you_played", RematchForYou = "rematch_for_you";
+
+    /// <summary>Null for computer games (their row is unchanged). Uses the computed status: open, no opponent, past expiry = expired.</summary>
+    public static string? Of(ChallengeSummary s, DateTime nowUtc)
+    {
+        if (s.VsCpu) return null;
+        if (s.RematchForYou) return RematchForYou;
+        var status = s.Status == ChallengeStatus.Open && s.OpponentName is null && s.ExpiresUtc <= nowUtc ? ChallengeStatus.Expired : s.Status;
+        if (s.Side != 0) return status == ChallengeStatus.Resolved ? YouPlayed : null;
+        var f = s.Steps;
+        return status switch
+        {
+            ChallengeStatus.Expired => f.OpenedExpired ? ExpiredLate : Expired,
+            ChallengeStatus.Resolved => f.Played && !f.Watched ? Result : Done,
+            _ => f.Picking ? Picking : f.Opened ? Opened : f.Sent ? Sent : Unsent,
+        };
+    }
+
+    /// <summary>Rows that light up the "result waiting" badge.</summary>
+    public static bool Waiting(string? stage) => stage is Result or RematchForYou;
+}
 
 public enum LockOutcome { Locked, Taken, NotFound, Expired, OwnChallenge, NotForYou }
 
 /// <summary>Plan 29 funnel readout: one row per day the challenges were created, first challenges and rematches apart.</summary>
-public sealed record FunnelDay(DateTime Day, bool Rematch, int Created, int Sent, int Opened, int OpenedExpired, int Picking, int Played, int Watched, string Mode = Rules.Classic);
+public sealed record FunnelDay(DateTime Day, bool Rematch, int Created, int Sent, int Opened, int OpenedExpired, int Picking, int Played, int Watched, string Mode = Rules.Classic, int Told = 0);
 public sealed record FunnelReport(IReadOnlyList<FunnelDay> Days, int Spread, IReadOnlyList<(DateTime Day, int Games)> Computer, IReadOnlyList<(string Source, int Opens)> Sources,
     FeedbackSummary? Feedback = null);
 
@@ -62,7 +92,8 @@ public interface IChallengeStore
     /// <summary>Deletes a small batch of computer games older than the cutoff (plan 25 retention).</summary>
     Task PurgeCpuGamesAsync(DateTime beforeUtc);
     Task<int> OpenCountAsync(Guid creatorId, DateTime nowUtc);
-    Task<IReadOnlyList<ChallengeSummary>> MineAsync(Guid guestId, int take);
+    /// <summary>Plan 69: newest friend games and newest computer games, taken apart, plus open rematches addressed to this guest; with funnel steps.</summary>
+    Task<IReadOnlyList<ChallengeSummary>> MineAsync(Guid guestId, int friendTake, int cpuTake, DateTime nowUtc);
 
     /// <summary>Plan 29: records a funnel step once per friend challenge (never for computer games).
     /// notFromIp: only when the visitor's address differs from the creator's.</summary>

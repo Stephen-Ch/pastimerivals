@@ -13,14 +13,21 @@
         <button type="button" class="link small how-link" (click)="openInfo('how')">How the sim works</button>
         @if (mine().length) {
           <h2 class="sub">Your games</h2>
+          @if (mineWaiting()) { <p class="note waiting-line" role="status"><strong>{{ waitingText(mineWaiting()) }}</strong></p> }
           <ul class="list">
-            @for (m of mine(); track m.code) {
-              <li><button type="button" class="row-btn" (click)="openMine(m.code)">
+            @for (m of mineShown(); track m.code) {
+              <li><button type="button" class="row-btn" [class.best]="isWaiting(m)" (click)="openMine(m.code)">
                 <span>{{ m.vsCpu ? 'You vs the Computer' : m.you === 'creator' ? 'You vs ' + (m.opponentName ?? 'waiting for a friend') : m.creatorName + ' vs you' }}
-                  <span class="muted"> · {{ m.status === 'resolved' ? 'played' : m.status }}@if (m.mode !== 'inning') { · classic game }</span></span><span class="chev" aria-hidden="true">›</span>
+                  <span class="muted"> · {{ stageWords(m) }}@if (m.mode !== 'inning') { · classic game }</span></span><span class="chev" aria-hidden="true">›</span>
               </button></li>
             }
           </ul>
+          @if (minePages() > 1) {
+            <div class="chosen mine-pager">
+              @if (minePage() > 0) { <button type="button" class="link small" (click)="pageMine(-1)">‹ Newer</button> } @else { <span></span> }
+              @if (minePage() < minePages() - 1) { <button type="button" class="link small" (click)="pageMine(1)">Older ›</button> }
+            </div>
+          }
         }
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>

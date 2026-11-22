@@ -32,7 +32,7 @@ const STUBS: [RegExp, (route: Route, url: URL, fixture: Fx) => Promise<void>][] 
   [/^\/api\/players\/[^/]+\/seasons$/, (r, _u, fixture) => json(r, fixture('seasons.json'))],
   [/^\/api\/card$/, (r, u, fixture) => json(r, fixture(u.searchParams.get('role') === 'pit' ? 'card-pit.json' : 'card-bat.json'))],
   [/^\/api\/me$/, r => json(r, '{"nickname":null}')],
-  [/^\/api\/challenges\/mine$/, r => json(r, '[]')],
+  [/^\/api\/challenges\/mine$/, (r, _u, fixture) => json(r, fixture('mine.json'))],   // plan 69: swap for mine-status.json
   [new RegExp(`^/api/challenges/${LL_CODE}$`), (r, _u, fixture) => json(r, fixture('challenge-inning.json'))],
   [new RegExp(`^/api/challenges/${LL_CODE}/`), r => r.fulfill({ status: 204 })],
   [/^\/api\/challenges(\/.*)?$/, r => json(r, '{}', 404)],

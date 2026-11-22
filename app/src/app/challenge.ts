@@ -20,6 +20,7 @@ import { awayHome, boardOrder, firstWord, headerParts, ownTag, sideColor, TEAM_B
 import {
   CAtBat, capi, CEra, ChallengeError, CClash, CMine, CPlayer, CSlot, CView, GameMode, keyFor, links, saveKey, setWatched, takeKeyFromHash, toBody, watched,
 } from './challenge-api';
+import { isWaiting, orderMine, pageCount, pageOf, stageWords, waitingCount, waitingText } from './game-status';
 
 type Step = 'loading' | 'home' | 'intro' | 'pick' | 'review' | 'shared' | 'waiting' | 'play' | 'final' | 'closed';
 type Mode = 'create' | 'accept' | 'rematch' | 'cpu';
@@ -117,6 +118,16 @@ export class ChallengeFlow {
   protected readonly note = signal<string | null>(null);
   protected readonly closedText = signal('');
   protected readonly mine = signal<CMine[]>([]);
+  /** Plan 69: status order, 4 rows a page (Older / Newer, no scrolling), and the "result waiting" line. */
+  protected readonly minePage = signal(0);
+  protected readonly mineOrdered = computed(() => orderMine(this.mine()));
+  protected readonly minePages = computed(() => pageCount(this.mineOrdered().length));
+  protected readonly mineShown = computed(() => pageOf(this.mineOrdered(), this.minePage()));
+  protected readonly mineWaiting = computed(() => waitingCount(this.mine()));
+  protected readonly stageWords = stageWords;
+  protected readonly isWaiting = isWaiting;
+  protected readonly waitingText = waitingText;
+  protected pageMine(d: 1 | -1) { this.minePage.update(p => Math.min(this.minePages() - 1, Math.max(0, p + d))); }
   private readonly title = viewChild<ElementRef<HTMLElement>>('stepTitle');
 
   // Team being picked: 4 slots, each first choice plus up to 2 backups.
@@ -322,6 +333,7 @@ export class ChallengeFlow {
   private async home() {
     this.current.set(null); this.view.set(null); this.mode.set('create');
     this.step.set('home');
+    this.minePage.set(0);
     try { this.mine.set(await capi.mine()); } catch { this.mine.set([]); }
   }
 
@@ -647,7 +659,9 @@ export class ChallengeFlow {
     const score = `${v.creatorName} ${g.totals[0]}, ${v.opponentName ?? 'Friend'} ${g.totals[1]}${v.mode === 'inning' ? ' (runs)' : ''}`;
     const text = v.vsCpu ? 'Watch my game against the Computer on Pastime Rivals!'
       : v.you === 'opponent' ? `I played your Pastime Rivals challenge. Watch the game!` : `Watch our Pastime Rivals game!`;
-    await this.shareOut(text, this.shareLink(), score);
+    const shared = await this.shareOut(text, this.shareLink(), score);
+    // Plan 69: count the friend's share-back (the server takes it from the friend side of a played friend game only).
+    if (shared && v.you === 'opponent' && !v.vsCpu) void capi.funnel(v.code, 'told');
   }
 
   /** True when the link was shared or copied. */

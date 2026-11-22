@@ -130,7 +130,7 @@ public sealed class MemoryChallengeStore : IChallengeStore
             int Has(Challenge c, string st) => _funnel.Contains((c.Code, st)) ? 1 : 0;
             var days = all.Where(c => !c.VsCpu).GroupBy(c => (c.CreatedUtc.Date, c.RematchOf is not null, c.Mode)).OrderBy(g => g.Key)
                 .Select(g => new FunnelDay(g.Key.Date, g.Key.Item2, g.Count(), g.Sum(c => Has(c, "sent")), g.Sum(c => Has(c, "opened")), g.Sum(c => Has(c, "opened_expired")),
-                    g.Sum(c => Has(c, "picking")), g.Sum(c => Has(c, "played")), g.Sum(c => Has(c, "watched")), g.Key.Mode)).ToList();
+                    g.Sum(c => Has(c, "picking")), g.Sum(c => Has(c, "played")), g.Sum(c => Has(c, "watched")), g.Key.Mode, g.Sum(c => Has(c, "told")))).ToList();
             var friends = _ch.Values.Select(v => v.C).Where(c => !c.VsCpu).ToList();
             var spread = all.Where(a => !a.VsCpu && a.OpponentId is { } o && friends.Any(b => b.CreatorId == o && b.CreatedUtc > a.CreatedUtc)).Select(a => a.OpponentId).Distinct().Count();
             var cpu = all.Where(c => c.VsCpu).GroupBy(c => c.CreatedUtc.Date).Select(g => (g.Key, g.Count())).ToList();
@@ -154,11 +154,21 @@ public sealed class MemoryChallengeStore : IChallengeStore
     {
         lock (_gate) return Task.FromResult(_ch.Values.Count(v => v.C.CreatorId == id && v.C.Status == ChallengeStatus.Open && v.C.OpponentId is null && v.C.ExpiresUtc > now));
     }
-    public Task<IReadOnlyList<ChallengeSummary>> MineAsync(Guid id, int take)
+    public Task<IReadOnlyList<ChallengeSummary>> MineAsync(Guid id, int friendTake, int cpuTake, DateTime now)
     {
-        lock (_gate) return Task.FromResult<IReadOnlyList<ChallengeSummary>>(_ch.Values.Select(v => v.C).Where(c => c.CreatorId == id || c.OpponentId == id)
-            .OrderByDescending(c => c.CreatedUtc).Take(take)
-            .Select(c => new ChallengeSummary(c.Code, c.CreatorId == id ? 0 : 1, c.Status, c.CreatorName, c.OpponentName, c.CreatedUtc, c.ExpiresUtc, c.VsCpu, c.Mode)).ToList());
+        lock (_gate)
+        {
+            var all = _ch.Values.Select(v => v.C).ToList();
+            var mine = all.Where(c => c.CreatorId == id || c.OpponentId == id).OrderByDescending(c => c.CreatedUtc).ToList();
+            var forYou = all.Where(c => c.RematchFor == id && c.CreatorId != id && c.OpponentId is null && c.Status == ChallengeStatus.Open && c.ExpiresUtc > now)
+                .OrderByDescending(c => c.CreatedUtc).Take(10);
+            bool Has(string code, string st) => _funnel.Contains((code, st));
+            return Task.FromResult<IReadOnlyList<ChallengeSummary>>(mine.Where(c => !c.VsCpu).Take(friendTake).Concat(mine.Where(c => c.VsCpu).Take(cpuTake)).Concat(forYou)
+                .OrderByDescending(c => c.CreatedUtc)
+                .Select(c => new ChallengeSummary(c.Code, c.CreatorId == id ? 0 : 1, c.Status, c.CreatorName, c.OpponentName, c.CreatedUtc, c.ExpiresUtc, c.VsCpu, c.Mode,
+                    new GameSteps(Has(c.Code, "sent"), Has(c.Code, "opened"), Has(c.Code, "opened_expired"), Has(c.Code, "picking"), Has(c.Code, "played"), Has(c.Code, "watched"), Has(c.Code, "told")),
+                    all.Any(x => x.RematchOf == c.Code && x.CreatorId == id), c.RematchFor == id && c.CreatorId != id && c.OpponentId is null)).ToList());
+        }
     }
 
     /// <summary>Test hook: push a challenge's expiry into the past.</summary>
@@ -166,7 +176,7 @@ public sealed class MemoryChallengeStore : IChallengeStore
 }
 
 /// <summary>Runs every scenario against the in-memory store; ChallengeSqlTests reruns them on a real SQL Server.</summary>
-public class ChallengeApiTests
+public partial class ChallengeApiTests
 {
     protected virtual IChallengeStore NewStore() => new MemoryChallengeStore();
 
@@ -342,8 +352,8 @@ public class ChallengeApiTests
             var res = await admin.SendAsync(req);
             return res.StatusCode == HttpStatusCode.OK ? await res.Content.ReadAsStringAsync() : res.StatusCode.ToString();
         }
-        // TOTAL created sent opened opened-late picking played watched
-        async Task<int[]> Totals() => System.Text.RegularExpressions.Regex.Match(await Readout(), @"TOTAL((\s+\d+){7})").Groups[1].Value
+        // TOTAL created sent opened opened-late picking played watched told
+        async Task<int[]> Totals() => System.Text.RegularExpressions.Regex.Match(await Readout(), @"TOTAL((\s+\d+){8})").Groups[1].Value
             .Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToArray();
 
         var creator = await Browser(f);
@@ -362,7 +372,7 @@ public class ChallengeApiTests
         sameHouse.DefaultRequestHeaders.Add("X-Test-Ip", "10.0.0.1");
         await sameHouse.GetAsync($"/api/challenges/{code}");
         var mid = await Totals();
-        Assert.Equal(new[] { 1, 1, 0, 0, 0, 0, 0 }, mid.Zip(before, (a, b) => a - b).ToArray());
+        Assert.Equal(new[] { 1, 1, 0, 0, 0, 0, 0, 0 }, mid.Zip(before, (a, b) => a - b).ToArray());
 
         var friend = await Browser(f);
         friend.DefaultRequestHeaders.Add("X-Test-Ip", "10.0.0.2");
@@ -376,7 +386,7 @@ public class ChallengeApiTests
         await creator.GetAsync($"/api/challenges/{code}");
         Assert.Equal(HttpStatusCode.OK, (await creator.PostAsJsonAsync("/api/challenges/computer", Picks("pit01", "bat01", "bat02", "bat03"))).StatusCode);
         var after = await Totals();
-        Assert.Equal(new[] { 1, 1, 1, 0, 1, 1, 1 }, after.Zip(before, (a, b) => a - b).ToArray());   // the computer game adds nothing here
+        Assert.Equal(new[] { 1, 1, 1, 0, 1, 1, 1, 0 }, after.Zip(before, (a, b) => a - b).ToArray());   // the computer game adds nothing here
         Assert.Matches(@"Computer games \(kept 30 days\): [1-9]", await Readout());
 
         Assert.Equal("NotFound", await Readout(null));

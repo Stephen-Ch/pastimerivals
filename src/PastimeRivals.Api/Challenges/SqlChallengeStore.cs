@@ -39,6 +39,7 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ch_rematch') CREATE INDEX ix_ch_rematch ON dbo.ch_challenges (rematch_of);
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_guest_ip') CREATE INDEX ix_guest_ip ON dbo.ch_guests (ip_hash, created_utc);
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ch_opponent') CREATE INDEX ix_ch_opponent ON dbo.ch_challenges (opponent_id, created_utc);
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ch_rematch_for') CREATE INDEX ix_ch_rematch_for ON dbo.ch_challenges (rematch_for);
         IF OBJECT_ID('dbo.ch_picks') IS NULL CREATE TABLE dbo.ch_picks (
           code VARCHAR(24) COLLATE Latin1_General_BIN2 NOT NULL, side TINYINT NOT NULL, slot TINYINT NOT NULL, rank TINYINT NOT NULL,
           player_id VARCHAR(12) NOT NULL, year SMALLINT NOT NULL, PRIMARY KEY (code, side, slot, rank));
@@ -338,19 +339,40 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         return (int)(await cmd.ExecuteScalarAsync())!;
     }
 
-    public async Task<IReadOnlyList<ChallengeSummary>> MineAsync(Guid guestId, int take)
+    public async Task<IReadOnlyList<ChallengeSummary>> MineAsync(Guid guestId, int friendTake, int cpuTake, DateTime nowUtc)
     {
         await using var c = await OpenAsync();
-        await using var cmd = Cmd(c, $"""
-            SELECT TOP (@t) code, CASE WHEN creator_id = @g THEN 0 ELSE 1 END, status, creator_name, opponent_name, created_utc, expires_utc, vs_cpu, ISNULL(mode, 0)
-            FROM dbo.ch_challenges WHERE creator_id = @g OR opponent_id = @g ORDER BY created_utc DESC
-            """, null, ("@t", take), ("@g", guestId));
+        await using var cmd = Cmd(c, """
+            WITH pick AS (
+                SELECT code FROM (SELECT TOP (@ft) code FROM dbo.ch_challenges WHERE (creator_id = @g OR opponent_id = @g) AND vs_cpu = 0 ORDER BY created_utc DESC) a
+                UNION ALL
+                SELECT code FROM (SELECT TOP (@ct) code FROM dbo.ch_challenges WHERE (creator_id = @g OR opponent_id = @g) AND vs_cpu = 1 ORDER BY created_utc DESC) b
+                UNION ALL
+                SELECT code FROM (SELECT TOP (10) code FROM dbo.ch_challenges WHERE rematch_for = @g AND creator_id <> @g AND opponent_id IS NULL AND status = 0 AND expires_utc > @n
+                    ORDER BY created_utc DESC) r)
+            SELECT ch.code, CASE WHEN ch.creator_id = @g THEN 0 ELSE 1 END, ch.status, ch.creator_name, ch.opponent_name, ch.created_utc, ch.expires_utc, ch.vs_cpu, ISNULL(ch.mode, 0),
+                   ISNULL(f.sent, 0), ISNULL(f.opened, 0), ISNULL(f.opened_expired, 0), ISNULL(f.picking, 0), ISNULL(f.played, 0), ISNULL(f.watched, 0), ISNULL(f.told, 0),
+                   CASE WHEN EXISTS (SELECT 1 FROM dbo.ch_challenges x WHERE x.rematch_of = ch.code AND x.creator_id = @g) THEN 1 ELSE 0 END,
+                   CASE WHEN ch.rematch_for = @g AND ch.creator_id <> @g AND ch.opponent_id IS NULL THEN 1 ELSE 0 END
+            FROM pick p JOIN dbo.ch_challenges ch ON ch.code = p.code
+            LEFT JOIN (SELECT code,
+                MAX(CASE WHEN step = 'sent' THEN 1 ELSE 0 END) sent, MAX(CASE WHEN step = 'opened' THEN 1 ELSE 0 END) opened,
+                MAX(CASE WHEN step = 'opened_expired' THEN 1 ELSE 0 END) opened_expired, MAX(CASE WHEN step = 'picking' THEN 1 ELSE 0 END) picking,
+                MAX(CASE WHEN step = 'played' THEN 1 ELSE 0 END) played, MAX(CASE WHEN step = 'watched' THEN 1 ELSE 0 END) watched,
+                MAX(CASE WHEN step = 'told' THEN 1 ELSE 0 END) told
+                FROM dbo.ch_funnel WHERE code IN (SELECT code FROM pick) GROUP BY code) f ON f.code = ch.code
+            ORDER BY ch.created_utc DESC
+            """, null, ("@ft", friendTake), ("@ct", cpuTake), ("@g", guestId), ("@n", nowUtc));
         await using var r = await cmd.ExecuteReaderAsync();
         var list = new List<ChallengeSummary>();
         while (await r.ReadAsync())
+        {
+            bool F(int i) => r.GetInt32(i) == 1;
             list.Add(new ChallengeSummary(r.GetString(0), r.GetInt32(1), (ChallengeStatus)r.GetByte(2), r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4),
                 DateTime.SpecifyKind(r.GetDateTime(5), DateTimeKind.Utc), DateTime.SpecifyKind(r.GetDateTime(6), DateTimeKind.Utc), r.GetBoolean(7),
-                r.GetByte(8) == 1 ? Rules.Inning : Rules.Classic));
+                r.GetByte(8) == 1 ? Rules.Inning : Rules.Classic,
+                new GameSteps(F(9), F(10), F(11), F(12), F(13), F(14), F(15)), F(16), F(17)));
+        }
         return list;
     }
 
@@ -375,12 +397,13 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         await using (var cmd = Cmd(c, """
             SELECT CAST(ch.created_utc AS date), CASE WHEN ch.rematch_of IS NULL THEN 0 ELSE 1 END, COUNT(*),
                    SUM(ISNULL(f.sent, 0)), SUM(ISNULL(f.opened, 0)), SUM(ISNULL(f.opened_expired, 0)),
-                   SUM(ISNULL(f.picking, 0)), SUM(ISNULL(f.played, 0)), SUM(ISNULL(f.watched, 0)), ISNULL(ch.mode, 0)
+                   SUM(ISNULL(f.picking, 0)), SUM(ISNULL(f.played, 0)), SUM(ISNULL(f.watched, 0)), ISNULL(ch.mode, 0), SUM(ISNULL(f.told, 0))
             FROM dbo.ch_challenges ch
             LEFT JOIN (SELECT code,
                 MAX(CASE WHEN step = 'sent' THEN 1 ELSE 0 END) sent, MAX(CASE WHEN step = 'opened' THEN 1 ELSE 0 END) opened,
                 MAX(CASE WHEN step = 'opened_expired' THEN 1 ELSE 0 END) opened_expired, MAX(CASE WHEN step = 'picking' THEN 1 ELSE 0 END) picking,
-                MAX(CASE WHEN step = 'played' THEN 1 ELSE 0 END) played, MAX(CASE WHEN step = 'watched' THEN 1 ELSE 0 END) watched
+                MAX(CASE WHEN step = 'played' THEN 1 ELSE 0 END) played, MAX(CASE WHEN step = 'watched' THEN 1 ELSE 0 END) watched,
+                MAX(CASE WHEN step = 'told' THEN 1 ELSE 0 END) told
                 FROM dbo.ch_funnel GROUP BY code) f ON f.code = ch.code
             WHERE ch.vs_cpu = 0 AND ch.created_utc >= @s
             GROUP BY CAST(ch.created_utc AS date), CASE WHEN ch.rematch_of IS NULL THEN 0 ELSE 1 END, ISNULL(ch.mode, 0)
@@ -389,7 +412,7 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
         await using (var r = await cmd.ExecuteReaderAsync())
             while (await r.ReadAsync())
                 days.Add(new FunnelDay(r.GetDateTime(0), r.GetInt32(1) == 1, r.GetInt32(2), r.GetInt32(3), r.GetInt32(4), r.GetInt32(5), r.GetInt32(6), r.GetInt32(7), r.GetInt32(8),
-                    r.GetByte(9) == 1 ? Rules.Inning : Rules.Classic));
+                    r.GetByte(9) == 1 ? Rules.Inning : Rules.Classic, r.GetInt32(10)));
 
         int spread;
         await using (var cmd = Cmd(c, """

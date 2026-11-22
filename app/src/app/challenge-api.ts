@@ -31,7 +31,10 @@ export interface CView {
   mode?: GameMode;
   era?: CEra | null;
 }
-export interface CMine { code: string; you: 'creator' | 'opponent'; creatorName: string; opponentName: string | null; createdUtc: string; status: string; vsCpu: boolean; mode?: GameMode; }
+export type CStage = 'expired_late' | 'expired' | 'result' | 'done' | 'picking' | 'opened' | 'sent' | 'unsent' | 'you_played' | 'rematch_for_you';
+/** Plan 69: stage (null for computer games, missing from older servers) and rematchSent drive the status words. */
+export interface CMine { code: string; you: 'creator' | 'opponent'; creatorName: string; opponentName: string | null; createdUtc: string; status: string; vsCpu: boolean; mode?: GameMode;
+  stage?: CStage | null; rematchSent?: boolean; }
 export interface CClash { creatorName: string; clashes: { slot: number; id: string; name: string }[]; }
 export interface CMe { nickname: string | null; choices: string[]; }
 
@@ -84,8 +87,8 @@ async function send<T>(method: string, url: string, body: unknown, retried = fal
   return r.json() as Promise<T>;
 }
 
-/** Plan 29: fire-and-forget funnel count (sent, picking). Never throws; the creator's private key goes along when we have it. */
-async function ping(code: string, step: 'sent' | 'picking'): Promise<void> {
+/** Plan 29: fire-and-forget funnel count (sent, picking; plan 69: told). Never throws; the creator's private key goes along when we have it. */
+async function ping(code: string, step: 'sent' | 'picking' | 'told'): Promise<void> {
   try {
     if (!readCookie('XSRF-TOKEN')) { xsrfReady ??= get<CMe>('/api/me'); await xsrfReady; }
     const headers: Record<string, string> = { 'X-XSRF-TOKEN': readCookie('XSRF-TOKEN') ?? '' };

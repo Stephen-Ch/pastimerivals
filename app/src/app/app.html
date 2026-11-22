@@ -7,7 +7,7 @@
   @switch (screen()) {
     @case ('matchup') {
       <header class="bar">
-        @if (myGames() > 0) { <button type="button" class="link" (click)="openChallenge()">Your games ({{ myGames() }})</button> }
+        @if (myGames() > 0) { <button type="button" class="link" (click)="openChallenge()">{{ gamesLink() }}</button> }
         @else { <span class="brand">Pastime Rivals</span> }
         <h1 #screenTitle tabindex="-1" class="sr-only">Pastime Rivals</h1>
         <span class="bar-links">
