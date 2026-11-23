@@ -9,7 +9,8 @@ public sealed record SlotIn(int Slot, List<PickChoiceIn> Choices);
 public sealed record FeedbackIn(string? Vote, string? Where, int? Level, string? Result, string? Mode = null);
 public sealed record FeedbackReasonsIn(string[]? Reasons);
 /// <summary>Mode (plan 38): "classic" or "inning"; old apps send none, which means classic.</summary>
-public sealed record PicksIn(List<SlotIn> Picks, string? Nickname, string? Turnstile, int? Level = null, int? Deco = null, string? Mode = null);
+/// <summary>Team (plan 79): a list name, a stored name on a rematch, or (79-A1, when switched on) a typed name. None = the server draws one.</summary>
+public sealed record PicksIn(List<SlotIn> Picks, string? Nickname, string? Turnstile, int? Level = null, int? Deco = null, string? Mode = null, string? Team = null);
 public sealed record NicknameIn(string Nickname);
 
 public sealed record PlayerOut(string Id, int Year, string Name, string Bats = "R", string Throws = "R", string Bio = "");
@@ -26,7 +27,9 @@ public sealed record EraOut(bool Dh, bool RunnerOnSecond, int Season, int Batter
 }
 public sealed record ChallengeView(string Code, string Status, string You, string CreatorName, string? OpponentName, DateTime ExpiresUtc,
     bool CanClaim, string? RematchOf, IReadOnlyList<SlotOut>? YourPicks, GameOut? Game, bool VsCpu = false, int CpuLevel = 1, int Deco = 1,
-    string Mode = Rules.Classic, EraOut? Era = null);
+    string Mode = Rules.Classic, EraOut? Era = null,
+    string? CreatorTeam = null, string? OpponentTeam = null, string? CreatorShort = null, string? OpponentShort = null, bool CreatorTyped = false, bool OpponentTyped = false,
+    IReadOnlyList<string>? TeamChoices = null);
 public sealed record CreatedOut(string Code, string Key);
 
 public static class ChallengeEndpoints
@@ -100,11 +103,11 @@ public static class ChallengeEndpoints
         });
 
         // Reading never creates a guest; it hands out the anti-forgery token the app sends back on every change.
-        api.MapGet("/me", async (HttpContext ctx, IChallengeStore store, IAntiforgery af) =>
+        api.MapGet("/me", async (HttpContext ctx, IChallengeStore store, IAntiforgery af, IConfiguration cfg) =>
         {
             IssueXsrf(ctx, af);
             var g = await CurrentGuest(ctx, store);
-            return Results.Ok(new { nickname = g?.Nickname, choices = Identity.NicknameChoices() });
+            return Results.Ok(new { nickname = g?.Nickname, choices = Identity.NicknameChoices(), teams = TeamNames.Suggest(4), typedNames = TypedNamesOn(cfg) });
         });
 
         var write = api.MapGroup("").AddEndpointFilter(async (ic, next) =>
@@ -139,7 +142,7 @@ public static class ChallengeEndpoints
             {
                 s.Code, you = s.Side == 0 ? "creator" : "opponent", s.CreatorName, s.OpponentName, s.CreatedUtc, s.VsCpu, s.Mode,
                 status = s.Status == ChallengeStatus.Open && s.OpponentName is null && s.ExpiresUtc <= now ? "expired" : s.Status.ToString().ToLowerInvariant(),
-                stage = GameStage.Of(s, now), rematchSent = s.RematchMade,
+                stage = GameStage.Of(s, now), rematchSent = s.RematchMade, s.CreatorTeam, s.OpponentTeam,
             }));
         });
 
@@ -233,6 +236,11 @@ public static class ChallengeEndpoints
             var ip = MissCounter.KeyFor(ctx);
             if (misses.Blocked(ip)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
             if (!Identity.CodePattern().IsMatch(code) || await store.GetAsync(code) is not { } before) { misses.Miss(ip); return Results.NotFound(); }
+            // Plan 79: the team name is checked first, before the one-use bot check.
+            var current0 = await CurrentGuest(ctx, store);
+            var trusted = before.RematchOf is { } ro && current0 is not null && await store.GetAsync(ro) is { } old ? StoredTeamOf(old, current0.Id) : null;
+            var (team, typed, teamErr) = await TeamFor(body.Team, before.CreatorTeam, trusted);
+            if (teamErr is not null) return teamErr;
             // Plan 38: an app that does not know this game's mode (an old app on an inning link) is told to refresh.
             if (ModeOf(body) != before.Mode) return Results.Conflict(new { error = "update" });
             if (!await ts.PassesAsync(body.Turnstile, ctx)) return Results.BadRequest(new { error = "Bot check failed. Try again." });
@@ -273,7 +281,7 @@ public static class ChallengeEndpoints
             var oracle = await play.OracleAsync();
             oracle.Top50(true); oracle.Top50(false); oracle.Warm(); // build the fallback pools and pitcher batting before the claim transaction starts
             var outcome = await store.LockAndResolveAsync(code, g.Id, g.Nickname, ToStored(body.Picks, side: 1), Identity.Hash(key), DateTime.UtcNow,
-                all => PlayGame(before, all, PlayService.NewSeed(), oracle));
+                all => PlayGame(before, all, PlayService.NewSeed(), oracle), team, typed);
             switch (outcome)
             {
                 case LockOutcome.NotFound: misses.Miss(ip); return Results.NotFound();
@@ -290,6 +298,8 @@ public static class ChallengeEndpoints
         // Plan 25: play the computer. The user is the home side (keeps every pick); the computer bats first.
         write.MapPost("/challenges/computer", async (PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, IConfiguration cfg, MissCounter misses) =>
         {
+            var (team, typed, teamErr) = await TeamFor(body.Team, null, null);
+            if (teamErr is not null) return teamErr;
             if (ModeOf(body) is not { } mode) return Results.BadRequest(new { error = "Unknown game mode." });
             var oracle0 = await play.OracleAsync();
             var era = mode == Rules.Inning ? EraOfBody(body, oracle0) : null;
@@ -323,7 +333,7 @@ public static class ChallengeEndpoints
             var key = Identity.NewToken();
             // Reserved for the computer, so nobody else can ever claim it.
             var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, ComputerId, null, null, null, VsCpu: true, CpuLevel: level,
-                Deco: DecoOf(body, mode), Mode: mode, Era: era);
+                Deco: DecoOf(body, mode), Mode: mode, Era: era, CreatorTeam: team, CreatorTyped: typed);
             await store.CreateChallengeAsync(ch, ToStored(body.Picks, side: 0), Identity.Hash(key), ipHash);
             var outcome = await store.LockAndResolveAsync(code, ComputerId, ComputerName, cpu, Identity.Hash(Identity.NewToken()), now,
                 all => PlayGame(ch, all, PlayService.NewSeed(), oracle));
@@ -348,8 +358,33 @@ public static class ChallengeEndpoints
             // Plan 38: a rematch keeps the game's mode (its era is worked out again from the new home side's picks).
             if (ModeOf(body) != ch.Mode) return Results.Conflict(new { error = "update" });
             var other = g.Id == ch.CreatorId ? ch.OpponentId : ch.CreatorId;
-            return await Create(body, ctx, store, play, ts, cfg, rematchOf: (code, other));
+            return await Create(body, ctx, store, play, ts, cfg, rematchOf: (code, other), trusted: StoredTeamOf(ch, g.Id));
         });
+    }
+
+    /// <summary>Plan 79-A1 switch: typed team names, default OFF (a School Edition copy can't inherit ON).</summary>
+    internal static bool TypedNamesOn(IConfiguration cfg) => cfg.GetValue("Teams:TypedNames", false);
+
+    /// <summary>Plan 79: a guest's stored team name in a game (for a rematch resend), or null.</summary>
+    internal static (string Name, bool Typed)? StoredTeamOf(Challenge ch, Guid guestId) =>
+        guestId == ch.CreatorId && ch.CreatorTeam is { } c ? (c, ch.CreatorTyped)
+        : guestId == ch.OpponentId && ch.OpponentTeam is { } o ? (o, ch.OpponentTyped) : null;
+
+    /// <summary>
+    /// Plan 79 A: the team name a side plays under. None given (old tabs) = the server draws one. A list name is kept; so is
+    /// this guest's stored name from the game being rematched (stored names are trusted, even after a word leaves the lists).
+    /// Anything else is refused. The two sides never share a name or a city: a stale tab that clashes gets a fresh draw.
+    /// </summary>
+    internal static Task<(string? Team, bool Typed, IResult? Error)> TeamFor(string? given, string? avoid, (string Name, bool Typed)? trusted)
+    {
+        string? team; bool typed = false;
+        if (given is null) team = TeamNames.Suggest(1, avoid)[0];
+        else if (trusted is { } t && given == t.Name) { team = t.Name; typed = t.Typed; }
+        else if (TeamNames.IsListName(given)) team = given;
+        else return Task.FromResult<(string?, bool, IResult?)>((null, false, Results.BadRequest(new { error = "Try another name." })));
+        if (avoid is not null && (team == avoid || (TeamNames.CityOf(team) is { } city && city == TeamNames.CityOf(avoid))))
+            (team, typed) = (TeamNames.Suggest(1, avoid)[0], false);
+        return Task.FromResult<(string?, bool, IResult?)>((team, typed, null));
     }
 
     /// <summary>Plan 32A: decoration version the creating app used (count and call text). Old apps send none = 1.</summary>
@@ -466,8 +501,11 @@ public static class ChallengeEndpoints
     }
 
     private static async Task<IResult> Create(PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, Turnstile ts, IConfiguration cfg,
-        (string Code, Guid? Other)? rematchOf)
+        (string Code, Guid? Other)? rematchOf, (string Name, bool Typed)? trusted = null)
     {
+        // Plan 79: the team name is checked first, before the one-use bot check.
+        var (team, typed, teamErr) = await TeamFor(body.Team, null, trusted);
+        if (teamErr is not null) return teamErr;
         if (!await ts.PassesAsync(body.Turnstile, ctx)) return Results.BadRequest(new { error = "Bot check failed. Try again." });
         if (ModeOf(body) is not { } mode) return Results.BadRequest(new { error = "Unknown game mode." });
         var era = mode == Rules.Inning ? EraOfBody(body, await play.OracleAsync()) : null;
@@ -491,7 +529,7 @@ public static class ChallengeEndpoints
         var code = Identity.NewCode();
         var key = Identity.NewToken();
         var ch = new Challenge(code, g.Id, g.Nickname, null, null, ChallengeStatus.Open, now, now + Lifetime, rematchOf?.Other, rematchOf?.Code, null, null,
-            Deco: DecoOf(body, mode), Mode: mode, Era: era);
+            Deco: DecoOf(body, mode), Mode: mode, Era: era, CreatorTeam: team, CreatorTyped: typed);
         await store.CreateChallengeAsync(ch, ToStored(body.Picks, side: 0), Identity.Hash(key), ipHash);
         return Results.Ok(new CreatedOut(code, key));
     }
@@ -610,6 +648,9 @@ public static class ChallengeEndpoints
             game ??= new GameOut(lineups, outs, ch.Totals!, ch.Winner ?? -1, ch.Notes ?? new List<string>());
         }
         return new ChallengeView(ch.Code, ch.Status.ToString().ToLowerInvariant(), you, ch.CreatorName, ch.OpponentName, ch.ExpiresUtc,
-            canClaim, ch.RematchOf, yourPicks, game, ch.VsCpu, ch.CpuLevel ?? 1, ch.Deco ?? 1, ch.Mode, ch.Era is null ? null : EraOut.Of(ch.Era));
+            canClaim, ch.RematchOf, yourPicks, game, ch.VsCpu, ch.CpuLevel ?? 1, ch.Deco ?? 1, ch.Mode, ch.Era is null ? null : EraOut.Of(ch.Era),
+            ch.CreatorTeam, ch.OpponentTeam, ch.CreatorTeam is { } ct ? TeamNames.Short(ct, ch.CreatorTyped) : null,
+            ch.OpponentTeam is { } ot ? TeamNames.Short(ot, ch.OpponentTyped) : null, ch.CreatorTyped, ch.OpponentTyped,
+            canClaim ? TeamNames.Suggest(4, ch.CreatorTeam) : null);
     }
 }

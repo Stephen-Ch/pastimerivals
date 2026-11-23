@@ -10,12 +10,13 @@ public sealed record Challenge(
     string Code, Guid CreatorId, string CreatorName, Guid? OpponentId, string? OpponentName,
     ChallengeStatus Status, DateTime CreatedUtc, DateTime ExpiresUtc, Guid? RematchFor, string? RematchOf,
     int[]? Totals, int? Winner, IReadOnlyList<string>? Notes = null, bool VsCpu = false, int? CpuLevel = null, int? Deco = null,
-    string Mode = Rules.Classic, EraRules? Era = null, InningData? Inning = null);
+    string Mode = Rules.Classic, EraRules? Era = null, InningData? Inning = null,
+    string? CreatorTeam = null, string? OpponentTeam = null, bool CreatorTyped = false, bool OpponentTyped = false);
 
 public sealed record StoredPick(int Side, int Slot, int Rank, string PlayerId, int Year);
 
 public sealed record ChallengeSummary(string Code, int Side, ChallengeStatus Status, string CreatorName, string? OpponentName, DateTime CreatedUtc, DateTime ExpiresUtc, bool VsCpu = false, string Mode = Rules.Classic,
-    GameSteps Steps = default, bool RematchMade = false, bool RematchForYou = false);
+    GameSteps Steps = default, bool RematchMade = false, bool RematchForYou = false, string? CreatorTeam = null, string? OpponentTeam = null);
 
 /// <summary>Plan 69: which funnel steps a friend game has reached (ch_funnel rows).</summary>
 public readonly record struct GameSteps(bool Sent = false, bool Opened = false, bool OpenedExpired = false, bool Picking = false, bool Played = false, bool Watched = false, bool Told = false);
@@ -81,7 +82,21 @@ public interface IChallengeStore
     /// The resolve callback gets both sides' picks (creator first) and returns the game; it runs only if the claim wins.
     /// </summary>
     Task<LockOutcome> LockAndResolveAsync(string code, Guid opponentId, string opponentName, IReadOnlyList<StoredPick> opponentPicks,
-        string opponentKeyHash, DateTime nowUtc, Func<IReadOnlyList<StoredPick>, GameResult> resolve);
+        string opponentKeyHash, DateTime nowUtc, Func<IReadOnlyList<StoredPick>, GameResult> resolve, string? opponentTeam = null, bool opponentTyped = false);
+
+    /// <summary>Plan 79: sets one side's team name (report swap, admin swap). typed false = a server-made name.</summary>
+    Task SetTeamAsync(string code, int side, string team, bool typed);
+    /// <summary>Plan 79-A1: logs a name report; false when this address already reported that side (unique code, side, ip_hash).</summary>
+    Task<bool> AddNameReportAsync(string code, int side, string oldName, string reporterKind, Guid? reporterGuest, string ipHash, DateTime nowUtc);
+    /// <summary>Plan 79-A1: the typed name a report logged for that side, oldest first (null if never reported).</summary>
+    Task<string?> ReportedOldNameAsync(string code, int side);
+    /// <summary>Plan 79-A1: puts a name (check form) on a guest's refused list until the given time.</summary>
+    Task AddRefusedNameAsync(Guid guestId, string checkForm, DateTime untilUtc);
+    Task<bool> IsRefusedNameAsync(Guid guestId, string checkForm, DateTime nowUtc);
+    /// <summary>Plan 79-A1: every side still carrying a typed name (admin swap-all).</summary>
+    Task<IReadOnlyList<(string Code, int Side)>> TypedTeamsAsync();
+    /// <summary>Plan 79-A1: name reports since a time, for the funnel readout.</summary>
+    Task<IReadOnlyList<(string Code, int Side, DateTime At)>> NameReportsSinceAsync(DateTime sinceUtc);
 
     /// <summary>Which side of which challenge a private link opens, or null.</summary>
     Task<(string Code, int Side)?> SideByKeyHashAsync(string keyHash);

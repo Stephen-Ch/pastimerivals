@@ -73,7 +73,7 @@ public sealed class MemoryChallengeStore : IChallengeStore
         return Task.CompletedTask;
     }
     public Task<LockOutcome> LockAndResolveAsync(string code, Guid oid, string oname, IReadOnlyList<StoredPick> picks, string keyHash, DateTime now,
-        Func<IReadOnlyList<StoredPick>, GameResult> resolve)
+        Func<IReadOnlyList<StoredPick>, GameResult> resolve, string? oteam = null, bool otyped = false)
     {
         lock (_gate)
         {
@@ -88,7 +88,8 @@ public sealed class MemoryChallengeStore : IChallengeStore
             _picksByCode[code] = all;
             _atBats[code] = g.AtBats.ToList();
             _keys[keyHash] = (code, 1);
-            _ch[code] = (c with { OpponentId = oid, OpponentName = oname, Status = ChallengeStatus.Resolved, Totals = g.Totals, Winner = g.Winner, Notes = g.Notes, Inning = g.Inning }, v.Ip);
+            _ch[code] = (c with { OpponentId = oid, OpponentName = oname, Status = ChallengeStatus.Resolved, Totals = g.Totals, Winner = g.Winner, Notes = g.Notes, Inning = g.Inning,
+                OpponentTeam = oteam, OpponentTyped = oteam is not null && otyped }, v.Ip);
             return Task.FromResult(LockOutcome.Locked);
         }
     }
@@ -167,8 +168,39 @@ public sealed class MemoryChallengeStore : IChallengeStore
                 .OrderByDescending(c => c.CreatedUtc)
                 .Select(c => new ChallengeSummary(c.Code, c.CreatorId == id ? 0 : 1, c.Status, c.CreatorName, c.OpponentName, c.CreatedUtc, c.ExpiresUtc, c.VsCpu, c.Mode,
                     new GameSteps(Has(c.Code, "sent"), Has(c.Code, "opened"), Has(c.Code, "opened_expired"), Has(c.Code, "picking"), Has(c.Code, "played"), Has(c.Code, "watched"), Has(c.Code, "told")),
-                    all.Any(x => x.RematchOf == c.Code && x.CreatorId == id), c.RematchFor == id && c.CreatorId != id && c.OpponentId is null)).ToList());
+                    all.Any(x => x.RematchOf == c.Code && x.CreatorId == id), c.RematchFor == id && c.CreatorId != id && c.OpponentId is null, c.CreatorTeam, c.OpponentTeam)).ToList());
         }
+    }
+
+    // Plan 79: team names, name reports, refused names (same rules as SQL).
+    public Task SetTeamAsync(string code, int side, string team, bool typed)
+    {
+        lock (_gate) if (_ch.TryGetValue(code, out var v))
+            _ch[code] = (side == 0 ? v.C with { CreatorTeam = team, CreatorTyped = typed } : v.C with { OpponentTeam = team, OpponentTyped = typed }, v.Ip);
+        return Task.CompletedTask;
+    }
+    private readonly List<(string Code, int Side, string Old, string Kind, Guid? Guest, string Ip, DateTime At)> _reports = new();
+    public IReadOnlyList<(string Code, int Side, string Old, string Kind, Guid? Guest, string Ip, DateTime At)> Reports { get { lock (_gate) return _reports.ToList(); } }
+    public Task<bool> AddNameReportAsync(string code, int side, string old, string kind, Guid? guest, string ip, DateTime now)
+    {
+        lock (_gate)
+        {
+            if (_reports.Any(r => r.Code == code && r.Side == side && r.Ip == ip)) return Task.FromResult(false);
+            _reports.Add((code, side, old, kind, guest, ip, now)); return Task.FromResult(true);
+        }
+    }
+    public Task<string?> ReportedOldNameAsync(string code, int side) { lock (_gate) return Task.FromResult(_reports.Where(r => r.Code == code && r.Side == side).OrderBy(r => r.At).Select(r => r.Old).FirstOrDefault()); }
+    private readonly Dictionary<(Guid, string), DateTime> _refused = new();
+    public Task AddRefusedNameAsync(Guid g, string form, DateTime until) { lock (_gate) _refused[(g, form)] = until; return Task.CompletedTask; }
+    public Task<bool> IsRefusedNameAsync(Guid g, string form, DateTime now) { lock (_gate) return Task.FromResult(_refused.TryGetValue((g, form), out var u) && u > now); }
+    public Task<IReadOnlyList<(string Code, int Side)>> TypedTeamsAsync()
+    {
+        lock (_gate) return Task.FromResult<IReadOnlyList<(string, int)>>(_ch.Values.SelectMany(v => new[] { (v.C.Code, 0, v.C.CreatorTyped), (v.C.Code, 1, v.C.OpponentTyped) })
+            .Where(x => x.Item3).Select(x => (x.Code, x.Item2)).ToList());
+    }
+    public Task<IReadOnlyList<(string Code, int Side, DateTime At)>> NameReportsSinceAsync(DateTime since)
+    {
+        lock (_gate) return Task.FromResult<IReadOnlyList<(string, int, DateTime)>>(_reports.Where(r => r.At >= since).Select(r => (r.Code, r.Side, r.At)).ToList());
     }
 
     /// <summary>Test hook: push a challenge's expiry into the past.</summary>
@@ -403,7 +435,8 @@ public partial class ChallengeApiTests
         int Count(string what) => System.Text.RegularExpressions.Regex.Matches(html, System.Text.RegularExpressions.Regex.Escape(what)).Count;
         Assert.Equal(1, Count("property=\"og:image\""));
         Assert.Equal(1, Count("property=\"og:title\""));
-        Assert.Contains("You've been challenged on Pastime Rivals", html);
+        // Plan 79: a new challenge always carries a team name now, so the preview names it.
+        Assert.Matches("og:title\" content=\"The [A-Za-z]+ [A-Za-z ]+ challenged you on Pastime Rivals\"", html);
         Assert.Contains("https://pastimerivals.com/og/pr-share-v1.png", html);
         Assert.Contains("summary_large_image", html);
         Assert.Equal(0, Count("og:url"));

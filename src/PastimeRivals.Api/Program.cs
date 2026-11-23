@@ -129,9 +129,13 @@ app.MapGet("/c/{code}", async (string code, HttpContext ctx, IChallengeStore sto
     if (!file.Exists) return Results.NotFound();
     using var reader = new StreamReader(file.CreateReadStream());
     var html = await reader.ReadToEndAsync();
-    ChallengeStatus? status = null;
-    if (Identity.CodePattern().IsMatch(code)) { try { status = (await store.GetAsync(code))?.Status; } catch { /* preview text only */ } }
-    var title = status == ChallengeStatus.Resolved ? "Your game is ready" : "You've been challenged on Pastime Rivals";
+    Challenge? found = null;
+    if (Identity.CodePattern().IsMatch(code)) { try { found = await store.GetAsync(code); } catch { /* preview text only */ } }
+    var status = found?.Status;
+    // Plan 79: the creator's team name is the first thing a friend sees in a chat app. Every name is HTML-encoded.
+    var title = status == ChallengeStatus.Resolved ? "Your game is ready"
+        : found?.CreatorTeam is { } team ? System.Text.Encodings.Web.HtmlEncoder.Default.Encode($"The {team} challenged you on Pastime Rivals")
+        : "You've been challenged on Pastime Rivals";
     var desc = status == ChallengeStatus.Resolved ? "Watch the game on Pastime Rivals." : "Pick a pitcher and a batting order from all of baseball history. Can you beat my team?";
     var meta = $"<meta property=\"og:title\" content=\"{title}\"><meta property=\"og:description\" content=\"{desc}\">"
         + "<meta property=\"og:image\" content=\"https://pastimerivals.com/og/pr-share-v1.png\"><meta property=\"og:image:width\" content=\"1200\">"
