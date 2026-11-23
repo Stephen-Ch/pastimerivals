@@ -155,3 +155,93 @@ describe('plan 79 C: team builder like the Duel picker', () => {
     expect(checkKept(ok, 10, 8)?.slots[9]).toBeNull();
   });
 });
+
+// ---- Diff review 1 (PASS WITH FIXES) folded ----
+const RESOLVED_VIEW = (mode: 'inning' | 'classic') => ({ ...(OPEN_VIEW(9) as object), status: 'resolved', you: 'creator', opponentName: 'Bleacher 12', canClaim: false, mode,
+  era: mode === 'inning' ? ERA : null, game: { lineups: [[], []], atBats: [], totals: [1, 0], winner: 0, notes: [] } });
+
+describe('plan 79 C, diff review 1 fixes', () => {
+  it('M1: leaving the builder (Home or Back) drops the kept team, so Quick pick comes back next time', async () => {
+    const m = await mount({ startMode: 'cpu' });
+    try {
+      m.c.goSlot(1); m.c.openSearch(true); await m.settle();
+      buttons(m.el, /^Babe Ruth 1927/)[0].click(); await m.settle();
+      expect(sessionStorage.getItem('pr_team:inning:cpu')).not.toBeNull();
+      m.c.step.set('review'); await m.settle();
+      m.c.backFromPicking(); await m.settle();
+      expect(sessionStorage.getItem('pr_team:inning:cpu'), 'Back from the team list').toBeNull();
+    } finally { m.restore(); }
+  });
+
+  it('M1: a closed game (409) drops the kept team', async () => {
+    sessionStorage.setItem(`pr_team:inning:${CODE}`, JSON.stringify({ slots: QUICK.slots, sittingOut: null, hand: true }));
+    const m = await mount({ code: CODE, view: OPEN_VIEW(9) });
+    try {
+      m.c.startPicking('accept'); await m.settle();
+      globalThis.fetch = (async () => new Response(JSON.stringify({ error: 'x', code: 'expired' }), { status: 409, headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
+      await m.c.lockTeam(); await m.settle();
+      expect(m.c.step()).toBe('closed');
+      expect(sessionStorage.getItem(`pr_team:inning:${CODE}`)).toBeNull();
+    } finally { m.restore(); }
+  });
+
+  it('M2: accept flow: the restored team survives "Pick your team"', async () => {
+    sessionStorage.setItem(`pr_team:inning:${CODE}`, JSON.stringify({ slots: QUICK.slots, sittingOut: null, hand: true }));
+    const m = await mount({ code: CODE, view: OPEN_VIEW(9) });
+    try {
+      buttons(m.el, 'Pick your team')[0].click(); await m.settle();
+      expect(m.c.step()).toBe('review');
+      expect(m.c.slots()[9]?.choices[0].id).toBe('q9');
+      expect(buttons(m.el, 'Quick pick').length).toBe(0);
+    } finally { m.restore(); }
+  });
+
+  it('M2: rematch: the team kept under rematch:<old code> comes back after a reload', async () => {
+    sessionStorage.setItem(`pr_team:inning:rematch:${CODE}`, JSON.stringify({ slots: QUICK.slots, sittingOut: null, hand: true }));
+    const m = await mount({ code: CODE, view: RESOLVED_VIEW('inning') });
+    try {
+      m.c.startPicking('rematch'); await m.settle();
+      expect(m.c.slots()[1]?.choices[0].id).toBe('q1');
+      expect(calls.some(u => u.includes('/api/challenges/era')), 'home side asks for its rules again').toBe(true);
+      expect(m.c.teamDone()).toBe(true);
+    } finally { m.restore(); }
+  });
+
+  it('M2: a reload while the rules are being fetched: Lock waits for the answer for exactly these rows', async () => {
+    sessionStorage.setItem('pr_team:inning:cpu', JSON.stringify({ slots: QUICK.slots, sittingOut: null, hand: false }));
+    const m = await mount({ startMode: 'cpu' });
+    try {
+      expect(m.c.eraKey()).toBe(rowsKey(QUICK.slots, 9));
+      expect(m.c.teamDone()).toBe(true);
+    } finally { m.restore(); }
+  });
+
+  it('m1: classic games show the pitcher shelf on slot 0 too', async () => {
+    const m = await mount({ code: CODE, view: RESOLVED_VIEW('classic') });
+    try {
+      m.c.startPicking('rematch'); await m.settle();
+      expect(m.c.step()).toBe('pick');
+      expect(m.el.querySelector('.legends li')?.textContent).toContain('Sandy Koufax 1965');
+    } finally { m.restore(); }
+  });
+
+  it('m2: a shelf tap shows "Adding..." while the backups load, not an empty season list', async () => {
+    const m = await mount({ startMode: 'friend' });
+    try {
+      m.c.goSlot(0); await m.settle();
+      const p = m.c.chooseFeatured(FEATURED.pit[0]);
+      m.f.detectChanges();
+      expect(m.el.textContent).toContain('Adding Sandy Koufax 1965...');
+      expect(m.el.textContent).not.toContain('Back to search');
+      await p; await m.settle();
+      expect(m.c.slots()[0].choices[0].id).toBe('koufs101');
+    } finally { m.restore(); }
+  });
+
+  it('m5: a restored team never has the same player twice', () => {
+    const dup = QUICK.slots.map((s, i) => (i === 4 ? { slot: 4, choices: [QUICK.slots[2].choices[0]] } : s));
+    const t = checkKept({ slots: dup, sittingOut: null, hand: true }, 10, null)!;
+    expect(t.slots[2]?.choices[0].id).toBe('q2');
+    expect(t.slots[4]).toBeNull();
+  });
+});

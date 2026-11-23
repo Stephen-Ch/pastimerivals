@@ -98,3 +98,10 @@ describe('plan 79 E: deciding play', () => {
     expect(decidingCard(game([]), 0, name)).toBeNull();
   });
 });
+
+describe('plan 79 E, diff review 1: a tie that ends on a capped half', () => {
+  it('last play not an out: "Last play", with its own words', () => {
+    const g = game([[1, 'single', 1], [0, 'single', 1], [0, 'single', 0]], 1);
+    expect(decidingCard(g, 0, name)).toEqual({ word: 'SINGLE', line: 'Tied after 1. Last play: Home3 1953 singles.', side: 0 });
+  });
+});
