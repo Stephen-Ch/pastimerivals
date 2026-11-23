@@ -7,6 +7,7 @@ import type { CMine, CView } from './challenge-api';
 import { GamesList } from './games-list';
 import { canReport, cleanTyped, mineNames, shortLabel, sideLabel, typedLocalOk } from './team-names';
 import { checkKept } from './team-keep';
+import { rowsKey } from './inning';
 
 const CODE = 'P79aGame0000000000001';
 const ERA = { dh: true, runnerOnSecond: false, season: 1965, batters: 9 };
@@ -119,7 +120,8 @@ describe('plan 79 A: the review screen names your team', () => {
     try {
       expect(m.c.step()).toBe('review');
       expect(text(m.el)).toContain('The Toledo Night Owls');
-      buttons(m.el, 'Change')[0]?.click() ?? buttons(m.el, /Change team name/)[0].click(); await m.settle();
+      expect(buttons(m.el, 'Change').length).toBe(1);
+      buttons(m.el, 'Change')[0].click(); await m.settle();
       buttons(m.el, 'More names')[0].click(); await m.settle();
       const more = ['Erie Kingfishers', 'Boise Lanterns', 'Akron Riveters'];
       for (const n of more) expect(buttons(m.el, `The ${n}`).length, n).toBe(1);
@@ -128,7 +130,7 @@ describe('plan 79 A: the review screen names your team', () => {
       expect(m.c.team()).toBe('Boise Lanterns');
       expect(text(m.el)).toContain('The Boise Lanterns');
       m.c.slots.set(Array.from({ length: 10 }, (_, slot) => ({ slot, choices: [{ id: `q${slot}`, year: 1960 + slot, name: `Q ${slot}`, bats: 'R', throws: 'R' }] })));
-      m.c.era.set(ERA); m.c.eraKey.set(m.c.eraKeyFor()); await m.settle();
+      m.c.era.set(ERA); m.c.eraKey.set(rowsKey(m.c.slots(), 9)); await m.settle();
       await m.c.lockTeam(); await m.settle();
       const post = calls.find(x => x.url.includes('/api/challenges/computer'));
       expect(post?.body.team).toBe('Boise Lanterns');
@@ -185,7 +187,7 @@ describe('plan 79 B: the friend\'s link page', () => {
 
 describe('plan 79 A + A1: names in the game', () => {
   it('the board uses the short team name and the final screen names the teams; Report name only under the other side\'s typed name', async () => {
-    sessionStorage.setItem(`pr-watched-${CODE}`, '99');
+    localStorage.setItem(`pr-watched-${CODE}`, '99');
     const m = await mount({ code: CODE, view: DONE('creator', [true, true]) });
     try {
       expect(m.c.step()).toBe('final');
