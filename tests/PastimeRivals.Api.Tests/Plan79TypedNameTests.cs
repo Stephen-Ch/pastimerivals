@@ -17,7 +17,7 @@ public sealed class CountingTurnstile : ITurnstile
 }
 
 /// <summary>Plan 79-A1: typed team names, the switch, reporting, admin swaps (memory store).</summary>
-public class Plan79TypedNameTests : Plan79ApiTests
+public class Plan79TypedNameTests : Plan79Base
 {
     private static readonly Dictionary<string, string> On = new() { ["Teams:TypedNames"] = "true", ["Admin:Key"] = "test-admin-key" };
 
@@ -265,5 +265,25 @@ public class Plan79TypedNameTests : Plan79ApiTests
         req.Headers.Add("X-Funnel-Key", "test-funnel-key");
         var text = await (await f.CreateClient().SendAsync(req)).Content.ReadAsStringAsync();
         Assert.Contains($"Name reports (last 7 days): 1 | {code}", text);
+    }
+
+    [Fact]
+    public async Task Report_name_has_the_same_20_a_minute_per_block_limit()
+    {
+        var (f, _, _) = Setup();
+        var (code, _, _) = await Played(f, "Toledo Night Owls", "Erie Kingfishers", "91");
+        var a = await Browser(f, "2001:db8:5:6::1");
+        for (var i = 0; i < 20; i++) Assert.Equal(HttpStatusCode.NoContent, (await Report(a, code, 0)).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await Report(a, code, 0)).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_retried_lock_after_the_name_was_reported_still_returns_the_game()
+    {
+        var (f, store, _) = Setup();
+        var (code, creator, friend) = await Played(f, "Toledo Night Owls", "Jake Smells", "92");
+        await Report(creator, code, 1);   // now on the friend's refused list
+        var again = await friend.PostAsJsonAsync($"/api/challenges/{code}/lock", Body("Jake Smells", "pit02", "bat04", "bat05", "bat06"));
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
     }
 }

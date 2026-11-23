@@ -426,6 +426,23 @@ public partial class ChallengeApiTests
     }
 
     [Fact]
+    public async Task Plan79_accented_team_names_round_trip_byte_for_byte()
+    {
+        // Plan 79-A1 section 7: team names are NVARCHAR; ChallengeSqlTests reruns this on SQL Server (PR_TEST_SQL).
+        var store = NewStore();
+        var code = Identity.NewCode();
+        var now = DateTime.UtcNow;
+        await store.CreateChallengeAsync(new Challenge(code, Guid.NewGuid(), "Ace 1234", null, null, ChallengeStatus.Open, now, now.AddHours(72), null, null, null, null,
+            CreatorTeam: "Jòsé's Ñiñe Ærø", CreatorTyped: true),
+            new List<StoredPick> { new(0, 0, 0, "pit01", 2000), new(0, 1, 0, "bat01", 2000), new(0, 2, 0, "bat02", 2000), new(0, 3, 0, "bat03", 2000) }, Identity.Hash("k" + code), "ip-79");
+        var back = (await store.GetAsync(code))!;
+        Assert.Equal("Jòsé's Ñiñe Ærø", back.CreatorTeam);
+        Assert.True(back.CreatorTyped);
+        await store.SetTeamAsync(code, 0, "Ðüñà Þorn", typed: true);
+        Assert.Equal("Ðüñà Þorn", (await store.GetAsync(code))!.CreatorTeam);
+    }
+
+    [Fact]
     public async Task Challenge_link_preview_has_exactly_one_set_of_tags_and_the_branded_image()
     {
         var f = Factory(NewStore());

@@ -9,8 +9,8 @@ using PastimeRivals.Api.Stats;
 
 namespace PastimeRivals.Api.Tests;
 
-/// <summary>Plan 79 A: server-made team names through the API (memory store).</summary>
-public class Plan79ApiTests
+/// <summary>Plan 79 shared helpers (no tests here, so subclasses don't rerun Part A).</summary>
+public abstract class Plan79Base
 {
     protected static WebApplicationFactory<Program> Factory(IChallengeStore store, Action<IServiceCollection>? more = null, Dictionary<string, string>? settings = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
@@ -62,6 +62,11 @@ public class Plan79ApiTests
 
     protected static string? Str(JsonElement e, string p) => e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
+}
+
+/// <summary>Plan 79 A: server-made team names through the API (memory store).</summary>
+public class Plan79ApiTests : Plan79Base
+{
     [Fact]
     public async Task Me_offers_four_list_names_and_says_typed_names_are_off_by_default()
     {
@@ -211,5 +216,24 @@ public class Plan79ApiTests
         Assert.Equal(HttpStatusCode.OK, lk.StatusCode);
         Assert.Equal("Toledo Night Owls", Str((await lk.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("view"), "opponentTeam"));
         Assert.Equal("Toledo Night Owls", old.CreatorTeam);
+    }
+
+    [Fact]
+    public async Task Accepting_a_rematch_offers_your_stored_name_first_even_when_the_lists_no_longer_make_it()
+    {
+        var store = new MemoryChallengeStore();
+        var f = Factory(store);
+        var creator = await Browser(f, "10.79.5.1");
+        var friend = await Browser(f, "10.79.5.2");
+        var code = await Create(creator, "Toledo Night Owls");
+        await friend.PostAsJsonAsync($"/api/challenges/{code}/lock", Body("Erie Kingfishers", "pit02", "bat04", "bat05", "bat06"));
+        await store.SetTeamAsync(code, 0, "Toledo Glowworms", typed: false);   // a word later leaves the lists
+        var r = await friend.PostAsJsonAsync($"/api/challenges/{code}/rematch", Body("Erie Kingfishers", "pit02", "bat04", "bat05", "bat06"));
+        var rm = (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
+        var v = await View(creator, rm);
+        Assert.Equal("Toledo Glowworms", v.GetProperty("teamChoices")[0].GetString());
+        var lk = await creator.PostAsJsonAsync($"/api/challenges/{rm}/lock", Body("Toledo Glowworms", "pit01", "bat01", "bat02", "bat03"));
+        Assert.Equal(HttpStatusCode.OK, lk.StatusCode);
+        Assert.Equal("Toledo Glowworms", Str((await lk.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("view"), "opponentTeam"));
     }
 }
