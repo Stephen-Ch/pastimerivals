@@ -103,7 +103,7 @@ public class Plan79NameTests
     [InlineData("Tacoma × Titans", NameRule.Chars)]
     [InlineData("Tacoma Titans!", NameRule.Chars)]
     [InlineData("12 34", NameRule.Letters)]
-    [InlineData("Ab 123", NameRule.Digits)]
+    [InlineData("Abc 123", NameRule.Digits)]
     [InlineData("Supercalifragilistic", NameRule.LongWord)]
     [InlineData("Go to evil.com", NameRule.Link)]
     [InlineData("F4g", NameRule.Letters)]
