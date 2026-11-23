@@ -106,3 +106,14 @@ describe('plan 79 E: the final screen leads with the deciding play', () => {
     } finally { m.restore(); }
   });
 });
+
+import { SIDE_BLANK, sideRow } from './side-line';
+describe('plan 79 D2: the side row keeps its place for lefties (stage never resizes)', () => {
+  it('lefty: an empty row; righty and switch: their words; unknown: no row', () => {
+    expect(sideRow('L', 'R')).toBe(SIDE_BLANK);
+    expect(sideRow('R', 'R')).toBe('Bats right.');
+    expect(sideRow('S', 'L')).toBe('Switch hitter: bats right vs a lefty.');
+    expect(sideRow(null, 'R')).toBeNull();
+    expect(SIDE_BLANK.trim()).toBe('');
+  });
+});

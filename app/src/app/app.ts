@@ -9,7 +9,7 @@ import { capi, type CMine } from './challenge-api';
 import { gamesLinkText, mediaSignal, waitingCount } from './game-status';
 import { PitchScene } from './pitch-scene';
 import { ERA_BOARD, lastName, Scoreboard, shortYear } from './scoreboard';
-import { sideLine } from './side-line';
+import { SIDE_BLANK, sideRow } from './side-line';
 import { CLUTCH_SETUP, clutchNext } from './clutch';
 import { CardFlip, FlipCard, loadImage } from './card-flip';
 import { announcerOn } from './announcer-setting';
@@ -114,7 +114,8 @@ export class App {
   protected readonly shareNote = signal<string | null>(null);
   protected readonly batterReport = signal<Report | null>(null);
   /** Plan 40 B: which side of the plate the batter stands on. */
-  protected readonly sideText = computed(() => sideLine(this.batterReport()?.bats ?? this.matchup()?.batter.hand, this.pitcherReport()?.throws ?? this.matchup()?.pitcher.hand));
+  protected readonly sideBlank = SIDE_BLANK;
+  protected readonly sideText = computed(() => sideRow(this.batterReport()?.bats ?? this.matchup()?.batter.hand, this.pitcherReport()?.throws ?? this.matchup()?.pitcher.hand));
   protected readonly pitcherReport = signal<Report | null>(null);
   protected readonly popup = signal<Report | null>(null);
   protected readonly pending = signal<PitchResult | null>(null);

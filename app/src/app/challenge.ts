@@ -1,8 +1,8 @@
 import { Feedback, feedbackDue } from './feedback';
 import { Component, computed, DestroyRef, effect, ElementRef, inject, input, output, signal, untracked, viewChild } from '@angular/core';
-import { api, PlayerHit, SEASON_KIND_TEXT, SeasonItem, seasonKind, startSeason } from './api';
+import { api, FeaturedItem, PlayerHit, SEASON_KIND_TEXT, SeasonItem, seasonKind, startSeason } from './api';
 import { ArtManifest, CfArt, cfArt, eraOf, fielderArt, ParkLook, parkLookOf, preloadImages, SideArt, sideArt, WindupArt, windupArt } from './art';
-import { sideLine, sideNameLine } from './side-line';
+import { SIDE_BLANK, sideNameLine, sideRow } from './side-line';
 import { callFor, countFor, hitsFrom, label, resolveDeco } from './logic';
 import { baseLine, CAP_NOTE, halfChange, halfLabel, halves, inningResult, isClashNote, namesOf, ordinal, playFacts, rowsKey, sitOut, shortName } from './inning';
 import { PitchScene, SceneCue } from './pitch-scene';
@@ -23,6 +23,7 @@ import {
 import { mediaSignal, orderMine, waitingCount } from './game-status';
 import { GamesList } from './games-list';
 import { DecidingPlay } from './deciding-play';
+import { checkKept, dropTeam, keepTeam, loadTeam, teamKey } from './team-keep';
 
 type Step = 'loading' | 'home' | 'intro' | 'pick' | 'review' | 'shared' | 'waiting' | 'play' | 'final' | 'closed';
 type Mode = 'create' | 'accept' | 'rematch' | 'cpu';
@@ -60,7 +61,7 @@ export function parkLookForView(v: CView | null): ParkLook | null {
   selector: 'pr-challenge',
   imports: [GamesList, DecidingPlay, PitchScene, Scoreboard, Feedback, HowSim, VoiceButton, ArtNoteSeen],
   templateUrl: './challenge.html',
-  styleUrls: ['./app.css', './challenge.css'],
+  styleUrls: ['./app.css', './challenge.css', './team-builder.css'],
 })
 export class ChallengeFlow {
   /** Challenge code from the URL, or null to start a new challenge. */
@@ -145,6 +146,11 @@ export class ChallengeFlow {
     if (this.inning() && this.isHome()) return !this.eraLoading() && this.eraKey() === rowsKey(this.slots(), n);
     return true;
   });
+  /** Plan 79 C: true once a player was picked by hand; Quick pick (which redraws the whole team) is then hidden. */
+  protected readonly handPicked = signal(false);
+  /** Plan 79 C: the famous seasons shelf, as in the Duel picker (plan 76 B), loaded once per role per visit. */
+  protected readonly featured = signal<Partial<Record<'bat' | 'pit', FeaturedItem[]>>>({});
+  private readonly featuredAsked = new Set<'bat' | 'pit'>();
   /** D26: players the challenger already has (told once, at Lock team). They cannot be picked again. */
   protected readonly clash = signal<{ text: string[]; ids: Set<string>; slots: number[] } | null>(null);
   /** Only the clash messages for slots that still hold a taken player. */
@@ -207,6 +213,7 @@ export class ChallengeFlow {
   /** Chip text: white on blue (6.5:1), near-black on orange (9:1). */
   protected readonly chipInk = (side: number) => (sideColor(side, this.yourSide()) === TEAM_BLUE ? '#fff' : '#111');
   protected readonly awayHome = awayHome;
+  protected readonly sideBlank = SIDE_BLANK;
   /** The side's name without " (you)". */
   protected readonly plainName = (side: number) => this.sideName(side).replace(' (you)', '');
   /** "You" for your own side in Last Licks, else the plain name (half change line, half headings, line score). */
@@ -229,7 +236,7 @@ export class ChallengeFlow {
     const playing = this.scene()?.ab;
     if (playing) return sideNameLine(lastName(playing.batter.name), playing.batter.bats, playing.pitcher.throws);
     const ab = this.nextAtBat();
-    return ab ? sideLine(ab.batter.bats, ab.pitcher.throws) : null;
+    return ab ? sideRow(ab.batter.bats, ab.pitcher.throws) : null;
   });
   protected readonly score = computed<[number, number]>(() => {
     const g = this.game(), n = this.revealed(), t: [number, number] = [0, 0];
@@ -307,7 +314,25 @@ export class ChallengeFlow {
         for (const l of f) void voice.say(l, 'recap', this.gameVoice());
       });
     });
+    // Plan 79 C: keep the team in progress for this flow (restored by resetTeam, cleared on Lock).
+    effect(() => {
+      const st = this.step(), slots = this.slots(), sittingOut = this.sittingOut(), hand = this.handPicked();
+      if (st !== 'pick' && st !== 'review') return;
+      const key = untracked(() => this.keptKey());
+      if (key) keepTeam(key, { slots, sittingOut, hand });
+    });
     queueMicrotask(() => this.start());
+  }
+
+  private keptKey() { return teamKey(this.mode(), this.gameMode(), this.current()); }
+
+  /** Plan 79 C: brings back this flow's kept team, re-checked; the home side asks for its rules again. */
+  private restoreTeam() {
+    const key = this.keptKey();
+    const t = key ? checkKept(loadTeam(key), this.slots().length, this.isHome() ? null : (this.view()?.era?.batters ?? null)) : null;
+    if (!t) return;
+    this.slots.set(t.slots); this.sittingOut.set(t.sittingOut); this.handPicked.set(t.hand);
+    if (this.isHome() && t.slots[0]) void this.refreshEra();
   }
 
   private async start() {
@@ -367,6 +392,8 @@ export class ChallengeFlow {
     this.clash.set(null);
     this.slots.set(Array(this.inning() ? 10 : 4).fill(null)); this.slotIndex.set(0); this.editRank.set(0); this.openSearch();
     this.era.set(null); this.eraKey.set(''); this.eraLoading.set(false); this.eraToken++; this.sittingOut.set(null); this.flipNote.set(null);
+    this.handPicked.set(false);
+    this.restoreTeam();
   }
 
   protected startPicking(mode: Mode) {
@@ -397,11 +424,27 @@ export class ChallengeFlow {
     finally { this.busy.set(false); }
   }
 
-  protected goSlot(i: number) { this.slotIndex.set(i); this.editRank.set(0); this.openSearch(!this.slots()[i]); this.step.set('pick'); }
+  protected goSlot(i: number) { this.slotIndex.set(i); this.editRank.set(0); this.step.set('pick'); this.openSearch(!this.slots()[i]); }
 
   protected openSearch(on = true) {
     this.searchToken++;
     this.searching.set(on); this.query.set(''); this.hits.set([]); this.seasonsFor.set(null); this.seasons.set([]); this.seasonsLoading.set(false);
+    if (on && this.step() === 'pick') this.loadFeatured(this.slotIndex() === 0 ? 'pit' : 'bat');
+  }
+
+  private loadFeatured(role: 'bat' | 'pit') {
+    if (this.featuredAsked.has(role)) return;   // an error shows nothing
+    this.featuredAsked.add(role);
+    api.featured(role).then(list => this.featured.update(f => ({ ...f, [role]: Array.isArray(list) ? list : [] }))).catch(() => undefined);
+  }
+
+  /** Plan 79 C: one tap on the shelf commits that season, through the same checks as a season row. */
+  protected async chooseFeatured(f: FeaturedItem) {
+    api.event('featured_pick', this.session, `${f.id}-${f.year}`);
+    this.seasonsFor.set(f);
+    const before = this.slots()[this.slotIndex()];
+    await this.chooseSeason({ year: f.year } as SeasonItem);
+    if (this.slots()[this.slotIndex()] === before && this.seasonsFor() === f) this.seasonsFor.set(null);   // refused (already on the team): back to the shelf
   }
 
   protected editBackup(rank: number) { this.editRank.set(rank); this.openSearch(true); }
@@ -463,6 +506,7 @@ export class ChallengeFlow {
       choices[rank] = pick;
     }
     this.slots.update(list => list.map((x, i) => (i === slot ? { slot, choices } : x)));
+    this.handPicked.set(true);
     this.openSearch(false);
     this.editRank.set(0);
     if (rank === 0) void this.refreshEra();
@@ -553,6 +597,7 @@ export class ChallengeFlow {
     const slots = this.slots().slice(0, this.batters() + 1);
     if (!slots.every(Boolean) || !this.teamDone()) return;
     const body = toBody(slots as CSlot[], this.nickname() ?? this.nickChoices()[0], this.gameMode());
+    const kept = this.keptKey();
     this.busy.set(true); this.error.set(null);
     try {
       if (this.mode() === 'cpu') {
@@ -575,6 +620,7 @@ export class ChallengeFlow {
         this.step.set('shared');
       }
       if (body.nickname) this.nickname.set(body.nickname);
+      if (kept) dropTeam(kept);   // plan 79 C: locked, nothing left to keep
     } catch (e) {
       if (e instanceof ChallengeError && e.status === 409 && e.code === 'clash') {
         const c = e.data as CClash;

@@ -12,6 +12,13 @@ export function sideLine(bats: string | null | undefined, throws: string | null 
   return null;
 }
 
+/** Plan 79 D2: the side row's text. A lefty keeps an empty row (no words) so the stage never changes size between batters
+ *  (the r2a/r2b stage tests); unknown hands still give no row, as before. */
+export const SIDE_BLANK = '\u00a0';
+export function sideRow(bats: string | null | undefined, throws: string | null | undefined): string | null {
+  return sideLine(bats, throws) ?? ((bats ?? '').trim().toUpperCase() === 'L' ? SIDE_BLANK : null);
+}
+
 /** Rename polish (PLAN-2026-11-04-rename-polish-v3): short side line with the batter's last name, shown while his at-bat plays.
  *  Short on purpose: the long forms do not fit at 320 px or in the 200 px landscape column. Null for an unknown hand, like sideLine (amendment A2: no side row appears mid-scene, so the stage never resizes). */
 export function sideNameLine(last: string, bats: string | null | undefined, throws: string | null | undefined): string | null {

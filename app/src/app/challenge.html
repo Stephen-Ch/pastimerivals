@@ -42,7 +42,7 @@
       </main>
       <div class="actions">
         <button class="primary big" type="button" (click)="acceptPick(false)">Pick your team</button>
-        <button type="button" (click)="acceptPick(true)" [disabled]="busy()">Quick pick</button>
+        @if (!handPicked()) { <button type="button" (click)="acceptPick(true)" [disabled]="busy()">Quick pick</button> }
       </div>
     }
 
@@ -73,7 +73,7 @@
           @if (!seasonsFor()) {
             @if (!query()) {
               @if (i === 0 && !s && !inning()) { <p class="how">Pick a pitcher and 3 batters. Walk or single 1 point, double 2, triple 3, homer 4. Most points wins.</p> }
-              @if (!s) { <p class="note">Type a name, or tap Quick pick for a random team.</p> }
+              @if (!s) { <p class="note">{{ handPicked() ? 'Type a name, or tap a famous season.' : 'Type a name, or tap Quick pick for a random team.' }}</p> }
             }
             <input class="search" type="search" [placeholder]="i === 0 ? 'Pitcher name, like Cy Young' : 'Batter name, like Babe Ruth'" autocomplete="off"
                    [value]="query()" (input)="onQuery($any($event.target).value)" [attr.aria-label]="'Search for ' + slotNames[i]">
@@ -83,10 +83,25 @@
               }
               @if (query() && hits().length === 0) { <li class="muted pad">No players found yet.</li> }
             </ul>
+            @let role = i === 0 ? 'pit' : 'bat';
+            @if (!query().trim() && featured()[role]?.length) {
+              <!-- Plan 79 C: the Duel picker's famous seasons shelf; one tap commits that season. -->
+              <h2 class="legends-h">Famous seasons</h2>
+              <ul class="list legends">
+                @for (f of featured()[role]!; track f.id) {
+                  <li><button type="button" class="row-btn" (click)="chooseFeatured(f)" [disabled]="busy()"><span>{{ f.name }} {{ f.year }}@if (f.hof) { <span class="muted"> · Hall of Fame</span> }</span><span class="chev" aria-hidden="true">›</span></button></li>
+                }
+              </ul>
+            }
           } @else {
             <button type="button" class="link" (click)="openSearch(true)">‹ Back to search</button>
             <p class="pname">{{ seasonsFor()!.name }}</p>
             @if (seasonsLoading()) { <p class="muted pad" role="status">Loading seasons...</p> }
+            @if (startRow(); as d) {
+              <!-- Plan 79 C: as the Duel picker, the best season in one tap. -->
+              <button type="button" class="primary quick" (click)="chooseSeason(d)" [disabled]="busy()">Use {{ d.year }} ({{ seasonKind(d) === 'best' ? 'best season' : 'most played' }})</button>
+              <p class="muted pad">Or pick another season:</p>
+            }
             <ul class="list">
               @for (se of seasons(); track se.year) {
                 <li><button type="button" [class.best]="se === startRow()" (click)="chooseSeason(se)" [disabled]="busy()">
@@ -101,7 +116,7 @@
       </main>
       <div class="actions">
         <button class="primary big" type="button" (click)="nextSlot()" [disabled]="!s || busy() || clashOpen().includes(i)">{{ clash() ? (clashOpen().length ? 'Next' : 'Review team') : inning() ? 'Next' : (i < 3 ? 'Next' : 'Review team') }}</button>
-        <button type="button" (click)="quickPick()" [disabled]="busy()">Quick pick</button>
+        @if (!handPicked()) { <button type="button" (click)="quickPick()" [disabled]="busy()">Quick pick</button> }
       </div>
     }
 
@@ -139,7 +154,7 @@
       </main>
       <div class="actions">
         <button class="primary big" type="button" (click)="lockTeam()" [disabled]="!teamDone() || busy() || clashOpen().length > 0">{{ mode() === 'cpu' ? 'Play ball' : mode() === 'accept' ? 'Lock team and play' : 'Lock team and get link' }}</button>
-        <button type="button" (click)="quickPick()" [disabled]="busy()">Quick pick</button>
+        @if (!handPicked()) { <button type="button" (click)="quickPick()" [disabled]="busy()">Quick pick</button> }
       </div>
     }
 
@@ -199,7 +214,7 @@
       <pr-scoreboard [look]="parkLook() ?? '1990'" [names]="boardNames()" [short]="boardShort()" [scores]="boardScores(sc)" [count]="boardCount()"
                      [outs]="isInningGame() ? diamond().outs : null" [bases]="isInningGame() ? boardBases() : null"
                      [pills]="boardPills()" [batting]="boardBatting()" />
-      @if (sideText(); as st) { <p class="side-line">{{ st }}</p> }
+      @if (sideText(); as st) { <p class="side-line" [attr.aria-hidden]="st === sideBlank ? 'true' : null">{{ st }}</p> }
       @if (announcer()) { <p class="pbp-row" aria-live="polite">{{ pbpLine() }}</p> }
       <main class="flex scene-wrap">
         <h1 #stepTitle tabindex="-1" class="sr-only">Play the game</h1>
