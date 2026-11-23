@@ -379,7 +379,7 @@
         }
       } @else {
         <div class="actions three">
-          <button class="primary big" type="button" (click)="shareResult()">{{ view()?.you === 'opponent' ? 'Send the result to ' + sideLabel(0) : 'Share the game' }}</button>
+          <button class="primary big send-result" type="button" (click)="shareResult()">{{ view()?.you === 'opponent' ? 'Send the result to ' + sideLabel(0) : 'Share the game' }}</button>
           @if (yourSide() !== null && !view()?.vsCpu) { <button type="button" (click)="startPicking('rematch')">Rematch</button> }
           @else { <button type="button" (click)="newChallenge()">Start your own</button> }
         </div>

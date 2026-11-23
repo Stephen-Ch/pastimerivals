@@ -10,3 +10,5 @@
 .sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .sheet-actions > button { flex: 1 1 auto; min-height: 44px; }
 .report { display: inline-block; margin: 2px 0; }
+/* A long typed name must wrap inside the button, never run past it. */
+.send-result { overflow-wrap: anywhere; }
