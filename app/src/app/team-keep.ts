@@ -20,8 +20,10 @@ const goodSlot = (s: unknown, slot: number): s is CSlot => !!s && (s as CSlot).s
  *  rows past the game's batters are dropped. The home side's era is asked again after restoring (refreshEra). Null = nothing usable. */
 export function checkKept(t: KeptTeam | null | undefined, size: number, fixedBatters: number | null): KeptTeam | null {
   if (!t || !Array.isArray(t.slots) || t.slots.length !== size) return null;
-  const slots = t.slots.map((s, i) => (goodSlot(s, i) && (fixedBatters === null || i <= fixedBatters) ? s : null));
-  const sittingOut = fixedBatters === null && t.sittingOut && goodSlot(t.sittingOut, t.sittingOut.slot) ? t.sittingOut : null;
+  const seen = new Set<string>();
+  const once = (s: CSlot | null) => { if (!s) return null; const id = s.choices[0].id; if (seen.has(id)) return null; seen.add(id); return s; };   // no player twice
+  const slots = t.slots.map((s, i) => once(goodSlot(s, i) && (fixedBatters === null || i <= fixedBatters) ? s : null));
+  const sittingOut = fixedBatters === null && t.sittingOut && goodSlot(t.sittingOut, t.sittingOut.slot) ? once(t.sittingOut) : null;
   if (!slots.some(Boolean) && !sittingOut) return null;
   return { slots, sittingOut, hand: !!t.hand };
 }

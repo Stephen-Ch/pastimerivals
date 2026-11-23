@@ -93,6 +93,8 @@
                 }
               </ul>
             }
+          } @else if (adding(); as a) {
+            <p class="muted pad" role="status">Adding {{ a.name }} {{ a.year }}...</p>
           } @else {
             <button type="button" class="link" (click)="openSearch(true)">‹ Back to search</button>
             <p class="pname">{{ seasonsFor()!.name }}</p>

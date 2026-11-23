@@ -67,7 +67,11 @@ export function decidingCard(g: CGame | null | undefined, you: number | null, na
   const i = decidingIndex(g);
   if (i === null) return null;
   const a = g.atBats[i], who = `${lastName(a.batter.name)} ${a.batter.year}`, side = a.battingSide;
-  if (g.winner !== 0 && g.winner !== 1) return { word: playWord(a), line: `Tied after ${g.innings ?? 1}. Final out: ${who} ${outVerb(a)}.`, side };
+  if (g.winner !== 0 && g.winner !== 1) {
+    // A half stopped by the 30-batter cap can end on a hit or walk: then it is the last play, not the final out (diff review 1).
+    const out = a.outcome === 'k' || (a.outcome === 'oip' && !isError(a));
+    return { word: playWord(a), line: `Tied after ${g.innings ?? 1}. ${out ? `Final out: ${who} ${outVerb(a)}` : `Last play: ${who} ${playVerb(a)}`}.`, side };
+  }
   const hi = Math.max(...g.totals), lo = Math.min(...g.totals);
   const result = you === null ? `${name(g.winner)} wins ${hi}-${lo}.` : g.winner === you ? `You win ${hi}-${lo}.` : `You lose ${lo}-${hi}.`;
   return { word: playWord(a), line: `${who} ${playVerb(a)}. ${result}`, side };

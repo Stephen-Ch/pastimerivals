@@ -42,6 +42,8 @@ for (const [w, h] of SIZES) {
     await page.locator('input.search').fill('ru');
     await expect(page.locator('.legends')).toHaveCount(0);
     await page.getByRole('button', { name: /^Babe Ruth/ }).first().click();
+    await expect(page.getByRole('button', { name: 'Use 1920 (best season)' })).toBeVisible();
+    expect(await pageScroll(page), 'season list scroll').toBeLessThanOrEqual(1);
     await page.getByRole('button', { name: 'Use 1920 (best season)' }).click();
     await expect(page.locator('.chosen .pname')).toContainText('Babe Ruth 1920');
     await page.screenshot({ path: `dist/e2e-shots/p79-chosen-${w}x${h}.png` });

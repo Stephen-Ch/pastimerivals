@@ -148,6 +148,8 @@ export class ChallengeFlow {
   });
   /** Plan 79 C: true once a player was picked by hand; Quick pick (which redraws the whole team) is then hidden. */
   protected readonly handPicked = signal(false);
+  /** Plan 79 C (diff review 1): the shelf season being added while its backups load. */
+  protected readonly adding = signal<FeaturedItem | null>(null);
   /** Plan 79 C: the famous seasons shelf, as in the Duel picker (plan 76 B), loaded once per role per visit. */
   protected readonly featured = signal<Partial<Record<'bat' | 'pit', FeaturedItem[]>>>({});
   private readonly featuredAsked = new Set<'bat' | 'pit'>();
@@ -401,6 +403,7 @@ export class ChallengeFlow {
     // Plan 38: new games are innings; a rematch keeps its game's mode; the friend plays the game's mode.
     this.gameMode.set(mode === 'rematch' || mode === 'accept' ? (this.view()?.mode ?? 'classic') : 'inning');
     this.resetTeam(); this.step.set(this.inning() ? 'review' : 'pick');
+    if (this.step() === 'pick') this.loadFeatured(this.slotIndex() === 0 ? 'pit' : 'bat');   // diff review 1: classic slot 0 shelf
   }
 
   protected async quickPick() {
@@ -441,9 +444,9 @@ export class ChallengeFlow {
   /** Plan 79 C: one tap on the shelf commits that season, through the same checks as a season row. */
   protected async chooseFeatured(f: FeaturedItem) {
     api.event('featured_pick', this.session, `${f.id}-${f.year}`);
-    this.seasonsFor.set(f);
+    this.seasonsFor.set(f); this.adding.set(f);
     const before = this.slots()[this.slotIndex()];
-    await this.chooseSeason({ year: f.year } as SeasonItem);
+    try { await this.chooseSeason({ year: f.year } as SeasonItem); } finally { this.adding.set(null); }
     if (this.slots()[this.slotIndex()] === before && this.seasonsFor() === f) this.seasonsFor.set(null);   // refused (already on the team): back to the shelf
   }
 
@@ -586,6 +589,7 @@ export class ChallengeFlow {
   }
 
   protected backFromPicking() {
+    if (this.mode() !== 'accept') this.dropKept();   // plan 79 C (diff review 1): the friend keeps his team on the intro screen
     if (this.mode() === 'accept') this.step.set('intro');
     else if (this.mode() === 'rematch') this.step.set('final');
     else this.leave();   // plan 27: create and cpu go back to Home
@@ -645,6 +649,7 @@ export class ChallengeFlow {
           expired: 'This challenge expired.', already: 'You already started a rematch of this game.',
           not_for_you: 'This rematch is for someone else.', own: 'This is your own challenge. Send the link to a friend.',
         } as Record<string, string>)[e.code ?? ''] ?? 'Someone already took this challenge.');
+        if (kept) dropTeam(kept);   // plan 79 C (diff review 1): this game can't be played, nothing to keep
         this.step.set('closed');
       } else this.error.set((e as Error).message);
     } finally { this.busy.set(false); }
@@ -1030,7 +1035,12 @@ export class ChallengeFlow {
     this.open(code);
   }
 
-  protected leave() { this.exit.emit(); }
+  protected leave() {
+    if (this.step() === 'pick' || this.step() === 'review') this.dropKept();   // plan 79 C: left the builder, start clean next time
+    this.exit.emit();
+  }
+
+  private dropKept() { const k = this.keptKey(); if (k) dropTeam(k); }
 
   protected hoursLeft(v: CView) {
     const h = Math.max(0, Math.round((new Date(v.expiresUtc).getTime() - Date.now()) / 3600000));
