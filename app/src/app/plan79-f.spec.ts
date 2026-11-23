@@ -88,3 +88,21 @@ describe('plan 79 F: small text fixes', () => {
     } finally { m.restore(); }
   });
 });
+
+describe('plan 79 E: the final screen leads with the deciding play', () => {
+  it('Last Licks: the card sits above the line score; Duel-style games have none', async () => {
+    setWatched(CODE, 2);
+    const m = await mount(view());
+    try {
+      expect(m.c.step()).toBe('final');
+      const card = m.el.querySelector('pr-deciding-play');
+      expect(card?.querySelector('.dp-word')?.textContent?.trim()).toBe('HOME RUN');
+      expect(card?.querySelector('.dp-line')?.textContent?.trim()).toBe('Batter0 1950 hits a 2-run home run. You lose 0-2.');
+      const table = m.el.querySelector('table.linescore')!;
+      expect(card!.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      m.c.view.set({ ...m.c.view(), mode: 'classic' });
+      m.f.detectChanges(); await m.f.whenStable();
+      expect(m.el.querySelector('pr-deciding-play')).toBeNull();
+    } finally { m.restore(); }
+  });
+});
