@@ -170,9 +170,9 @@ public class Plan79NameTests
         foreach (var noun in FixtureNouns())
         {
             if (NameRules.MlbHit(noun)) continue;   // refused on purpose (Yankees, Black Yankees, ...)
-            foreach (var city in TeamNames.Cities.Append(""))
+            foreach (var city in TeamNames.Cities)
             {
-                var name = (city + " " + noun).Trim();
+                var name = city + " " + noun;
                 if (name.Length > 24) continue;
                 if (NameRules.Check(name, out _) != NameRule.Ok) bad.Add(name);
             }
