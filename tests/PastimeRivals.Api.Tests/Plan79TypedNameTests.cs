@@ -57,7 +57,7 @@ public class Plan79TypedNameTests : Plan79ApiTests
         var v = await View(creator, code);
         Assert.Equal("Tacoma Titans", Str(v, "creatorTeam"));
         Assert.True(v.GetProperty("creatorTyped").GetBoolean());
-        Assert.Equal("Tacoma Titans", Str(v, "creatorShort"));
+        Assert.Equal("Titans", Str(v, "creatorShort"));   // 13 characters: the last word
         Assert.Equal("Mighty Abcdefghijklmn", Str(v, "opponentTeam"));
         Assert.Equal("Mighty Abcd…", Str(v, "opponentShort"));
         var cpu = await creator.PostAsJsonAsync("/api/challenges/computer", Body("Jake's Nine", "pit01", "bat01", "bat02", "bat03"));
