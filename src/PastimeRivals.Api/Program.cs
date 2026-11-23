@@ -20,7 +20,7 @@ builder.Services.AddSingleton<PlayService>();
 // Plan 24: challenges. Signing keys live in SQL so restarts keep tokens valid.
 builder.Services.AddSingleton<IChallengeStore, SqlChallengeStore>();
 builder.Services.AddSingleton<MissCounter>();
-builder.Services.AddSingleton<Turnstile>();
+builder.Services.AddSingleton<ITurnstile, Turnstile>();
 builder.Services.AddHttpClient("turnstile", c => c.Timeout = TimeSpan.FromSeconds(5));
 if (builder.Environment.IsProduction() && string.IsNullOrEmpty(builder.Configuration["Challenges:IpSalt"]))
     throw new InvalidOperationException("Challenges:IpSalt is missing; run tools/make-server-config.py.");
@@ -43,6 +43,11 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("per-ip", ctx => RateLimitPartition.GetFixedWindowLimiter(
         ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = perMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    // Plan 79-A1: check-team and report-name get their own fixed limit, 20 a minute per network block (the /64 key MissCounter uses).
+    // An endpoint's own policy REPLACES the group's per-ip policy; 20 per block is the tighter of the two.
+    o.AddPolicy("names", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        MissCounter.KeyFor(ctx),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
 
 var app = builder.Build();

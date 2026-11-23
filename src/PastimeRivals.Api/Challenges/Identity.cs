@@ -45,7 +45,8 @@ public static partial class Identity
         return set.ToList();
     }
 
-    /// <summary>Only generated nicknames for now; typed names need the age screen first (plan 24 v2 item 6).</summary>
+    /// <summary>Only generated nicknames for now; typed names need the age screen first (plan 24 v2 item 6).
+    /// Still true for NICKNAMES: typed TEAM names (plan 79-A1, planning/79-A1-TYPED-NAME-PLAN.md) are a separate, switchable feature.</summary>
     public static bool IsGeneratedNickname(string? s) =>
         s is not null && NickPattern().Match(s) is { Success: true } m && Words.Contains(m.Groups[1].Value);
 
@@ -93,8 +94,14 @@ public sealed class MissCounter
     }
 }
 
+/// <summary>Plan 79-A1: the bot check behind an interface, so tests can count calls (a refused name must never burn one).</summary>
+public interface ITurnstile
+{
+    Task<bool> PassesAsync(string? token, HttpContext ctx);
+}
+
 /// <summary>Cloudflare Turnstile check. With no secret configured (local, tests, before Stephen adds keys) it passes.</summary>
-public sealed class Turnstile(IConfiguration cfg, IHttpClientFactory http, ILogger<Turnstile> log)
+public sealed class Turnstile(IConfiguration cfg, IHttpClientFactory http, ILogger<Turnstile> log) : ITurnstile
 {
     public bool Enabled => !string.IsNullOrEmpty(cfg["Turnstile:Secret"]);
 

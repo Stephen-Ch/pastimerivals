@@ -5,7 +5,7 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sp = os.path.join(root, "secrets", "deploy.local.json")
 s = json.load(open(sp))
 changed = False
-for k in ("importKey", "ipSalt", "funnelKey"):  # funnelKey: plan 29 read-only funnel readout  # generated once, kept in the git-ignored secrets file
+for k in ("importKey", "ipSalt", "funnelKey", "adminKey"):  # funnelKey: plan 29 read-only funnel readout; adminKey: plan 79-A1 name swaps  # generated once, kept in the git-ignored secrets file
     if not s.get(k):
         s[k] = secrets.token_urlsafe(32); changed = True
 if changed:
@@ -13,5 +13,7 @@ if changed:
 cs = ("Server=sql5110.site4now.net;Database=db_a0bef1_pastimerivals;User Id=db_a0bef1_pastimerivals_admin;"
       f"Password={s['dbPassword']};Encrypt=True;TrustServerCertificate=True;")
 out = os.path.join(root, sys.argv[1] if len(sys.argv) > 1 else "publish/fd", "appsettings.Production.json")
-json.dump({"ConnectionStrings": {"Stats": cs}, "Import": {"Key": s["importKey"]}, "Challenges": {"IpSalt": s["ipSalt"]}, "Funnel": {"Key": s["funnelKey"]}}, open(out, "w"), indent=2)
+# Plan 79-A1: typed team names are per site, written as false when the field is missing (a School Edition copy can't inherit ON).
+json.dump({"ConnectionStrings": {"Stats": cs}, "Import": {"Key": s["importKey"]}, "Challenges": {"IpSalt": s["ipSalt"]}, "Funnel": {"Key": s["funnelKey"]},
+           "Admin": {"Key": s["adminKey"]}, "Teams": {"TypedNames": s.get("typedNames") is True}}, open(out, "w"), indent=2)
 print("wrote", os.path.relpath(out, root))

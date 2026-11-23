@@ -12,6 +12,9 @@ public sealed record FeedbackReasonsIn(string[]? Reasons);
 /// <summary>Team (plan 79): a list name, a stored name on a rematch, or (79-A1, when switched on) a typed name. None = the server draws one.</summary>
 public sealed record PicksIn(List<SlotIn> Picks, string? Nickname, string? Turnstile, int? Level = null, int? Deco = null, string? Mode = null, string? Team = null);
 public sealed record NicknameIn(string Nickname);
+public sealed record TeamIn(string? Team);
+public sealed record ReportIn(int Side);
+public sealed record SwapIn(string? Code, int Side);
 
 public sealed record PlayerOut(string Id, int Year, string Name, string Bats = "R", string Throws = "R", string Bio = "");
 public sealed record SlotOut(int Slot, IReadOnlyList<PlayerOut> Choices);
@@ -128,7 +131,7 @@ public static class ChallengeEndpoints
             return Results.Ok(new { nickname = body.Nickname });
         });
 
-        write.MapPost("/challenges", async (PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, Turnstile ts, IConfiguration cfg) =>
+        write.MapPost("/challenges", async (PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, ITurnstile ts, IConfiguration cfg) =>
             await Create(body, ctx, store, play, ts, cfg, rematchOf: null));
 
         api.MapGet("/challenges/mine", async (HttpContext ctx, IChallengeStore store) =>
@@ -228,10 +231,68 @@ public static class ChallengeEndpoints
             var n = Math.Clamp(days ?? 30, 1, 365);
             var r = await store.FunnelReportAsync(DateTime.UtcNow.Date.AddDays(1 - n));
             req.HttpContext.Response.Headers["X-Content-Type-Options"] = "nosniff";
-            return Results.Text(FunnelText(r, n), "text/plain; charset=utf-8");
+            var reports = await store.NameReportsSinceAsync(DateTime.UtcNow.Date.AddDays(1 - n));
+            var line = $"Name reports (last {n} days): {reports.Count}" + (reports.Count == 0 ? "" : " | " + string.Join(", ", reports.Select(x => $"{x.Code} {(x.Side == 0 ? "creator" : "friend")}")));
+            return Results.Text(FunnelText(r, n) + line + "\n", "text/plain; charset=utf-8");
         });
 
-        write.MapPost("/challenges/{code}/lock", async (string code, PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, Turnstile ts, MissCounter misses, IConfiguration cfg) =>
+        // Plan 79-A1: "Use" on a typed name checks it here first, so a refusal shows on the review screen with the picks kept.
+        write.MapPost("/challenges/check-team", async (TeamIn body, HttpContext ctx, IChallengeStore store, IConfiguration cfg) =>
+        {
+            if (TeamNames.IsListName(body.Team)) return Results.NoContent();
+            var err = await TypedNameError(body.Team, await CurrentGuest(ctx, store), store, cfg);
+            return err is null ? Results.NoContent() : Results.BadRequest(new { error = err });
+        }).RequireRateLimiting("names");
+
+        // Plan 79-A1: anyone but the name's owner can report a TYPED name; it swaps to a server-made name at once.
+        // Only the other player of the game (or the named rematch opponent before Lock) also puts it on the owner's refused list for 30 days.
+        write.MapPost("/challenges/{code}/report-name", async (string code, ReportIn body, HttpContext ctx, IChallengeStore store, MissCounter misses, IConfiguration cfg) =>
+        {
+            var ip = MissCounter.KeyFor(ctx);
+            if (misses.Blocked(ip)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            if (!Identity.CodePattern().IsMatch(code) || await store.GetAsync(code) is not { } ch) { misses.Miss(ip); return Results.NotFound(); }
+            if (body.Side is not (0 or 1)) return Results.BadRequest();
+            var side = body.Side;
+            var reporter = await SideOf(ch, ctx, store);
+            if (reporter == side) return Results.NoContent();   // your own name: ignored
+            var g = await CurrentGuest(ctx, store);
+            var owner = side == 0 ? ch.CreatorId : ch.OpponentId;
+            var isOther = (reporter == 1 - side && ch.OpponentId is not null)
+                || (side == 0 && ch.OpponentId is null && ch.RematchFor is { } rf && g is not null && g.Id == rf);
+            var now = DateTime.UtcNow;
+            var ipHash = Identity.IpHash(ctx, Salt(cfg));
+            var (name, typed) = side == 0 ? (ch.CreatorTeam, ch.CreatorTyped) : (ch.OpponentTeam, ch.OpponentTyped);
+            string? old = null;
+            if (typed && name is not null)
+            {
+                old = name;
+                await SwapTeam(store, ch, side);
+            }
+            else if (isOther) old = await store.ReportedOldNameAsync(code, side);   // a stranger swapped it first: the log still has it
+            if (old is null) return Results.NoContent();   // a server-made name: nothing to do
+            await store.AddNameReportAsync(code, side, old, isOther ? "opponent" : reporter is null ? "stranger" : "player", g?.Id, ipHash, now);
+            if (isOther && owner is { } o && o != ComputerId) await store.AddRefusedNameAsync(o, NameRules.CheckForm(old), now.AddDays(30));
+            return Results.NoContent();
+        }).RequireRateLimiting("names");
+
+        // Plan 79-A1 admin: swap one side's name, or every typed name (the rollback), by code. Outside the write group; 404 without the key.
+        api.MapPost("/admin/swap-team", async (SwapIn body, HttpRequest req, IChallengeStore store, IConfiguration cfg) =>
+        {
+            if (!AdminOk(req, cfg)) return Results.NotFound();
+            if (body.Code is null || !Identity.CodePattern().IsMatch(body.Code) || body.Side is not (0 or 1) || await store.GetAsync(body.Code) is not { } ch) return Results.BadRequest();
+            await SwapTeam(store, ch, body.Side);
+            return Results.NoContent();
+        });
+        api.MapPost("/admin/swap-all-typed", async (HttpRequest req, IChallengeStore store, IConfiguration cfg) =>
+        {
+            if (!AdminOk(req, cfg)) return Results.NotFound();
+            var n = 0;
+            foreach (var (code, side) in await store.TypedTeamsAsync())
+                if (await store.GetAsync(code) is { } ch) { await SwapTeam(store, ch, side); n++; }
+            return Results.Ok(new { swapped = n });
+        });
+
+        write.MapPost("/challenges/{code}/lock", async (string code, PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, ITurnstile ts, MissCounter misses, IConfiguration cfg) =>
         {
             var ip = MissCounter.KeyFor(ctx);
             if (misses.Blocked(ip)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
@@ -239,7 +300,7 @@ public static class ChallengeEndpoints
             // Plan 79: the team name is checked first, before the one-use bot check.
             var current0 = await CurrentGuest(ctx, store);
             var trusted = before.RematchOf is { } ro && current0 is not null && await store.GetAsync(ro) is { } old ? StoredTeamOf(old, current0.Id) : null;
-            var (team, typed, teamErr) = await TeamFor(body.Team, before.CreatorTeam, trusted);
+            var (team, typed, teamErr) = await TeamFor(body.Team, before.CreatorTeam, trusted, current0, store, cfg);
             if (teamErr is not null) return teamErr;
             // Plan 38: an app that does not know this game's mode (an old app on an inning link) is told to refresh.
             if (ModeOf(body) != before.Mode) return Results.Conflict(new { error = "update" });
@@ -298,7 +359,7 @@ public static class ChallengeEndpoints
         // Plan 25: play the computer. The user is the home side (keeps every pick); the computer bats first.
         write.MapPost("/challenges/computer", async (PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, IConfiguration cfg, MissCounter misses) =>
         {
-            var (team, typed, teamErr) = await TeamFor(body.Team, null, null);
+            var (team, typed, teamErr) = await TeamFor(body.Team, null, null, await CurrentGuest(ctx, store), store, cfg);
             if (teamErr is not null) return teamErr;
             if (ModeOf(body) is not { } mode) return Results.BadRequest(new { error = "Unknown game mode." });
             var oracle0 = await play.OracleAsync();
@@ -343,7 +404,7 @@ public static class ChallengeEndpoints
             return Results.Ok(new { code, key, view });
         });
 
-        write.MapPost("/challenges/{code}/rematch", async (string code, PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, Turnstile ts, IConfiguration cfg, MissCounter misses) =>
+        write.MapPost("/challenges/{code}/rematch", async (string code, PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, ITurnstile ts, IConfiguration cfg, MissCounter misses) =>
         {
             var ip = MissCounter.KeyFor(ctx);
             if (misses.Blocked(ip)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
@@ -375,17 +436,47 @@ public static class ChallengeEndpoints
     /// this guest's stored name from the game being rematched (stored names are trusted, even after a word leaves the lists).
     /// Anything else is refused. The two sides never share a name or a city: a stale tab that clashes gets a fresh draw.
     /// </summary>
-    internal static Task<(string? Team, bool Typed, IResult? Error)> TeamFor(string? given, string? avoid, (string Name, bool Typed)? trusted)
+    internal static async Task<(string? Team, bool Typed, IResult? Error)> TeamFor(string? given, string? avoid, (string Name, bool Typed)? trusted,
+        Guest? g, IChallengeStore store, IConfiguration cfg, bool rematch = false)
     {
         string? team; bool typed = false;
         if (given is null) team = TeamNames.Suggest(1, avoid)[0];
-        else if (trusted is { } t && given == t.Name) { team = t.Name; typed = t.Typed; }
+        else if (trusted is { } t && given == t.Name && (!t.Typed || TypedNamesOn(cfg))) { team = t.Name; typed = t.Typed; }
         else if (TeamNames.IsListName(given)) team = given;
-        else return Task.FromResult<(string?, bool, IResult?)>((null, false, Results.BadRequest(new { error = "Try another name." })));
-        if (avoid is not null && (team == avoid || (TeamNames.CityOf(team) is { } city && city == TeamNames.CityOf(avoid))))
+        else
+        {
+            // Plan 79-A1: a typed name (switch on) passes the text rules, the bad words, and this guest's refused list.
+            var err = await TypedNameError(given, g, store, cfg);
+            if (err is null) (team, typed) = (NameRules.Clean(given), true);
+            // A rematch resending a name the server now refuses gets a server-made name instead of a 400.
+            else if (rematch) team = TeamNames.Suggest(1, avoid)[0];
+            else return (null, false, Results.BadRequest(new { error = err }));
+        }
+        if (avoid is not null && (string.Equals(team, avoid, StringComparison.OrdinalIgnoreCase) || (TeamNames.CityOf(team) is { } city && city == TeamNames.CityOf(avoid))))
             (team, typed) = (TeamNames.Suggest(1, avoid)[0], false);
-        return Task.FromResult<(string?, bool, IResult?)>((team, typed, null));
+        return (team, typed, null);
     }
+
+    /// <summary>Plan 79-A1: null when a typed name is fine, else the one message the player sees (no hint which rule failed).</summary>
+    internal static async Task<string?> TypedNameError(string? given, Guest? g, IChallengeStore store, IConfiguration cfg)
+    {
+        if (!TypedNamesOn(cfg) || NameRules.Check(given, out var clean) != NameRule.Ok) return "Try another name.";
+        if (g is not null && await store.IsRefusedNameAsync(g.Id, NameRules.CheckForm(clean), DateTime.UtcNow)) return "That name was reported. Try another.";
+        return null;
+    }
+
+    /// <summary>Plan 79-A1: an admin key (separate from the read-only funnel key) given in X-Admin-Key; anything else is a 404.</summary>
+    private static bool AdminOk(HttpRequest req, IConfiguration cfg)
+    {
+        var key = cfg["Admin:Key"];
+        var given = req.Headers["X-Admin-Key"].ToString();
+        return !string.IsNullOrEmpty(key) && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.UTF8.GetBytes(given), System.Text.Encoding.UTF8.GetBytes(key));
+    }
+
+    /// <summary>Plan 79-A1: swaps one side's name for a server-made one that does not share the other side's name or city.</summary>
+    private static async Task SwapTeam(IChallengeStore store, Challenge ch, int side) =>
+        await store.SetTeamAsync(ch.Code, side, TeamNames.Suggest(1, side == 0 ? ch.OpponentTeam : ch.CreatorTeam)[0], typed: false);
 
     /// <summary>Plan 32A: decoration version the creating app used (count and call text). Old apps send none = 1.</summary>
     internal static int DecoOf(PicksIn body, string mode = Rules.Classic) =>
@@ -500,11 +591,11 @@ public static class ChallengeEndpoints
         });
     }
 
-    private static async Task<IResult> Create(PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, Turnstile ts, IConfiguration cfg,
+    private static async Task<IResult> Create(PicksIn body, HttpContext ctx, IChallengeStore store, PlayService play, ITurnstile ts, IConfiguration cfg,
         (string Code, Guid? Other)? rematchOf, (string Name, bool Typed)? trusted = null)
     {
         // Plan 79: the team name is checked first, before the one-use bot check.
-        var (team, typed, teamErr) = await TeamFor(body.Team, null, trusted);
+        var (team, typed, teamErr) = await TeamFor(body.Team, null, trusted, await CurrentGuest(ctx, store), store, cfg, rematch: rematchOf is not null);
         if (teamErr is not null) return teamErr;
         if (!await ts.PassesAsync(body.Turnstile, ctx)) return Results.BadRequest(new { error = "Bot check failed. Try again." });
         if (ModeOf(body) is not { } mode) return Results.BadRequest(new { error = "Unknown game mode." });
