@@ -22,6 +22,7 @@ import {
 } from './challenge-api';
 import { mediaSignal, orderMine, waitingCount } from './game-status';
 import { GamesList } from './games-list';
+import { DecidingPlay } from './deciding-play';
 
 type Step = 'loading' | 'home' | 'intro' | 'pick' | 'review' | 'shared' | 'waiting' | 'play' | 'final' | 'closed';
 type Mode = 'create' | 'accept' | 'rematch' | 'cpu';
@@ -57,7 +58,7 @@ export function parkLookForView(v: CView | null): ParkLook | null {
 
 @Component({
   selector: 'pr-challenge',
-  imports: [GamesList, PitchScene, Scoreboard, Feedback, HowSim, VoiceButton, ArtNoteSeen],
+  imports: [GamesList, DecidingPlay, PitchScene, Scoreboard, Feedback, HowSim, VoiceButton, ArtNoteSeen],
   templateUrl: './challenge.html',
   styleUrls: ['./app.css', './challenge.css'],
 })

@@ -267,6 +267,7 @@
           }
         }
         @if (isInningGame() && g) {
+          <pr-deciding-play [game]="g" [you]="yourSide()" [name]="plainName" [color]="sideColor" />
           <table class="linescore" aria-label="Line score">
             <thead><tr><th></th>@for (n of lineInnings(); track n) { <th>{{ n }}</th> }<th>R</th></tr></thead>
             <tbody>

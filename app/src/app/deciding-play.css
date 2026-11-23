@@ -1,0 +1,10 @@
+/* Plan 79 E: the deciding play card above the Last Licks line score. */
+:host { display: block; }
+.dp { margin: 4px 0 6px; padding: 6px 10px; border-left: 5px solid; border-radius: 6px; background: var(--surface-2); }
+.dp-word { margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: .03em; line-height: 1.1; }
+.dp-line { margin: 2px 0 0; font-size: .95rem; line-height: 1.25; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .dp { padding: 3px 8px; margin: 2px 0 4px; }
+  .dp-word { font-size: 1.15rem; }
+  .dp-line { font-size: .85rem; }
+}
