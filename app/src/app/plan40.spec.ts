@@ -6,13 +6,13 @@ import { sideLine } from './side-line';
 describe('plan 40', () => {
   it('B: says which side of the plate the batter stands on, from listed bats and the pitcher arm', () => {
     expect(sideLine('R', 'L')).toBe('Bats right.');
-    expect(sideLine('L', 'R')).toBe('Bats left: other side of the plate.');
+    expect(sideLine('L', 'R')).toBeNull();   // plan 79 D2: the lefty line is gone
     expect(sideLine('B', 'R')).toBe('Switch hitter: bats left vs a righty.');
     expect(sideLine('S', 'L')).toBe('Switch hitter: bats right vs a lefty.');
     expect(sideLine('B', '')).toBeNull();
     expect(sideLine(null, 'R')).toBeNull();
     expect(sideLine('', 'R')).toBeNull();
-    for (const t of ['Bats right.', 'Bats left: other side of the plate.', 'Switch hitter: bats left vs a righty.', 'Switch hitter: bats right vs a lefty.'])
+    for (const t of ['Bats right.', 'Switch hitter: bats left vs a righty.', 'Switch hitter: bats right vs a lefty.'])
       expect(t.length).toBeLessThanOrEqual(44);
   });
 

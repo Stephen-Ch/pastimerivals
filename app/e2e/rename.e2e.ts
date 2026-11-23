@@ -34,7 +34,7 @@ for (const [w, h] of SIZES) {
     expect(await pageScroll(page), 'page scroll playing').toBeLessThanOrEqual(1);
     await page.locator('pr-pitch-scene .stage[data-held="1"]').waitFor({ timeout: 20_000 });
     // held: back to the long form for the next hitter (same function as before the change)
-    await expect(side).toHaveText('Bats left: other side of the plate.');   // next up: Ruth (L) vs Pedro (R)
+    await expect(side).toHaveCount(0);   // next up: Ruth (L) vs Pedro (R): plan 79 D2, no lefty line
     expect(before).toBe('Bats right.');
     expect(hn.bad).toEqual([]);
   });

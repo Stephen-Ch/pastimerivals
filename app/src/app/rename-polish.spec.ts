@@ -13,7 +13,7 @@ describe('sideNameLine (rename polish)', () => {
     expect(sideNameLine('Rose', 'B', '')).toBeNull();
     expect(sideNameLine('Rose', 'B', null)).toBeNull();
   });
-  it('leaves the long side line unchanged', () => {
-    expect(sideLine('L', 'R')).toBe('Bats left: other side of the plate.');
+  it('long side line: none for lefties (plan 79 D2)', () => {
+    expect(sideLine('L', 'R')).toBeNull();   // plan 79 D2: the lefty line is gone
   });
 });
