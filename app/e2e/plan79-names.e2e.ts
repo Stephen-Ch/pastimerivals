@@ -54,6 +54,8 @@ for (const [w, h] of SIZES) {
     await expect(page.locator('pr-scoreboard')).toBeVisible();
     await expect(page.locator('.linescore')).toContainText('WWWWWWWWWWWW');
     await expect(page.getByRole('button', { name: /^Report name/ })).toHaveCount(1);
+    const send = page.locator('.send-result');
+    expect(await send.evaluate(b => b.scrollWidth - b.clientWidth), 'long name wraps inside the button').toBeLessThanOrEqual(1);
     expect(await pageScroll(page), 'final scroll').toBeLessThanOrEqual(1);
     await page.screenshot({ path: `dist/e2e-shots/p79-names-${w}x${h}.png` });
     expect(hn.bad).toEqual([]);
