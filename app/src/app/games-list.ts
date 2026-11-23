@@ -1,4 +1,4 @@
-import { afterNextRender, Component, computed, DestroyRef, ElementRef, inject, Injector, input, output, signal, viewChild } from '@angular/core';
+import { afterNextRender, Component, computed, DestroyRef, effect, ElementRef, inject, Injector, input, output, signal, untracked, viewChild } from '@angular/core';
 import type { CMine } from './challenge-api';
 import { isWaiting, pageCountBy, pageForAnchor, rowsFit, stageWords, waitingText } from './game-status';
 
@@ -27,15 +27,24 @@ export class GamesList {
   private readonly injector = inject(Injector);
 
   constructor() {
+    // A list that shrank while open: pull a stale anchor back so a later turn does not jump to a different page.
+    effect(() => {
+      const n = this.list().length, p = this.page(), per = this.per();
+      if (untracked(this.anchor) >= n) untracked(() => this.anchor.set(p * per));
+    });
     const destroy = inject(DestroyRef);
     afterNextRender(() => {
       const ul = this.ul().nativeElement;
       const ro = new ResizeObserver(() => {
         const n = rowsFit(ul.clientHeight, parseFloat(getComputedStyle(ul).rowGap) || 0);
         if (n === this.per()) return;
-        const hadFocus = ul.contains(document.activeElement);
+        // Focus moves only if the focused row leaves the page (rows are tracked by code, so a row that stays keeps its element).
+        const rowsNow = [...ul.querySelectorAll<HTMLElement>('.row-btn')];
+        const i = rowsNow.findIndex(b => b === document.activeElement);
+        const focused = i < 0 ? -1 : this.page() * this.per() + i;
         this.per.set(n);
-        if (hadFocus) this.focusFirstRow(ul);
+        const start = this.page() * n;
+        if (focused >= 0 && (focused < start || focused >= start + n)) this.focusFirstRow(ul);
       });
       ro.observe(ul);
       destroy.onDestroy(() => ro.disconnect());

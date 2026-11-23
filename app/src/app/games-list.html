@@ -7,8 +7,10 @@
     </button></li>
   }
 </ul>
+@if (list().length) {
 <div class="chosen pager" role="group" [attr.aria-label]="'Page ' + (page() + 1) + ' of ' + pages()" [style.visibility]="pages() > 1 ? 'visible' : 'hidden'">
   @if (page() > 0) { <button type="button" class="link small" (click)="go(-1)">‹ Newer</button> } @else { <span></span> }
   <span aria-hidden="true">{{ page() + 1 }} / {{ pages() }}</span>
   @if (page() < pages() - 1) { <button type="button" class="link small" (click)="go(1)">Older ›</button> } @else { <span></span> }
 </div>
+}

@@ -66,6 +66,12 @@ for (const [w, h] of SIZES) {
       await expect(page.getByRole('group', { name: `Page ${n} of ${pages}` })).toBeAttached();
     };
     await expect(page.getByRole('group', { name: `Page 1 of ${pages}` })).toBeAttached();
+    // A1: no "Your games" heading at any size; on short screens the title is screen-reader only and the intro is gone.
+    await expect(page.locator('main h2')).toHaveCount(0);
+    const short = (h > w && h <= 640) || (w > h && h <= 500);
+    await expect(page.locator('main h1')).toHaveClass(short ? /sr-only/ : /^(?!.*sr-only).*$/);
+    await expect(page.locator('main p.how')).toHaveCount(short ? 0 : 1);
+    await expect(page.locator('main .how-link')).toHaveCount(short ? 0 : 1);
     expect(await checkPage(page, 'page 1'), 'rows on page 1').toBe(per);
     await page.screenshot({ path: `dist/e2e-results/a1-${key}-p1.png` });
     await older(2);
@@ -120,6 +126,13 @@ test('A1 words, order, focus after paging, and turning the phone keeps the page'
   await expect(rows.nth(2)).toContainText('Your friend started picking');
   await expect(rows.nth(3)).toContainText('Opened · your friend is looking');
   await expect(page.getByRole('group', { name: 'Page 1 of 3' })).toBeAttached();
+  // Turning the phone keeps focus on a row that stays on the page.
+  await rows.nth(1).focus();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect(page.getByRole('group', { name: 'Page 1 of 4' })).toBeAttached();
+  await expect(rows.nth(1)).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('group', { name: 'Page 1 of 3' })).toBeAttached();
   await page.getByRole('button', { name: 'Older ›' }).click();
   await expect(rows.nth(0)).toBeFocused();
   await expect(rows.nth(0)).toContainText('Sent · waiting for your friend');
@@ -143,6 +156,19 @@ test('A1 words, order, focus after paging, and turning the phone keeps the page'
   await page.getByRole('button', { name: '‹ Newer' }).click();
   await expect(rows.nth(0)).toBeFocused();
   await expect(rows.nth(0)).toContainText('Sent · waiting for your friend');
+  expect(hn.bad).toEqual([]);
+});
+
+test('A1 the waiting status line exists before any games load (screen readers announce it)', async ({ context, page }, info) => {
+  test.skip(info.project.name !== 'phone', 'one run');
+  const hn = await serve(context, { storage: { pr_seen: '1' } });   // mine.json is [] here
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/c/new');
+  await page.getByRole('button', { name: 'Play the computer' }).waitFor();
+  await expect(page.locator('main [role=status].waiting-line')).toHaveCount(1);
+  await expect(page.locator('main [role=status].waiting-line')).toHaveText('');
+  await expect(page.locator('main .pager')).toHaveCount(0);
+  expect(await pageScroll(page)).toBeLessThanOrEqual(1);
   expect(hn.bad).toEqual([]);
 });
 

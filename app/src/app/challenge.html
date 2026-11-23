@@ -15,7 +15,8 @@
           <p class="how">Pick a pitcher and a batting order from any season. One inning: your hitters bat until 3 outs, then theirs. Most runs wins.</p>
           <button type="button" class="link small how-link" (click)="openInfo('how')">How the sim works</button>
         }
-        @if (mine().length) { <pr-games-list [list]="mineOrdered()" [waiting]="mineWaiting()" (open)="openMine($event)" /> }
+        <!-- Always rendered, so its "results waiting" status line exists before its text arrives (screen readers announce it). -->
+        <pr-games-list [list]="mineOrdered()" [waiting]="mineWaiting()" (open)="openMine($event)" />
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
       <div class="actions even">
