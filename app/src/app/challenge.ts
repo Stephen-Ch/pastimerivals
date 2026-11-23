@@ -16,7 +16,7 @@ import { outAt } from './inning';
 import { ART_NOTE_SHORT, ArtNoteSeen, artArrival, artNoteDue, markArtNoteShown } from './art-note';
 import { HowSim, InfoKind } from './how-sim';
 import { pushEntry } from './nav';
-import { awayHome, boardOrder, firstWord, headerParts, ownTag, sideColor, TEAM_BLUE } from './team';
+import { awayHome, boardOrder, headerParts, ownTag, sideColor, TEAM_BLUE } from './team';
 import {
   CAtBat, capi, CEra, ChallengeError, CClash, CMine, CPlayer, CSlot, CView, GameMode, keyFor, links, saveKey, setWatched, takeKeyFromHash, toBody, watched,
 } from './challenge-api';
@@ -24,6 +24,7 @@ import { mediaSignal, orderMine, waitingCount } from './game-status';
 import { GamesList } from './games-list';
 import { DecidingPlay } from './deciding-play';
 import { checkKept, dropTeam, keepTeam, loadTeam, teamKey } from './team-keep';
+import { canReport, cleanTyped, shortLabel, sideLabel, typedLocalOk } from './team-names';
 
 type Step = 'loading' | 'home' | 'intro' | 'pick' | 'review' | 'shared' | 'waiting' | 'play' | 'final' | 'closed';
 type Mode = 'create' | 'accept' | 'rematch' | 'cpu';
@@ -61,7 +62,7 @@ export function parkLookForView(v: CView | null): ParkLook | null {
   selector: 'pr-challenge',
   imports: [GamesList, DecidingPlay, PitchScene, Scoreboard, Feedback, HowSim, VoiceButton, ArtNoteSeen],
   templateUrl: './challenge.html',
-  styleUrls: ['./app.css', './challenge.css', './team-builder.css'],
+  styleUrls: ['./app.css', './challenge.css', './team-builder.css', './team-name.css'],
 })
 export class ChallengeFlow {
   /** Challenge code from the URL, or null to start a new challenge. */
@@ -167,6 +168,28 @@ export class ChallengeFlow {
 
   protected readonly nickname = signal<string | null>(null);
   protected readonly nickChoices = signal<string[]>([]);
+  // ---- Plan 79 A: team names (79-A1: typed names behind the server switch) ----
+  /** Suggestions from /api/me (new games, computer games, rematches) and the 79-A1 switch. */
+  protected readonly meTeams = signal<string[]>([]);
+  protected readonly typedOn = signal(false);
+  /** The name picked on this screen (a suggestion or a checked typed name); null = the first suggestion. */
+  protected readonly pickedTeam = signal<string | null>(null);
+  /** Suggestions in order: the friend's come with the game (they skip the creator's city); a rematch offers your stored name first. */
+  protected readonly teamSuggestions = computed(() => {
+    const v = this.view(), m = this.mode();
+    if (m === 'accept') return v?.teamChoices ?? [];
+    const own = m === 'rematch' && v ? (v.you === 'creator' ? v.creatorTeam : v.you === 'opponent' ? v.opponentTeam : null) : null;
+    return own ? [own, ...this.meTeams().filter(t => t !== own)] : this.meTeams();
+  });
+  protected readonly team = computed(() => this.pickedTeam() ?? this.teamSuggestions()[0] ?? null);
+  /** "More names": 3 suggestions other than the name in use. */
+  protected readonly moreNames = computed(() => this.teamSuggestions().filter(n => n !== this.team()).slice(0, 3));
+  protected readonly teamSheet = signal<'closed' | 'open' | 'more' | 'type'>('closed');
+  protected readonly typedDraft = signal('');
+  protected readonly teamError = signal<string | null>(null);
+  protected readonly reportNote = signal<string | null>(null);
+  protected readonly canReport = (side: number) => canReport(this.view(), side);
+  protected readonly sideLabel = (side: number) => sideLabel(this.view(), side);
   protected readonly shareLink = signal('');
   protected readonly privateLink = signal<string | null>(null);
 
@@ -187,11 +210,11 @@ export class ChallengeFlow {
   /** Team identity (plan 2026-11-04): Last Licks boards show AWAY left, HOME right; names, scores and pills follow the same order. */
   protected readonly boardSides = computed(() => boardOrder(this.isInningGame()));
   protected readonly boardNames = computed<[string, string]>(() => { const [l, r] = this.boardSides(); return [this.sideName(l), this.sideName(r)]; });
-  /** Phones: "You" for your side, the nickname's first word for the other ("Bleacher"); null keeps the full names (The Duel). */
+  /** Phones: "You" for your side, the other team's short name ("Night Owls"; old games: the nickname's first word); null keeps the full names (The Duel). */
   protected readonly boardShort = computed<[string, string] | null>(() => {
     if (!this.isInningGame()) return null;
     const [l, r] = this.boardSides(), you = this.yourSide();
-    const one = (s: number) => (s === you ? 'You' : firstWord(this.plainName(s).replace(/^The /, '')));
+    const one = (s: number) => (s === you ? 'You' : shortLabel(this.view(), s));   // plan 79: the team's short name (the noun)
     return [one(l), one(r)];
   });
   protected readonly boardPills = computed<[string, string] | null>(() => {
@@ -248,8 +271,7 @@ export class ChallengeFlow {
   protected readonly yourSide = computed(() => (this.view()?.you === 'creator' ? 0 : this.view()?.you === 'opponent' ? 1 : null));
   protected readonly sideName = (side: number) => {
     const v = this.view();
-    const n = side === 0 ? v?.creatorName : v?.vsCpu ? 'The Computer' : v?.opponentName;
-    return (n ?? 'Friend') + (this.yourSide() === side ? ' (you)' : '');
+    return sideLabel(v, side) + (this.yourSide() === side ? ' (you)' : '');   // plan 79: team names, nicknames on old games
   };
   // ---- Plan 26: computer levels (a ladder: win to face tougher players) ----
   protected readonly levelNames = LEVEL_NAMES;
@@ -318,10 +340,10 @@ export class ChallengeFlow {
     });
     // Plan 79 C: keep the team in progress for this flow (restored by resetTeam, cleared on Lock).
     effect(() => {
-      const st = this.step(), slots = this.slots(), sittingOut = this.sittingOut(), hand = this.handPicked();
+      const st = this.step(), slots = this.slots(), sittingOut = this.sittingOut(), hand = this.handPicked(), team = this.pickedTeam();
       if (st !== 'pick' && st !== 'review') return;
       const key = untracked(() => this.keptKey());
-      if (key) keepTeam(key, { slots, sittingOut, hand });
+      if (key) keepTeam(key, { slots, sittingOut, hand, ...(team ? { team } : {}) });
     });
     queueMicrotask(() => this.start());
   }
@@ -334,11 +356,12 @@ export class ChallengeFlow {
     const t = key ? checkKept(loadTeam(key), this.slots().length, this.isHome() ? null : (this.view()?.era?.batters ?? null)) : null;
     if (!t) return;
     this.slots.set(t.slots); this.sittingOut.set(t.sittingOut); this.handPicked.set(t.hand);
+    if (t.team) this.pickedTeam.set(t.team);
     if (this.isHome() && t.slots[0]) void this.refreshEra();
   }
 
   private async start() {
-    capi.me().then(m => { this.nickname.set(m.nickname); this.nickChoices.set(m.choices); }).catch(() => undefined);
+    capi.me().then(m => { this.nickname.set(m.nickname); this.nickChoices.set(m.choices); this.meTeams.set(m.teams ?? []); this.typedOn.set(!!m.typedNames); }).catch(() => undefined);
     const c = this.code(), vs = this.startMode();
     if (c) await this.open(c);
     else if (vs) this.startFresh(vs, false);
@@ -395,6 +418,7 @@ export class ChallengeFlow {
     this.slots.set(Array(this.inning() ? 10 : 4).fill(null)); this.slotIndex.set(0); this.editRank.set(0); this.openSearch();
     this.era.set(null); this.eraKey.set(''); this.eraLoading.set(false); this.eraToken++; this.sittingOut.set(null); this.flipNote.set(null);
     this.handPicked.set(false);
+    this.pickedTeam.set(null); this.teamSheet.set('closed'); this.teamError.set(null);
     this.restoreTeam();
   }
 
@@ -488,7 +512,7 @@ export class ChallengeFlow {
     if (!h) return;
     const slot = this.slotIndex(), rank = this.editRank(), token = ++this.searchToken;
     if (this.usedIds(slot, rank).has(h.id)) { this.error.set(`${h.name} is already on your team.`); return; }
-    if (this.clash()?.ids.has(h.id)) { this.error.set(`Sorry, ${h.name} is playing for ${this.view()?.creatorName ?? 'your friend'}. Choose another.`); return; }
+    if (this.clash()?.ids.has(h.id)) { this.error.set(`Sorry, ${h.name} is playing for ${this.view() ? this.sideLabel(0) : 'your friend'}. Choose another.`); return; }
     this.error.set(null);
     const pick: CPlayer = { id: h.id, year: s.year, name: h.name, bats: h.bats, throws: h.throws, bio: h.bio ?? '' };
     const prev = this.slots()[slot];
@@ -597,10 +621,38 @@ export class ChallengeFlow {
 
   protected chooseName(n: string) { this.nickname.set(n); }
 
+  // ---- Plan 79 A + A1: the team name on the review screen ----
+  protected openTeamSheet() { this.teamError.set(null); this.typedDraft.set(''); this.teamSheet.set('open'); }
+  protected closeTeamSheet() { this.teamSheet.set('closed'); this.teamError.set(null); }
+  protected pickTeam(name: string) { this.pickedTeam.set(name); this.closeTeamSheet(); }
+  protected onTyped(v: string) { this.typedDraft.set(v); this.teamError.set(null); }
+  /** "Use": the server checks the typed name first, so a refusal shows here with the picks kept. */
+  protected async useTyped() {
+    const name = cleanTyped(this.typedDraft());
+    if (!typedLocalOk(name)) { this.teamError.set('Try another name.'); return; }
+    this.busy.set(true);
+    try {
+      const err = await capi.checkTeam(name);
+      if (err) { this.teamError.set(err); return; }
+      this.pickTeam(name);
+    } finally { this.busy.set(false); }
+  }
+  /** Plan 79-A1: anyone who sees a typed name that is not theirs can report it; it swaps to a server-made name at once. */
+  protected async reportName(side: number) {
+    const c = this.current();
+    if (!c) return;
+    if (await capi.reportName(c, side === 0 ? 0 : 1)) {
+      this.reportNote.set('Thanks. That name is gone.');
+      try { this.view.set(await capi.view(c)); } catch { /* the note is enough */ }
+    } else this.reportNote.set('Could not report the name. Try again.');
+  }
+
   protected async lockTeam() {
     const slots = this.slots().slice(0, this.batters() + 1);
     if (!slots.every(Boolean) || !this.teamDone()) return;
     const body = toBody(slots as CSlot[], this.nickname() ?? this.nickChoices()[0], this.gameMode());
+    const team = this.team();
+    if (team) body.team = team;   // plan 79: none (suggestions not loaded) = the server draws one
     const kept = this.keptKey();
     this.busy.set(true); this.error.set(null);
     try {
@@ -629,7 +681,7 @@ export class ChallengeFlow {
       if (e instanceof ChallengeError && e.status === 409 && e.code === 'clash') {
         const c = e.data as CClash;
         this.clash.set({
-          text: c.clashes.map(x => `Sorry, ${x.name} is playing for ${c.creatorName}. Choose another.`),
+          text: c.clashes.map(x => `Sorry, ${x.name} is playing for ${this.view()?.creatorTeam ? this.sideLabel(0) : c.creatorName}. Choose another.`),
           ids: new Set(c.clashes.map(x => x.id)), slots: c.clashes.map(x => x.slot),
         });
         this.goSlot(c.clashes[0].slot);
@@ -703,7 +755,7 @@ export class ChallengeFlow {
   protected async shareResult() {
     const g = this.game(), v = this.view();
     if (!g || !v) return;
-    const score = `${v.creatorName} ${g.totals[0]}, ${v.opponentName ?? 'Friend'} ${g.totals[1]}${v.mode === 'inning' ? ' (runs)' : ''}`;
+    const score = `${sideLabel(v, 0)} ${g.totals[0]}, ${sideLabel(v, 1)} ${g.totals[1]}${v.mode === 'inning' ? ' (runs)' : ''}`;
     const text = v.vsCpu ? 'Watch my game against the Computer on Pastime Rivals!'
       : v.you === 'opponent' ? `I played your Pastime Rivals challenge. Watch the game!` : `Watch our Pastime Rivals game!`;
     const shared = await this.shareOut(text, this.shareLink(), score);

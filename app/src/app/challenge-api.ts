@@ -30,13 +30,18 @@ export interface CView {
   /** Plan 38: missing from older servers = classic. */
   mode?: GameMode;
   era?: CEra | null;
+  /** Plan 79: team names (missing on old games: fall back to nicknames), board short names, typed flags (79-A1),
+   *  and 4 suggestions for a friend who can claim it (the first is the default). */
+  creatorTeam?: string | null; opponentTeam?: string | null; creatorShort?: string | null; opponentShort?: string | null;
+  creatorTyped?: boolean; opponentTyped?: boolean; teamChoices?: string[] | null;
 }
 export type CStage = 'expired_late' | 'expired' | 'result' | 'done' | 'picking' | 'opened' | 'sent' | 'unsent' | 'you_played' | 'rematch_for_you';
 /** Plan 69: stage (null for computer games, missing from older servers) and rematchSent drive the status words. */
 export interface CMine { code: string; you: 'creator' | 'opponent'; creatorName: string; opponentName: string | null; createdUtc: string; status: string; vsCpu: boolean; mode?: GameMode;
-  stage?: CStage | null; rematchSent?: boolean; }
+  stage?: CStage | null; rematchSent?: boolean; creatorTeam?: string | null; opponentTeam?: string | null; }
 export interface CClash { creatorName: string; clashes: { slot: number; id: string; name: string }[]; }
-export interface CMe { nickname: string | null; choices: string[]; }
+/** Plan 79: teams = 4 team name suggestions (first = default); typedNames = the 79-A1 switch. */
+export interface CMe { nickname: string | null; choices: string[]; teams?: string[]; typedNames?: boolean; }
 
 export class ChallengeError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string, readonly data?: unknown) { super(message); }
@@ -98,7 +103,9 @@ async function ping(code: string, step: 'sent' | 'picking' | 'told'): Promise<vo
   } catch { /* counting is best effort */ }
 }
 
-export interface PickBody { picks: { slot: number; choices: { id: string; year: number }[] }[]; nickname?: string; turnstile?: string; level?: number; deco?: number; mode?: GameMode; }
+export interface PickBody { picks: { slot: number; choices: { id: string; year: number }[] }[]; nickname?: string; turnstile?: string; level?: number; deco?: number; mode?: GameMode;
+  /** Plan 79: the team name (a suggestion, a stored name on a rematch, or a typed name). */
+  team?: string; }
 
 /** Plan 38: every body names its mode (the server treats a missing mode as an old app). Inning games are stored as d=3 by the server. */
 export function toBody(slots: CSlot[], nickname?: string, mode: GameMode = 'inning'): PickBody {
@@ -106,10 +113,10 @@ export function toBody(slots: CSlot[], nickname?: string, mode: GameMode = 'inni
 }
 
 /** Plan 30: feedback vote (returns the row id, or null) and its one-tap reasons. Never throw. */
-async function postJson(url: string, body: unknown): Promise<Response | null> {
+async function postJson(url: string, body: unknown, extra?: Record<string, string>): Promise<Response | null> {
   try {
     if (!readCookie('XSRF-TOKEN')) { xsrfReady ??= get<CMe>('/api/me'); await xsrfReady; }
-    return await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': readCookie('XSRF-TOKEN') ?? '' }, body: JSON.stringify(body) });
+    return await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': readCookie('XSRF-TOKEN') ?? '', ...extra }, body: JSON.stringify(body) });
   } catch { return null; }
 }
 
@@ -135,6 +142,19 @@ export const capi = {
   lock: (code: string, b: PickBody) => send<{ key: string; view: CView }>('POST', `/api/challenges/${encodeURIComponent(code)}/lock`, b),
   computer: (b: PickBody) => send<{ code: string; key: string; view: CView }>('POST', '/api/challenges/computer', b),
   rematch: (code: string, b: PickBody) => send<{ code: string; key: string }>('POST', `/api/challenges/${encodeURIComponent(code)}/rematch`, b),
+  /** Plan 79-A1: null when the server takes the name, else the message to show ("Try another name."). */
+  checkTeam: async (team: string): Promise<string | null> => {
+    const r = await postJson('/api/challenges/check-team', { team });
+    if (r?.status === 204) return null;
+    if (r?.status === 429) return 'Too many tries. Wait a little and try again.';
+    try { return ((await r?.json()) as { error?: string })?.error ?? 'Try another name.'; } catch { return 'Try another name.'; }
+  },
+  /** Plan 79-A1: report the typed name of one side (0 creator, 1 friend). Sends the private key when we have it (so the server knows the other player). */
+  reportName: async (code: string, side: 0 | 1): Promise<boolean> => {
+    const k = keyFor(code);
+    const r = await postJson(`/api/challenges/${encodeURIComponent(code)}/report-name`, { side }, k ? { 'X-Side-Key': k } : undefined);
+    return !!r?.ok;
+  },
 };
 
 /** Public link (send to the friend) and private link (secret after #, never reaches the server or logs). */

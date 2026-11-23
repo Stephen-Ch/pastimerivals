@@ -1,3 +1,4 @@
+import { mineNames } from './team-names';
 import { afterNextRender, Component, computed, DestroyRef, effect, ElementRef, inject, Injector, input, output, signal, untracked, viewChild } from '@angular/core';
 import type { CMine } from './challenge-api';
 import { isWaiting, pageCountBy, pageForAnchor, rowsFit, stageWords, waitingText } from './game-status';
@@ -51,11 +52,8 @@ export class GamesList {
     });
   }
 
-  protected names(m: CMine): string {
-    if (m.vsCpu) return 'You vs the Computer';
-    if (m.you === 'creator') return m.opponentName ? `You vs ${m.opponentName}` : 'Your challenge';
-    return `${m.creatorName} vs you`;
-  }
+  /** Plan 79: team names, nicknames on old games. */
+  protected names(m: CMine): string { return mineNames(m); }
 
   protected go(d: 1 | -1) {
     const p = Math.min(this.pages() - 1, Math.max(0, this.page() + d));

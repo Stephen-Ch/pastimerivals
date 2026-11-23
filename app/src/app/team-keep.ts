@@ -3,7 +3,8 @@
 import type { CPlayer, CSlot, GameMode } from './challenge-api';
 
 export type PickMode = 'create' | 'accept' | 'rematch' | 'cpu';
-export interface KeptTeam { slots: (CSlot | null)[]; sittingOut: CSlot | null; hand: boolean; }
+/** team (plan 79 A): the chosen team name, kept with the picks. */
+export interface KeptTeam { slots: (CSlot | null)[]; sittingOut: CSlot | null; hand: boolean; team?: string; }
 
 /** Game mode + ("new" for a new friend challenge, "cpu" for a computer game, the game code when accepting, "rematch:" + old code). */
 export function teamKey(mode: PickMode, gameMode: GameMode, code: string | null): string | null {
@@ -25,7 +26,8 @@ export function checkKept(t: KeptTeam | null | undefined, size: number, fixedBat
   const slots = t.slots.map((s, i) => once(goodSlot(s, i) && (fixedBatters === null || i <= fixedBatters) ? s : null));
   const sittingOut = fixedBatters === null && t.sittingOut && goodSlot(t.sittingOut, t.sittingOut.slot) ? once(t.sittingOut) : null;
   if (!slots.some(Boolean) && !sittingOut) return null;
-  return { slots, sittingOut, hand: !!t.hand };
+  const team = typeof t.team === 'string' && t.team.length >= 3 && t.team.length <= 32 ? t.team : undefined;
+  return { slots, sittingOut, hand: !!t.hand, ...(team ? { team } : {}) };
 }
 
 export function loadTeam(key: string): KeptTeam | null {

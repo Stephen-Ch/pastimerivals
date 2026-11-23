@@ -15,13 +15,13 @@ const TEAMS = ['Toledo Night Owls', 'Erie Kingfishers', 'Boise Lanterns', 'Akron
 const base = { code: CODE, expiresUtc: '2030-01-01T00:00:00Z', rematchOf: null, yourPicks: null, vsCpu: false, deco: 3, mode: 'inning' as const, era: ERA };
 const OPEN: CView = { ...base, status: 'open', you: 'visitor', creatorName: 'Catcher 9891', opponentName: null, canClaim: true, game: null,
   creatorTeam: 'Toledo Night Owls', creatorShort: 'Night Owls', creatorTyped: false, teamChoices: ['Erie Kingfishers', 'Boise Lanterns', 'Akron Riveters', 'Omaha Starlings'] };
-const AB = (i: number, side: number, outcome: string, points: number, inning = 1) => ({ index: i, round: 0, battingSide: side, seed: String(i), outcome, points, inning, spot: 1,
-  outsBefore: 0, outsAfter: outcome === 'out' ? 1 : 0, basesBefore: [null, null, null], basesAfter: [null, null, null], scored: [],
+const AB = (i: number, side: number, outcome: any, points: number, inning = 1): any => ({ index: i, round: 0, battingSide: side, seed: String(i), outcome, points, inning, spot: 1,
+  outsBefore: 0, outsAfter: outcome === 'oip' ? 1 : 0, basesBefore: [null, null, null], basesAfter: [null, null, null], scored: [],
   pitcher: { id: 'p', year: 1965, name: 'Sandy Koufax', bats: 'R', throws: 'L' }, batter: { id: 'b' + i, year: 1954, name: 'Willie Mays', bats: 'R', throws: 'R' } });
 const DONE = (you: CView['you'], typed: [boolean, boolean]): CView => ({ ...base, status: 'resolved', you, creatorName: 'Catcher 9891', opponentName: 'Ace 1234', canClaim: false,
   creatorTeam: typed[0] ? 'Jake Smells' : 'Toledo Night Owls', opponentTeam: typed[1] ? "Jake's Nine" : 'Erie Kingfishers',
   creatorShort: typed[0] ? 'Jake Smells' : 'Night Owls', opponentShort: typed[1] ? "Jake's Nine" : 'Kingfishers', creatorTyped: typed[0], opponentTyped: typed[1],
-  game: { lineups: [[], []], atBats: [AB(0, 1, 'out', 0), AB(1, 0, 'home_run', 1)], totals: [1, 0], winner: 0, notes: [], lineScore: [[1], [0]], innings: 1 } });
+  game: { lineups: [[], []], atBats: [AB(0, 1, 'oip', 0), AB(1, 0, 'hr', 1)], totals: [1, 0], winner: 0, notes: [], lineScore: [[1], [0]], innings: 1 } });
 
 let calls: { url: string; method: string; body: any }[] = [];
 let checkReply: { status: number; body: unknown } = { status: 204, body: null };

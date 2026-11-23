@@ -28,10 +28,12 @@
     @case ('intro') {
       <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex">
-        <h1 #stepTitle tabindex="-1" class="call">{{ view()?.creatorName }} challenged you</h1>
+        <h1 #stepTitle tabindex="-1" class="call">{{ sideLabel(0) }} challenged you</h1>
+        @if (canReport(0)) { <button type="button" class="link small report" (click)="reportName(0)">Report name</button> }
+        @if (reportNote()) { <p class="note" role="status">{{ reportNote() }}</p> }
         @if (inning()) {
           <p class="how">Last Licks. Pick a pitcher and a batting order from any season. You won't see their team until the game.
-            One inning: their hitters bat until 3 outs, then yours. Most runs wins.</p>
+            One inning: your hitters bat until 3 outs, then theirs. Most runs wins.</p>
           <p class="note">{{ rulesLine() }}</p>
         } @else {
           <p class="how">Pick a pitcher and 3 batters from any season. You won't see their team until the game.
@@ -126,6 +128,10 @@
       <header class="bar"><button type="button" class="link" (click)="inning() ? backFromPicking() : goSlot(3)">‹ Back</button></header>
       <main class="flex">
         <h1 #stepTitle tabindex="-1">Your team</h1>
+        @if (team(); as t) {
+          <p class="team-line"><span class="muted">Name</span> <strong class="team-now">The {{ t }}</strong>
+            <button type="button" class="link small" aria-label="Change team name" (click)="openTeamSheet()" [disabled]="busy()">Change</button></p>
+        }
         @if (inning()) {
           <p class="note rules-line" role="status">{{ rulesLine() }}</p>
           @for (t of clashText(); track t) { <p class="clash" role="alert">{{ t }}</p> }
@@ -158,6 +164,34 @@
         <button class="primary big" type="button" (click)="lockTeam()" [disabled]="!teamDone() || busy() || clashOpen().length > 0">{{ mode() === 'cpu' ? 'Play ball' : mode() === 'accept' ? 'Lock team and play' : 'Lock team and get link' }}</button>
         @if (!handPicked()) { <button type="button" (click)="quickPick()" [disabled]="busy()">Quick pick</button> }
       </div>
+      @if (teamSheet() !== 'closed') {
+        <div class="team-sheet" role="dialog" aria-modal="true" aria-labelledby="team-sheet-h">
+          <h2 id="team-sheet-h" class="sub">Team name</h2>
+          @if (teamSheet() === 'type') {
+            <label class="sr-only" for="team-input">Type your team name</label>
+            <input id="team-input" class="team-input" type="text" maxlength="24" autocomplete="off" autocapitalize="words" spellcheck="false"
+              [value]="typedDraft()" (input)="onTyped($any($event.target).value)" (keydown.enter)="useTyped()">
+            <p class="muted counter" aria-live="polite">{{ typedDraft().length }} of 24</p>
+            @if (teamError()) { <p class="error" role="alert">{{ teamError() }}</p> }
+            <div class="sheet-actions">
+              <button class="primary" type="button" (click)="useTyped()" [disabled]="busy()">Use</button>
+              <button type="button" (click)="teamSheet.set('open')">Cancel</button>
+            </div>
+          } @else {
+            <ul class="list names">
+              @if (team(); as t) { <li><button type="button" class="row-btn now" aria-current="true" (click)="closeTeamSheet()">The {{ t }}</button></li> }
+              @if (teamSheet() === 'more') {
+                @for (n of moreNames(); track n) { <li><button type="button" class="row-btn" (click)="pickTeam(n)">The {{ n }}</button></li> }
+              }
+            </ul>
+            <div class="sheet-actions">
+              @if (teamSheet() === 'open') { <button type="button" (click)="teamSheet.set('more')">More names</button> }
+              @if (typedOn()) { <button type="button" (click)="teamSheet.set('type')">Type your own</button> }
+              <button type="button" (click)="closeTeamSheet()">Cancel</button>
+            </div>
+          }
+        </div>
+      }
     }
 
     @case ('shared') {
@@ -186,7 +220,7 @@
         <h1 #stepTitle tabindex="-1" class="call">Waiting for a friend</h1>
         <p class="note">Expires in {{ view() ? hoursLeft(view()!) : '' }}.</p>
         @if (view()?.yourPicks; as picks) {
-          <h2 class="sub">Your team</h2>
+          <h2 class="sub">Your team@if (view()?.creatorTeam) { : {{ sideLabel(0) }} }</h2>
           <ul class="team">
             @for (s of picks; track s.slot) { <li><span class="muted">{{ s.slot === 0 ? 'Pitcher' : view()?.mode === 'inning' ? ordinal(s.slot) : 'Batter ' + s.slot }}</span> {{ s.choices[0].name }} {{ s.choices[0].year }}</li> }
           </ul>
@@ -293,6 +327,8 @@
               }
             </tbody>
           </table>
+          @for (sd of [1, 0]; track sd) { @if (canReport(sd)) { <button type="button" class="link small report" [attr.aria-label]="'Report name: ' + sideLabel(sd)" (click)="reportName(sd)">Report name</button> } }
+          @if (reportNote()) { <p class="note" role="status">{{ reportNote() }}</p> }
           @if (g.notes.some(isClashNote)) { <p class="note">Both of you picked the same player. The challenger picked first, so a backup stepped in.</p> }
           @if (g.notes.includes(capNote)) { <p class="note">{{ capNote }}</p> }
           <div class="plays-card">
@@ -343,7 +379,7 @@
         }
       } @else {
         <div class="actions three">
-          <button class="primary big" type="button" (click)="shareResult()">{{ view()?.you === 'opponent' ? 'Send the result to ' + view()?.creatorName : 'Share the game' }}</button>
+          <button class="primary big" type="button" (click)="shareResult()">{{ view()?.you === 'opponent' ? 'Send the result to ' + sideLabel(0) : 'Share the game' }}</button>
           @if (yourSide() !== null && !view()?.vsCpu) { <button type="button" (click)="startPicking('rematch')">Rematch</button> }
           @else { <button type="button" (click)="newChallenge()">Start your own</button> }
         </div>
