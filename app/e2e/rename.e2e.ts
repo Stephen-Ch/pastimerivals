@@ -21,7 +21,7 @@ for (const [w, h] of SIZES) {
     const hn = await serve(context, { storage: { pr_seen: '1' }, fixtures: { 'challenge-inning.json': 'challenge-inning-friend.json' } });
     await page.setViewportSize({ width: w, height: h });
     await page.goto(`/c/${LL_CODE}`);
-    await expect(page.locator('.result .note')).toContainText('One inning. Most runs wins. Tap Pitch to see each at-bat.');
+    await expect(page.locator('.result .note')).toContainText('One inning. Tied? Up to 3 extra. Tap Pitch to see each at-bat.');
     expect(await pageScroll(page), 'page scroll before').toBeLessThanOrEqual(1);
     const before = await page.locator('.side-line').textContent();
     await page.getByRole('button', { name: 'Pitch', exact: true }).click();

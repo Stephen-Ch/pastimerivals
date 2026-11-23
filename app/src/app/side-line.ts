@@ -4,7 +4,7 @@
 export function sideLine(bats: string | null | undefined, throws: string | null | undefined): string | null {
   const b = (bats ?? '').trim().toUpperCase(), t = (throws ?? '').trim().toUpperCase();
   if (b === 'R') return 'Bats right.';
-  if (b === 'L') return 'Bats left: other side of the plate.';
+  // Plan 79 D2: no line for lefties ("Bats left: other side of the plate." read like a debug note).
   if (b === 'B' || b === 'S') {
     if (t === 'R') return 'Switch hitter: bats left vs a righty.';
     if (t === 'L') return 'Switch hitter: bats right vs a lefty.';

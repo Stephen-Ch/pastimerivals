@@ -12,7 +12,7 @@
         @let compact = shortScreen() && mine().length > 0;
         <h1 #stepTitle tabindex="-1" [class.sr-only]="compact">Last Licks</h1>
         @if (!compact) {
-          <p class="how">Pick a pitcher and a batting order from any season. One inning: your hitters bat until 3 outs, then theirs. Most runs wins.</p>
+          <p class="how">Pick a pitcher and a batting order from any season. One inning: their hitters bat first, then yours. Most runs wins.</p>
           <button type="button" class="link small how-link" (click)="openInfo('how')">How the sim works</button>
         }
         <!-- Always rendered, so its "results waiting" status line exists before its text arrives (screen readers announce it). -->
@@ -174,6 +174,12 @@
             @for (s of picks; track s.slot) { <li><span class="muted">{{ s.slot === 0 ? 'Pitcher' : view()?.mode === 'inning' ? ordinal(s.slot) : 'Batter ' + s.slot }}</span> {{ s.choices[0].name }} {{ s.choices[0].year }}</li> }
           </ul>
         }
+        @if (privateLink()) {
+          <div class="private">
+            <p class="note"><strong>Only for you, don't share.</strong> Opens your side of this game on any phone or browser.</p>
+            <button type="button" class="link small" (click)="copy(privateLink())">Copy my private link</button>
+          </div>
+        }
         @if (note()) { <p class="note" role="status">{{ note() }}</p> }
       </main>
       <div class="actions three">
@@ -230,7 +236,7 @@
             @if (pbpRecap().length) { <p class="base-line">{{ pbpRecap().join(' ') }}</p> }
             @else if (baseText()) { <p class="base-line">{{ baseText() }}</p> }
             @if (halfCard()) { <p class="half-card">{{ halfCard() }}</p> }
-            @if (revealed() === 0) { <p class="note">@if (isInningGame()) { One inning. Most runs wins. }Tap Pitch to see each at-bat.@if (llArt()) { <span class="ll-art" (prArtNoteSeen)="artNoteSeen()" [prArtNotePaused]="!!info()"> {{ artShort }}</span> }</p> }
+            @if (revealed() === 0) { <p class="note">@if (isInningGame()) { One inning. Tied? Up to 3 extra. }Tap Pitch to see each at-bat.@if (llArt()) { <span class="ll-art" (prArtNoteSeen)="artNoteSeen()" [prArtNotePaused]="!!info()"> {{ artShort }}</span> }</p> }
             @if (nextAtBat(); as n) {
               <p class="muted">{{ isInningGame() ? halfLabel(n.inning ?? 1, n.battingSide) + ' · ' + batsLine(n.battingSide) : roundLabel(n) + ' · ' + sideName(n.battingSide) + ' batting' }}</p>
               <p class="call">{{ n.batter.name }} <span class="muted">{{ n.batter.year }}</span></p>
@@ -276,7 +282,7 @@
               <p class="half-head"><i class="pill" aria-hidden="true" [style.background]="sideColor(h.plays[0].battingSide)"></i>{{ h.label }} · {{ teamWord(h.plays[0].battingSide) }}</p>
               <ol class="plays">
                 @for (a of h.plays; track a.index) {
-                  <li>{{ a.batter.name }}: <strong>{{ shortLabel(a) }}</strong>@if (a.points) { , {{ a.points }} {{ a.points === 1 ? 'run' : 'runs' }} }</li>
+                  <li>{{ a.batter.name }}: <strong>{{ shortLabel(a) }}</strong>@if (a.points) {, {{ a.points }} {{ a.points === 1 ? 'run' : 'runs' }}}</li>
                 }
               </ol>
             }
