@@ -201,8 +201,12 @@ test('A1 CSS sizes: app.css does not grow; component styles under 4000 bytes', a
   const { transformSync } = await import('esbuild');
   const size = (f: string) => transformSync(readFileSync(join(__dirname, '..', 'src', 'app', f), 'utf8'), { loader: 'css', minify: true }).code.length;
   expect(size('app.css')).toBeLessThanOrEqual(7494);
-  expect(size('challenge.css')).toBeLessThan(4000);
-  expect(size('games-list.css')).toBeLessThan(4000);
+  // Plan 79: challenge.css (also used by feedback.ts) must not grow; EVERY other component CSS file stays under 4000 (globbed, so new files count).
+  expect(size('challenge.css')).toBeLessThanOrEqual(3947);
+  const { readdirSync } = await import('node:fs');
+  const others = readdirSync(join(__dirname, '..', 'src', 'app')).filter(f => f.endsWith('.css') && f !== 'app.css');
+  expect(others).toContain('deciding-play.css');
+  for (const f of others) expect(size(f), f).toBeLessThan(4000);
 });
 
 for (const who of ['friend', 'creator'] as const) {
