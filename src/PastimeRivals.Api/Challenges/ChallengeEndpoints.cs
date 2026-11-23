@@ -301,7 +301,9 @@ public static class ChallengeEndpoints
             var current0 = await CurrentGuest(ctx, store);
             var trusted = before.RematchOf is { } ro && current0 is not null && await store.GetAsync(ro) is { } old ? StoredTeamOf(old, current0.Id) : null;
             var (team, typed, teamErr) = await TeamFor(body.Team, before.CreatorTeam, trusted, current0, store, cfg);
-            if (teamErr is not null) return teamErr;
+            // A retried lock from the friend who already won the claim returns the game as today (their name is already stored).
+            var retry = current0 is not null && before.OpponentId == current0.Id;
+            if (teamErr is not null && !retry) return teamErr;
             // Plan 38: an app that does not know this game's mode (an old app on an inning link) is told to refresh.
             if (ModeOf(body) != before.Mode) return Results.Conflict(new { error = "update" });
             if (!await ts.PassesAsync(body.Turnstile, ctx)) return Results.BadRequest(new { error = "Bot check failed. Try again." });
@@ -463,6 +465,17 @@ public static class ChallengeEndpoints
         if (!TypedNamesOn(cfg) || NameRules.Check(given, out var clean) != NameRule.Ok) return "Try another name.";
         if (g is not null && await store.IsRefusedNameAsync(g.Id, NameRules.CheckForm(clean), DateTime.UtcNow)) return "That name was reported. Try another.";
         return null;
+    }
+
+    /// <summary>Plan 79 A: 4 suggestions for the friend (skipping the creator's city). On a rematch, the friend's stored name from the
+    /// old game comes first, so the app sends it back (stored names are trusted even after a word leaves the lists).</summary>
+    private static async Task<IReadOnlyList<string>> ChoicesFor(Challenge ch, Guest? g, IChallengeStore store)
+    {
+        var fresh = TeamNames.Suggest(4, ch.CreatorTeam);
+        if (ch.RematchOf is not { } ro || g is null || await store.GetAsync(ro) is not { } old || StoredTeamOf(old, g.Id) is not { } mine) return fresh;
+        if (string.Equals(mine.Name, ch.CreatorTeam, StringComparison.OrdinalIgnoreCase)
+            || (TeamNames.CityOf(mine.Name) is { } c && c == TeamNames.CityOf(ch.CreatorTeam))) return fresh;
+        return new[] { mine.Name }.Concat(fresh.Where(n => n != mine.Name)).Take(4).ToList();
     }
 
     /// <summary>Plan 79-A1: an admin key (separate from the read-only funnel key) given in X-Admin-Key; anything else is a 404.</summary>
@@ -742,6 +755,6 @@ public static class ChallengeEndpoints
             canClaim, ch.RematchOf, yourPicks, game, ch.VsCpu, ch.CpuLevel ?? 1, ch.Deco ?? 1, ch.Mode, ch.Era is null ? null : EraOut.Of(ch.Era),
             ch.CreatorTeam, ch.OpponentTeam, ch.CreatorTeam is { } ct ? TeamNames.Short(ct, ch.CreatorTyped) : null,
             ch.OpponentTeam is { } ot ? TeamNames.Short(ot, ch.OpponentTyped) : null, ch.CreatorTyped, ch.OpponentTyped,
-            canClaim ? TeamNames.Suggest(4, ch.CreatorTeam) : null);
+            canClaim ? await ChoicesFor(ch, g, store) : null);
     }
 }
