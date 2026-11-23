@@ -25,8 +25,8 @@ export function checkKept(t: KeptTeam | null | undefined, size: number, fixedBat
   const once = (s: CSlot | null) => { if (!s) return null; const id = s.choices[0].id; if (seen.has(id)) return null; seen.add(id); return s; };   // no player twice
   const slots = t.slots.map((s, i) => once(goodSlot(s, i) && (fixedBatters === null || i <= fixedBatters) ? s : null));
   const sittingOut = fixedBatters === null && t.sittingOut && goodSlot(t.sittingOut, t.sittingOut.slot) ? once(t.sittingOut) : null;
-  if (!slots.some(Boolean) && !sittingOut) return null;
   const team = typeof t.team === 'string' && t.team.length >= 3 && t.team.length <= 32 ? t.team : undefined;
+  if (!slots.some(Boolean) && !sittingOut && !team) return null;   // plan 79 A: a chosen name alone is worth keeping
   return { slots, sittingOut, hand: !!t.hand, ...(team ? { team } : {}) };
 }
 
