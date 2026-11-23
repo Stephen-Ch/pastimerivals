@@ -1,0 +1,62 @@
+[
+ {
+  "code": "E2eLastLicksGame000001",
+  "you": "creator",
+  "creatorName": "Steve",
+  "opponentName": "Pat",
+  "createdUtc": "2026-11-22T11:00:00Z",
+  "status": "resolved",
+  "vsCpu": false,
+  "mode": "inning",
+  "stage": "result",
+  "rematchSent": false
+ },
+ {
+  "code": "E2eMineGame00000000002",
+  "you": "creator",
+  "creatorName": "Steve",
+  "opponentName": null,
+  "createdUtc": "2026-11-22T09:00:00Z",
+  "status": "open",
+  "vsCpu": false,
+  "mode": "inning",
+  "stage": "picking",
+  "rematchSent": false
+ },
+ {
+  "code": "E2eMineGame00000000003",
+  "you": "creator",
+  "creatorName": "Steve",
+  "opponentName": null,
+  "createdUtc": "2026-11-22T08:00:00Z",
+  "status": "open",
+  "vsCpu": false,
+  "mode": "inning",
+  "stage": "opened",
+  "rematchSent": false
+ },
+ {
+  "code": "E2eMineGame00000000004",
+  "you": "creator",
+  "creatorName": "Steve",
+  "opponentName": null,
+  "createdUtc": "2026-11-22T07:00:00Z",
+  "status": "open",
+  "vsCpu": false,
+  "mode": "inning",
+  "stage": "sent",
+  "rematchSent": false
+ },
+ {
+  "code": "E2eMineGame00000000005",
+  "you": "creator",
+  "creatorName": "Steve",
+  "opponentName": null,
+  "createdUtc": "2026-11-22T06:00:00Z",
+  "status": "open",
+  "vsCpu": false,
+  "mode": "inning",
+  "stage": "unsent",
+  "rematchSent": false
+ }
+]

@@ -20,7 +20,8 @@ import { awayHome, boardOrder, firstWord, headerParts, ownTag, sideColor, TEAM_B
 import {
   CAtBat, capi, CEra, ChallengeError, CClash, CMine, CPlayer, CSlot, CView, GameMode, keyFor, links, saveKey, setWatched, takeKeyFromHash, toBody, watched,
 } from './challenge-api';
-import { isWaiting, orderMine, pageCount, pageOf, stageWords, waitingCount, waitingText } from './game-status';
+import { mediaSignal, orderMine, waitingCount } from './game-status';
+import { GamesList } from './games-list';
 
 type Step = 'loading' | 'home' | 'intro' | 'pick' | 'review' | 'shared' | 'waiting' | 'play' | 'final' | 'closed';
 type Mode = 'create' | 'accept' | 'rematch' | 'cpu';
@@ -56,7 +57,7 @@ export function parkLookForView(v: CView | null): ParkLook | null {
 
 @Component({
   selector: 'pr-challenge',
-  imports: [PitchScene, Scoreboard, Feedback, HowSim, VoiceButton, ArtNoteSeen],
+  imports: [GamesList, PitchScene, Scoreboard, Feedback, HowSim, VoiceButton, ArtNoteSeen],
   templateUrl: './challenge.html',
   styleUrls: ['./app.css', './challenge.css'],
 })
@@ -118,16 +119,11 @@ export class ChallengeFlow {
   protected readonly note = signal<string | null>(null);
   protected readonly closedText = signal('');
   protected readonly mine = signal<CMine[]>([]);
-  /** Plan 69: status order, 4 rows a page (Older / Newer, no scrolling), and the "result waiting" line. */
-  protected readonly minePage = signal(0);
+  /** Plan 69: status order; the list itself (pr-games-list) pages by what fits. */
   protected readonly mineOrdered = computed(() => orderMine(this.mine()));
-  protected readonly minePages = computed(() => pageCount(this.mineOrdered().length));
-  protected readonly mineShown = computed(() => pageOf(this.mineOrdered(), this.minePage()));
   protected readonly mineWaiting = computed(() => waitingCount(this.mine()));
-  protected readonly stageWords = stageWords;
-  protected readonly isWaiting = isWaiting;
-  protected readonly waitingText = waitingText;
-  protected pageMine(d: 1 | -1) { this.minePage.update(p => Math.min(this.minePages() - 1, Math.max(0, p + d))); }
+  /** Plan 69 A1: short screens (same queries as home.css / the A1 plan). */
+  protected readonly shortScreen = mediaSignal('(orientation: portrait) and (max-height: 640px), (orientation: landscape) and (max-height: 500px)');
   private readonly title = viewChild<ElementRef<HTMLElement>>('stepTitle');
 
   // Team being picked: 4 slots, each first choice plus up to 2 backups.
@@ -333,7 +329,6 @@ export class ChallengeFlow {
   private async home() {
     this.current.set(null); this.view.set(null); this.mode.set('create');
     this.step.set('home');
-    this.minePage.set(0);
     try { this.mine.set(await capi.mine()); } catch { this.mine.set([]); }
   }
 

@@ -11,7 +11,7 @@
         @else { <span class="brand">Pastime Rivals</span> }
         <h1 #screenTitle tabindex="-1" class="sr-only">Pastime Rivals</h1>
         <span class="bar-links">
-          <button type="button" class="link how-head" (click)="openInfo('how')">How it works</button>
+          <button type="button" class="link how-head" title="How it works" (click)="openInfo('how')">Help</button>
           <button type="button" class="link" (click)="openOverlay('details')" [disabled]="!matchup()">Details</button>
           <pr-voice-button />
         </span>

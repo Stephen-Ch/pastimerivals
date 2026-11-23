@@ -59,5 +59,3 @@
 .team-edge { border-left: 4px solid transparent; padding-left: 6px; }
 .ll-next .tag { opacity: .8; }
 @media (max-width: 359px) { .ha, .ll-next .tag { display: none; } }
-/* Plan 69: game status (waiting rows reuse .best, the pager reuses .chosen) */
-.waiting-line { color: var(--accent-text); }

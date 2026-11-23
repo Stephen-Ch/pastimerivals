@@ -8,27 +8,14 @@
     @case ('home') {
       <header class="bar"><button type="button" class="link" (click)="leave()">‹ Home</button></header>
       <main class="flex">
-        <h1 #stepTitle tabindex="-1">Last Licks</h1>
-        <p class="how">Pick a pitcher and a batting order from any season. One inning: your hitters bat until 3 outs, then theirs. Most runs wins.</p>
-        <button type="button" class="link small how-link" (click)="openInfo('how')">How the sim works</button>
-        @if (mine().length) {
-          <h2 class="sub">Your games</h2>
-          @if (mineWaiting()) { <p class="note waiting-line" role="status"><strong>{{ waitingText(mineWaiting()) }}</strong></p> }
-          <ul class="list">
-            @for (m of mineShown(); track m.code) {
-              <li><button type="button" class="row-btn" [class.best]="isWaiting(m)" (click)="openMine(m.code)">
-                <span>{{ m.vsCpu ? 'You vs the Computer' : m.you === 'creator' ? 'You vs ' + (m.opponentName ?? 'waiting for a friend') : m.creatorName + ' vs you' }}
-                  <span class="muted"> · {{ stageWords(m) }}@if (m.mode !== 'inning') { · classic game }</span></span><span class="chev" aria-hidden="true">›</span>
-              </button></li>
-            }
-          </ul>
-          @if (minePages() > 1) {
-            <div class="chosen mine-pager">
-              @if (minePage() > 0) { <button type="button" class="link small" (click)="pageMine(-1)">‹ Newer</button> } @else { <span></span> }
-              @if (minePage() < minePages() - 1) { <button type="button" class="link small" (click)="pageMine(1)">Older ›</button> }
-            </div>
-          }
+        <!-- Plan 69 A1: on short screens, while the games list shows, the title is for screen readers only and the intro is not rendered. -->
+        @let compact = shortScreen() && mine().length > 0;
+        <h1 #stepTitle tabindex="-1" [class.sr-only]="compact">Last Licks</h1>
+        @if (!compact) {
+          <p class="how">Pick a pitcher and a batting order from any season. One inning: your hitters bat until 3 outs, then theirs. Most runs wins.</p>
+          <button type="button" class="link small how-link" (click)="openInfo('how')">How the sim works</button>
         }
+        @if (mine().length) { <pr-games-list [list]="mineOrdered()" [waiting]="mineWaiting()" (open)="openMine($event)" /> }
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
       </main>
       <div class="actions even">

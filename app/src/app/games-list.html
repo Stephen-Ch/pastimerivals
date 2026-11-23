@@ -1,0 +1,14 @@
+<p class="note waiting-line" role="status"><strong>{{ waiting() ? waitingText(waiting()) : '' }}</strong></p>
+<ul class="list" #ul>
+  @for (m of shown(); track m.code) {
+    <li><button type="button" class="row-btn" [class.best]="isWaiting(m)" (click)="open.emit(m.code)">
+      <span class="txt"><span class="l1">@if (m.mode !== 'inning') { <span class="tag">Classic ·&nbsp;</span> }<span class="names">{{ names(m) }}</span></span>
+        <span class="st muted">{{ stageWords(m) }}</span></span><span class="chev" aria-hidden="true">›</span>
+    </button></li>
+  }
+</ul>
+<div class="chosen pager" role="group" [attr.aria-label]="'Page ' + (page() + 1) + ' of ' + pages()" [style.visibility]="pages() > 1 ? 'visible' : 'hidden'">
+  @if (page() > 0) { <button type="button" class="link small" (click)="go(-1)">‹ Newer</button> } @else { <span></span> }
+  <span aria-hidden="true">{{ page() + 1 }} / {{ pages() }}</span>
+  @if (page() < pages() - 1) { <button type="button" class="link small" (click)="go(1)">Older ›</button> } @else { <span></span> }
+</div>

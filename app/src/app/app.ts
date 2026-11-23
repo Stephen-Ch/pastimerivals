@@ -6,7 +6,7 @@ import { ReportView } from './report';
 import { ChallengeFlow } from './challenge';
 import { Feedback, feedbackDue } from './feedback';
 import { capi, type CMine } from './challenge-api';
-import { gamesLinkText, waitingCount } from './game-status';
+import { gamesLinkText, mediaSignal, waitingCount } from './game-status';
 import { PitchScene } from './pitch-scene';
 import { ERA_BOARD, lastName, Scoreboard, shortYear } from './scoreboard';
 import { sideLine } from './side-line';
@@ -221,7 +221,11 @@ export class App {
   protected readonly myGames = signal(0);
   /** Plan 69: results waiting (played, not yet seen) plus rematches addressed to you. */
   protected readonly myWaiting = signal(0);
-  protected readonly gamesLink = computed(() => gamesLinkText(this.myGames(), this.myWaiting(), false));
+  /** Plan 69 A1: link words by screen (small = the home.css rule that moves How it works into the header). */
+  private readonly smallPortrait = mediaSignal('(orientation: portrait) and (max-height: 640px)');
+  private readonly portrait = mediaSignal('(orientation: portrait)');
+  protected readonly gamesLink = computed(() => gamesLinkText(this.myGames(), this.myWaiting(),
+    this.smallPortrait() ? 'small' : this.portrait() ? 'portrait' : 'wide'));
   private setMine(m: CMine[]) { this.myGames.set(m.length); this.myWaiting.set(waitingCount(m)); }
   /** Plan 38/39: info sheets (How the sim works, Simulate, About the art). */
   protected readonly info = signal<InfoKind | null>(null);

@@ -343,24 +343,27 @@ public sealed class SqlChallengeStore(IConfiguration cfg) : IChallengeStore
     {
         await using var c = await OpenAsync();
         await using var cmd = Cmd(c, """
-            WITH pick AS (
+            SET NOCOUNT ON;
+            -- Plan 69 A1: the picked codes are worked out once, so the join and the funnel lookup see the same games.
+            DECLARE @pick TABLE (code VARCHAR(24) COLLATE Latin1_General_BIN2 PRIMARY KEY);
+            INSERT INTO @pick (code)
                 SELECT code FROM (SELECT TOP (@ft) code FROM dbo.ch_challenges WHERE (creator_id = @g OR opponent_id = @g) AND vs_cpu = 0 ORDER BY created_utc DESC) a
-                UNION ALL
+                UNION
                 SELECT code FROM (SELECT TOP (@ct) code FROM dbo.ch_challenges WHERE (creator_id = @g OR opponent_id = @g) AND vs_cpu = 1 ORDER BY created_utc DESC) b
-                UNION ALL
+                UNION
                 SELECT code FROM (SELECT TOP (10) code FROM dbo.ch_challenges WHERE rematch_for = @g AND creator_id <> @g AND opponent_id IS NULL AND status = 0 AND expires_utc > @n
-                    ORDER BY created_utc DESC) r)
+                    ORDER BY created_utc DESC) r;
             SELECT ch.code, CASE WHEN ch.creator_id = @g THEN 0 ELSE 1 END, ch.status, ch.creator_name, ch.opponent_name, ch.created_utc, ch.expires_utc, ch.vs_cpu, ISNULL(ch.mode, 0),
                    ISNULL(f.sent, 0), ISNULL(f.opened, 0), ISNULL(f.opened_expired, 0), ISNULL(f.picking, 0), ISNULL(f.played, 0), ISNULL(f.watched, 0), ISNULL(f.told, 0),
                    CASE WHEN EXISTS (SELECT 1 FROM dbo.ch_challenges x WHERE x.rematch_of = ch.code AND x.creator_id = @g) THEN 1 ELSE 0 END,
                    CASE WHEN ch.rematch_for = @g AND ch.creator_id <> @g AND ch.opponent_id IS NULL THEN 1 ELSE 0 END
-            FROM pick p JOIN dbo.ch_challenges ch ON ch.code = p.code
+            FROM @pick p JOIN dbo.ch_challenges ch ON ch.code = p.code
             LEFT JOIN (SELECT code,
                 MAX(CASE WHEN step = 'sent' THEN 1 ELSE 0 END) sent, MAX(CASE WHEN step = 'opened' THEN 1 ELSE 0 END) opened,
                 MAX(CASE WHEN step = 'opened_expired' THEN 1 ELSE 0 END) opened_expired, MAX(CASE WHEN step = 'picking' THEN 1 ELSE 0 END) picking,
                 MAX(CASE WHEN step = 'played' THEN 1 ELSE 0 END) played, MAX(CASE WHEN step = 'watched' THEN 1 ELSE 0 END) watched,
                 MAX(CASE WHEN step = 'told' THEN 1 ELSE 0 END) told
-                FROM dbo.ch_funnel WHERE code IN (SELECT code FROM pick) GROUP BY code) f ON f.code = ch.code
+                FROM dbo.ch_funnel WHERE code IN (SELECT code FROM @pick) GROUP BY code) f ON f.code = ch.code
             ORDER BY ch.created_utc DESC
             """, null, ("@ft", friendTake), ("@ct", cpuTake), ("@g", guestId), ("@n", nowUtc));
         await using var r = await cmd.ExecuteReaderAsync();

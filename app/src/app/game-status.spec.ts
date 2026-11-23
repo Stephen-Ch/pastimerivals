@@ -1,5 +1,5 @@
 import type { CMine, CStage } from './challenge-api';
-import { gamesLinkText, isWaiting, orderMine, pageCount, pageOf, stageWords, waitingCount, waitingText } from './game-status';
+import { gamesLinkText, isWaiting, orderMine, pageCountBy, pageForAnchor, ROW_H, rowsFit, stageWords, waitingCount, waitingText } from './game-status';
 
 // Plan 69: "did my friend play?" status words, order, badge and paging.
 const row = (code: string, stage: CStage | null, status: string, minsAgo: number, extra: Partial<CMine> = {}): CMine => ({
@@ -37,11 +37,14 @@ describe('plan 69 badge', () => {
     expect(waitingText(1)).toBe('1 result waiting');
     expect(waitingText(2)).toBe('2 results waiting');
   });
-  it('duel home link text', () => {
-    expect(gamesLinkText(3, 0, false)).toBe('Your games (3)');
-    expect(gamesLinkText(3, 1, false)).toBe('Your games (3) · 1 result waiting');
-    expect(gamesLinkText(3, 2, false)).toBe('Your games (3) · 2 results waiting');
-    expect(gamesLinkText(3, 1, true)).toBe('Your games (1 new)');
+  it('duel home link text by screen (A1)', () => {
+    expect(gamesLinkText(3, 0, 'wide')).toBe('Your games (3)');
+    expect(gamesLinkText(3, 1, 'wide')).toBe('Your games (3) · 1 result waiting');
+    expect(gamesLinkText(3, 2, 'wide')).toBe('Your games (3) · 2 results waiting');
+    expect(gamesLinkText(3, 0, 'portrait')).toBe('Your games (3)');
+    expect(gamesLinkText(3, 2, 'portrait')).toBe('Your games (2 new)');
+    expect(gamesLinkText(11, 0, 'small')).toBe('Games (11)');
+    expect(gamesLinkText(11, 2, 'small')).toBe('Games (2 new)');
   });
 });
 
@@ -54,13 +57,23 @@ describe('plan 69 order and paging', () => {
   it('waiting rows first, then open games, then the rest, newest first in each', () => {
     expect(orderMine(list).map(m => m.code)).toEqual(['result-new', 'rm', 'result-old', 'unsent-new', 'sent', 'done-new', 'cpu', 'expired', 'done-old']);
   });
-  it('4 rows a page, clamped', () => {
-    const o = orderMine(list);
-    expect(pageCount(o.length)).toBe(3);
-    expect(pageCount(0)).toBe(1);
-    expect(pageOf(o, 0).map(m => m.code)).toEqual(['result-new', 'rm', 'result-old', 'unsent-new']);
-    expect(pageOf(o, 2).map(m => m.code)).toEqual(['done-old']);
-    expect(pageOf(o, 9).map(m => m.code)).toEqual(['done-old']);
-    expect(pageOf(o, -1)).toEqual(pageOf(o, 0));
+  it('rows a page: whole 62 px rows that fit, 1 to 4 (A1)', () => {
+    expect(ROW_H).toBe(62);
+    expect(rowsFit(0, 6)).toBe(1);
+    expect(rowsFit(62, 6)).toBe(1);
+    expect(rowsFit(129, 6)).toBe(1);
+    expect(rowsFit(130, 6)).toBe(2);
+    expect(rowsFit(266, 6)).toBe(4);
+    expect(rowsFit(900, 6)).toBe(4);
+  });
+  it('turning the phone keeps the anchor row on screen, and back returns to the same page (A1)', () => {
+    expect(pageCountBy(20, 4)).toBe(5);
+    expect(pageCountBy(0, 4)).toBe(1);
+    const anchor = 4;                                   // page 2 at 4 a page
+    expect(pageForAnchor(anchor, 4, 20)).toBe(1);
+    expect(pageForAnchor(anchor, 3, 20)).toBe(1);       // rows 3-5: row 4 still shows
+    expect(pageForAnchor(anchor, 2, 20)).toBe(2);       // rows 4-5
+    expect(pageForAnchor(anchor, 4, 20)).toBe(1);       // turned back: page 2 again
+    expect(pageForAnchor(40, 4, 20)).toBe(4);           // list shrank: last page
   });
 });
